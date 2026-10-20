@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import numpy as np
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-import run_mcvamp_microwave as runner
+from vlm_tamp import hinged_contact_tools as runner
 
 
 def test_rejected_endpoints_do_not_hide_later_feasible_ik(monkeypatch):

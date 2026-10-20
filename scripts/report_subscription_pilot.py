@@ -5,10 +5,13 @@ import html
 import json
 from pathlib import Path
 import shutil
+import sys
 
 import numpy as np
 
 ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT/'src'))
+from vlm_tamp.tool_event_audit import operation_name
 
 
 def read(path, default=None):
@@ -25,7 +28,7 @@ def main():
     protocol=read(run/'protocol.json',{})
     evaluation_case=protocol.get('held_out_initial_state_evaluation',False)
     scope=('one reserved case in a frozen comparison; inherited numerical tools; not cross-task generalization'
-           if evaluation_case else 'one development case; one supplied example; inherited numerical tools; not a transfer evaluation')
+           if evaluation_case else 'one development case; inherited numerical tools; not a transfer evaluation')
     if 'episodic_memory' in protocol:
         scope='One physical attempt in the episodic-memory study; see the study manifest for same-case versus transfer membership. Explicit public memory is allowed; implementation and private evaluation remain blocked.'
     if protocol.get('learning_practice'):
@@ -79,7 +82,7 @@ def main():
         'retained_agent_authored_files':retained,'human_task_hints_during_run':0,
         'optional_dino_tool_calls':[{'event':r['sequence'],'operation':r['request']['operation'],
             'ok':r['response']['ok'],'wall_seconds':r['wall_seconds']} for r in rows
-            if r['request']['operation'].startswith('dino_')],
+            if operation_name(r).startswith('dino_')],
         'agent_exit':read(run/'agent-exit.json'),
         'scope':scope}
     (run/'audit.json').write_text(json.dumps(audit,indent=2)+'\n')
@@ -99,7 +102,7 @@ def main():
     trace=[]
     for row in rows:
         request=row['request'];response=row['response'];result=response.get('result',{})
-        trace.append(f'<tr><td>{row["sequence"]}</td><td>{html.escape(request.get("operation",""))}</td>'
+        trace.append(f'<tr><td>{row["sequence"]}</td><td>{html.escape(operation_name(row))}</td>'
             f'<td>{"ok" if response["ok"] else html.escape(response.get("error","error"))}</td>'
             f'<td>{row["wall_seconds"]:.2f}s</td><td><details><summary>Inputs / output</summary><pre>'
             f'{html.escape(json.dumps({"arguments":request.get("arguments",{}),"result":result},indent=2))}</pre></details></td></tr>')
@@ -111,8 +114,8 @@ def main():
 <h1>Luna through ChatGPT: autonomous robot-tool pilot</h1>
 <p>{successful}/{len(episodes)} physical attempts succeeded on one microwave opening case.</p>
 <p class="note">Luna high reasoning used the ChatGPT login. The agent had a coding workspace,
-live RGB-D observations and numerical robot tools. Our project source, previous reports,
-memories and credentials were blocked. One human-approved hinge-refinement example was supplied.
+live RGB-D observations and numerical robot tools. Implementation source, private evaluation,
+and credentials were blocked. The protocol records the explicitly supplied memory and examples.
 Existing geometry, grasp and planning implementations remain inherited tools.</p>
 <p>{html.escape(scope)}. All attempts remain in the denominator.
 The native task predicate was evaluated outside the agent. Separate API calls: 0.</p>

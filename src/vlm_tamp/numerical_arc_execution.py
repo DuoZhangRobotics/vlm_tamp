@@ -7,28 +7,10 @@ from PIL import Image
 
 from .coupled_storage import read_json,write_json,preserve_scene
 from .mcvamp_contact_numerical import NativeScene
-from .partial_pose_arc import full_arc_plan
+from .arc_execution import contact_arc
 from .rekep_libero.geometry import pose_matrix
 
 
-def contact_arc(scene,record,metadata,start,goal,folder,config):
-    folder=Path(folder);folder.mkdir(parents=True,exist_ok=False)
-    preserve_scene(scene,folder)
-    compact={key:metadata[key] for key in ['joint_positions','eef_pose_world_xyzw']}
-    compact['robot_collision_volumes_world']=[v for v in metadata['robot_collision_volumes_world'] if 'gripper' in v['robot_geom_name']]
-    write_json(folder/'planning-input.json',{'task_spec':scene.spec,'metadata':compact,
-        'reference_joints':start,'goal_angle_rad':goal,'planning_only':True,
-        'backend':'continuous_partial_pose_arc','end_effector_quaternion_prescribed':False})
-    with NativeScene(scene,record,metadata,start,goal,aligned=False) as context:
-        context.motion_options=config
-        path,result=full_arc_plan(context,goal,seconds=float(config.get('arc_search_seconds',60.)),
-            proposals=int(config.get('arc_goal_proposals',128)),seed=int(config.get('arc_seed',0)))
-        result['exact_solution']=bool(len(path)>1 and result['status']=='solved')
-        write_json(folder/'result.json',result);write_json(folder/'native-scene.json',context.record)
-        if not result['exact_solution']:
-            raise ValueError('Continuous partial-pose full-arc search: '+result['status'])
-        np.save(folder/'path.npy',path);np.save(folder/'door-progress.npy',[context.progress(q) for q in path])
-        return path,result
 
 
 def frozen_grasp(source,state,ik,record,open_scene,closed_scene,folder):

@@ -16,6 +16,7 @@ from run_subscription_dino_study import read, write, retained_inputs
 from replay_subscription_episode import compress_observations
 from vlm_tamp.episodic_memory import store_hashes
 from vlm_tamp.subscription_agent import validate_attempt_budget
+from vlm_tamp.tool_event_audit import operation_name
 
 
 def practice_prompt(registered_prompt, attempts, initial_attempts=None):
@@ -190,13 +191,13 @@ def relative_tool_choices(run,outcomes):
     current=None;plans={};choices={}
     for line in path.read_text().splitlines():
         event=json.loads(line);request=event['request'];response=event['response']
-        op=request['operation'];args=request.get('arguments',{});result=response.get('result',{})
+        op=operation_name(event);args=request.get('arguments',{});result=response.get('result',{})
         if op=='reset' and response['ok']:
             current=result.get('attempt');plans={}
         if current is None:continue
         if response['ok'] and op.startswith('plan_') and result.get('plan_id'):
             plans[result['plan_id']]=result.get('kind')
-        if op not in allowed:continue
+        if op not in allowed or not isinstance(args,dict):continue
         def safe(k,v):
             return (v is None or (isinstance(v,(int,float,bool)) and -float('inf')<v<float('inf'))
                     or (k=='grasp_constraint' and isinstance(v,str) and v in {'point','rigid','jaw_axis'}))

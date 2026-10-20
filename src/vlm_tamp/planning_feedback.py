@@ -28,6 +28,8 @@ def summarize_arc_failure(result,native_scene=None):
                 if number>=1000:
                     part=next((r['robot_geom_name'] for r in cover
                         if r['sphere_range'][0]==number-1000),'configured_gripper')
+                if 2001<=number<=2007:
+                    part=f'robot0_link{number-2000}_collision'
             roles[role]=roles.get(role,0)+1;parts[part]=parts.get(part,0)+1
         previous=scene
     return {'status':result.get('status'),'grasp_constraint':result.get('grasp_constraint','point'),

@@ -6,7 +6,7 @@ import numpy as np
 from PIL import Image
 
 from .coupled_storage import read_json,write_json,preserve_scene
-from .mcvamp_microwave import NativeScene
+from .mcvamp_contact_numerical import NativeScene
 from .partial_pose_arc import full_arc_plan
 from .rekep_libero.geometry import pose_matrix
 

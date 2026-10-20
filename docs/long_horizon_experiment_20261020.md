@@ -239,6 +239,7 @@ removed, and SHA-verified byte-identical large evidence files share storage
 without changing paths or contents. No separately billed API requests were made.
 
 The pre-work checkpoint and first implementation checkpoint were pushed.
-Automatic approval review blocked a later push to the public repository.
-The final work remains committed locally pending authorization of that
-specific public source update.
+Automatic approval review initially blocked a later public push. The user
+subsequently authorized it, and checkpoint `3015eb7` was published. See the
+shared-tools comparison notes for the subsequent consolidation and transfer
+rerun; the experiment results recorded above remain unchanged.

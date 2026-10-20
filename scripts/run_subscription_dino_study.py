@@ -12,6 +12,8 @@ import sys
 import time
 
 ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT/'src'))
+from vlm_tamp.tool_event_audit import operation_name
 
 
 def read(path,default=None):return json.loads(path.read_text()) if path.exists() else default
@@ -34,7 +36,7 @@ def retained_inputs(run):
     for event in events:
         result=event['response'].get('result',{});observation=result.get('observation',result)
         if 'observation_id' in observation:latest=observation['observation_id']
-        if event['request']['operation'].startswith('dino_'):
+        if operation_name(event).startswith('dino_'):
             keep_obs(latest,'DINO input');keep_obs(event['request'].get('arguments',{}).get('reference_observation'),'DINO reference')
         if event['request']['operation']=='measure_surface':
             keep_obs(event['request'].get('arguments',{}).get('observation_id'),'Completion surface measurement')

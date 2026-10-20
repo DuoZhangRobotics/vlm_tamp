@@ -30,16 +30,14 @@ from vlm_tamp.profiled_sim_client import ProfiledClient, execute_batch
 from vlm_tamp.coupled_resources import CoupledResources
 from vlm_tamp.coupled_scene import RobotVolumes
 from vlm_tamp.arc_contact_scene import ArcContactScene
-from vlm_tamp.rekep_libero.task_ik_curobo import TaskIK
-from vlm_tamp.handle_contact import ground_handle
+from vlm_tamp.hinged_contact_tools import (TaskIK,ground_handle,select_grasp,contact_plan,
+    NativeScene,clear_native_cache,tool_configuration,tool_contract)
 from vlm_tamp.rigid_hinge_tracking import RGBDHingeTracker, measured_pose
 from vlm_tamp.timed_execution import schedule
-from vlm_tamp.mcvamp_microwave import NativeScene, clear_native_cache
 from vlm_tamp.scene_pose_sync import hand_motion, transport_scene
 from vlm_tamp.planning_feedback import summarize_arc_failure
 from vlm_tamp.scene_observation_diagnostics import depth_support,overlay
 from vlm_tamp.rekep_libero.geometry import transform_points
-from run_mcvamp_microwave import select_grasp, contact_plan
 from run_coupled_door import fresh_mask
 from try_rekep_bowl_v3 import read_observation_v3
 
@@ -93,13 +91,9 @@ class RobotService:
         self.observation_records = {}
         self.resources = CoupledResources(self.output/'temporary-grasp-cache')
         self.config = read_json(ROOT/'configs/articulated_libero.json')
-        self.config.update(complete_planar_panel=False, scene_voxel_spacing_m=.003,
-            maximum_grasp_poses=24, maximum_grasp_search_seconds=180.,
-            maximum_contact_plan_seconds=8., planning_backend='partial_pose_arc',
-            motion_policy='short', arc_search_seconds=20., arc_goal_proposals=32,
-            scene_pose_sync='rgbd', grasp_constraint='point',
-            reconcile_handle_roles=True, handle_association_m=.008,
-            curobo_deterministic_proposals=True)
+        self.config=tool_configuration(self.config)
+        self.config.update(scene_pose_sync='rgbd')
+        write_json(self.output/'shared-tool-contract.json',tool_contract(self.config))
         write_json(self.output/'inherited-tools.json', {
             'source_code_visible_to_agent': False,
             'separately_billed_model_calls_allowed': False,
@@ -684,6 +678,8 @@ class RobotService:
 
     def dispatch(self, operation, arguments):
         self.calls += 1
+        if not isinstance(operation,str) or not isinstance(arguments,dict):
+            raise ValueError('Use a string operation name and an arguments object')
         if getattr(self,'episode_success',False) and getattr(self,'stop_on_success',False):
             if operation=='observe':return self.latest_observation
             if operation=='finish':return {'finished':True,'task_success':True,'episode_done':True,'termination_reason':'simulator_success'}
