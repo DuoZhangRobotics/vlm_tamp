@@ -213,6 +213,10 @@ def partial_goals(context,goal,*,proposals=160,maximum=8,seed=0,deadline=None):
 def full_arc_plan(context,goal,*,seconds=40.,proposals=160,beam_width=5,seed=0):
     """Try global C-RRTC, then free-wrist arc waypoints with C-RRTC connectors."""
     before=time.perf_counter();start=context.reference_q
+    wrist_limit=short_wrist_limit(context,goal)
+    if hasattr(context,'record'):
+        context.record.update(independent_wrist_excursion_limit_used=bool(wrist_limit<np.pi-1e-8),
+                              planning_wrist_limit_deg=float(np.degrees(wrist_limit)))
     initial=context.validate(start)
     report={'start':initial,'goal_angle_rad':goal,'wrist_orientation_menu_used':False,
         'end_effector_quaternion_prescribed':getattr(context,'grasp_constraint','point')=='rigid',

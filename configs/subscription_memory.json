@@ -1,23 +1,26 @@
 {
-  "version": 2,
-  "scope": "Microwave practice with abstract episodic memory and a registered agent-authored method, including failures and limitations.",
+  "version": 3,
+  "scope": "Microwave candidate memory with explicit failed transfer evidence; fresh validation required in each new scene.",
   "public_library": "data/agent_memory/luna-microwave-v2/library",
   "library_manifest_sha256": "a5f763d80ed55d0a40e0b8ecd6930747d317e5f6260edf5c5a1cb5bcfe99c51a",
-  "prompt": "data/agent_memory/luna-microwave-v2/completion-v2-learning-principles-prompt.txt",
-  "prompt_sha256": "b9f8aaa28ae93a7d384fb752cdd819260e973c5ce52a6441223cd0e4622c6d97",
-  "common_guide": "data/agent_memory/luna-microwave-v2/guidelines.json",
-  "common_guide_sha256": "a6d4bf116252db4c5fb63b1cfa2c69901222b4cabf3740db7fdf394c05bbb8ef",
+  "prompt": "data/agent_memory/luna-microwave-v4/prompt.txt",
+  "prompt_sha256": "9b41456409909b26f0a99ed0073fbae463c5aef38e17b2a5c6efaae6dbfed4c3",
+  "common_guide": "data/agent_memory/luna-microwave-v4/guidelines.json",
+  "common_guide_sha256": "df7a0fc3e047e77118cd762865a276d6eea50a6d4d7ae5098d75b927bfd79872",
   "protected_inputs": [
     "data/agent_memory/luna-microwave-v1",
     "results/state11-observed-contact-recovery-20261015/open_microwave-state011",
     "data/agent_memory/luna-microwave-v2",
-    "data/agent_memory/luna-microwave-v3"
+    "data/agent_memory/luna-microwave-v3",
+    "data/agent_memory/luna-microwave-v4"
   ],
   "approved_example_public_backup": "data/agent_memory/luna-microwave-v1/library/episode-0001/evidence/workspace/example",
-  "completion_checks": true,
+  "completion_checks": false,
   "abstract_experience": true,
   "completion_protocol_version": 2,
-  "successful_method": "data/agent_memory/luna-microwave-v3/successful-method.json",
-  "successful_method_sha256": "c4de558a9bdfa69305da9c1c4d28c1f0933905073ce1642525a8986c13972d99",
-  "successful_method_source_run": "results/subscription-success-first-continuation-20261019"
+  "successful_method": "data/agent_memory/luna-microwave-v4/successful-method.json",
+  "successful_method_sha256": "514bc4e3ad28896c4c1b42ab2380accb4a0aafe2fd9df0118f23d494528dde5a",
+  "successful_method_source_run": "results/subscription-prepared-sequence-practice-20261020",
+  "native_success_stop": true,
+  "general_method_validated": false
 }

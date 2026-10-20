@@ -45,3 +45,16 @@ def test_failed_arc_exposes_current_diagnostics_without_private_path(tmp_path,mo
     assert details['status']=='search_budget_exhausted'
     assert (robot.workspace/details['full_diagnostic']).exists()
     assert str(robot.episode) not in json.dumps(details)
+
+
+def test_collision_feedback_names_geometry_and_does_not_reuse_stale_part_for_self_collision():
+    result={'start':{'self_rejections':0},'goal_proposals':[
+        {'projection':{'accepted':True},'scene':{'accepted':False,'self_rejections':0,
+            'last_rejected_surface':1,'last_rejected_part':1000}},
+        {'projection':{'accepted':True},'scene':{'accepted':False,'self_rejections':1,
+            'last_rejected_surface':1,'last_rejected_part':1000}}]}
+    native={'gripper_cover':[{'sphere_range':[0,10],'robot_geom_name':'gripper0_hand_collision'}]}
+    summary=summarize_arc_failure(result,native)
+    assert summary['first_blocking_surface_by_rejected_goal']=={
+        'moving_noncontact_geometry':1,'robot_self_collision':1}
+    assert summary['first_blocking_robot_part_by_rejected_goal']['gripper0_hand_collision']==1

@@ -233,13 +233,18 @@ class NativeScene:
             'contact_pair_penetration_certificate':False,
             'unknown_space_model':'unobserved space is unmodeled',
             'door_environment_collision_checked':False,'simulator_object_geometry_used':False,
-            'constraint':'grip point on perceived hinge circle; aligned or bounded-tilt jaws; 90-degree orientation cone',
+            'constraint':{
+                'point':'grip point on perceived hinge circle; aligned or bounded-tilt jaws',
+                'rigid':'grip point on perceived hinge circle; orientation transported with the articulation',
+                'jaw_axis':'grip point on perceived hinge circle; closing-axis direction transported, axial roll free'
+            }[grasp_constraint],
             'ambient_dimension':7,'hinge_progress_coordinate':'derived from grip point',
             'projection':'native MC-VAMP composition with adapter finite-difference damped least-squares step',
             'native_simd_projection_fully_preserved':False,'aligned_jaws':bool(aligned)}
         self.record.update(grasp_constraint=grasp_constraint,
             grasp_orientation_reference='current measured TCP transported with the estimated articulation',
-            independent_wrist_excursion_limit_used=grasp_constraint=='point')
+            independent_wrist_excursion_limit_used=None,
+            wrist_policy_source='Resolved by the planning request, separately from the grasp constraint')
         update=getattr(scene,'pose_update',None)
         if update is not None:
             self.record.update(contact_geometry_source='observed endpoints transported to the current query frame',

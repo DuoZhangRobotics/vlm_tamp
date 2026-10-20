@@ -219,6 +219,32 @@ def test_registered_method_is_loaded_by_default_and_tampering_cannot_fall_back(t
         load_successful_method(profile)
 
 
+def test_one_attempt_transfer_receives_registered_method_and_native_stop(tmp_path):
+    from run_subscription_remembered_agent import command
+    profile=json.loads((ROOT/'configs/subscription_memory.json').read_text())
+    profile['native_success_stop']=True
+    path=tmp_path/'profile.json';path.write_text(json.dumps(profile))
+    args=SimpleNamespace(output='results/unused-transfer-contract',state=1,scene_variant='nominal',
+        agent_seconds=60,memory_profile=str(path),evaluation_case=True,stop_on_success=True)
+    argv,_=command(args,include_successful_method=True)
+    assert argv.count('--successful-method-file')==1
+    assert argv.count('--stop-on-success')==1
+    assert '--evaluation-case' in argv
+    assert argv[argv.index('--attempts')+1]=='1'
+
+
+def test_native_prompt_adapts_budget_without_legacy_completion_requirements():
+    prompt='''Episode protocol: native-success-v1.
+Episode budget: one physical attempt with at most 600 control steps. Reset once; do not retry with another reset.
+Native success is the goal. No external model APIs.
+'''
+    result=practice_prompt(prompt,13,5)
+    assert 'one physical attempt' not in result
+    assert 'hard maximum of 13' in result
+    assert 'Current phase: SUCCESS FIRST' in result
+    assert 'declare_completion' not in result
+
+
 def test_service_blocks_next_reset_until_an_extension_is_granted(tmp_path):
     import importlib.util
     path = ROOT/'scripts/serve_subscription_robot.py'

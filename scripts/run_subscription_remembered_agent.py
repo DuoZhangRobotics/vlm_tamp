@@ -11,7 +11,7 @@ from vlm_tamp.episodic_memory import store_hashes
 from run_subscription_dino_study import collect,write
 from replay_subscription_episode import compress_observations
 
-def command(args):
+def command(args, *, include_successful_method=False):
     profile=json.loads((ROOT/args.memory_profile).read_text())
     if profile.get('completion_checks') and profile.get('completion_protocol_version')!=2:
         raise RuntimeError('This completion profile requires its earlier source snapshot; use the current registered profile for the revised measurement interface')
@@ -24,11 +24,20 @@ def command(args):
     output=(ROOT/args.output).resolve()
     if output==ROOT/'results' or not output.is_relative_to(ROOT/'results'):
         raise ValueError('Use a new results/<run> output directory')
+    method=[]
+    if include_successful_method and profile.get('successful_method'):
+        path=ROOT/profile['successful_method']
+        if hashlib.sha256(path.read_bytes()).hexdigest()!=profile['successful_method_sha256']:
+            raise RuntimeError('Registered successful method changed')
+        method=['--successful-method-file',str(path)]
     return [sys.executable,str(ROOT/'scripts/run_subscription_agent_pilot.py'),
         '--output',str(output),'--state',str(args.state),'--scene-variant',args.scene_variant,
         '--memory-store',str(library),'--prompt-file',str(ROOT/profile['prompt']),
         '--guidelines-source',str(ROOT/profile['common_guide']),'--attempts','1',
         '--fit-diagnostics','--dino-tools','--agent-seconds',str(args.agent_seconds),
+        *method,
+        *(['--stop-on-success'] if getattr(args,'stop_on_success',False) or profile.get('native_success_stop',False) else []),
+        *(['--evaluation-case'] if getattr(args,'evaluation_case',False) else []),
         *(['--completion-checks'] if profile.get('completion_checks') else []),
         *(['--abstract-experience'] if profile.get('abstract_experience') else [])],output
 
@@ -37,10 +46,12 @@ def main():
     p.add_argument('--output',required=True);p.add_argument('--state',required=True,type=int)
     p.add_argument('--scene-variant',default='nominal');p.add_argument('--agent-seconds',type=int,default=1800)
     p.add_argument('--memory-profile',default='configs/subscription_memory.json')
+    p.add_argument('--stop-on-success',action='store_true')
+    p.add_argument('--evaluation-case',action='store_true')
     p.add_argument('--dry-run',action='store_true');a=p.parse_args()
     if not 0<=a.state<50:raise ValueError('Official state must be 0..49')
     if a.agent_seconds<=0:raise ValueError('Use a positive session time budget')
-    args,out=command(a)
+    args,out=command(a,include_successful_method=True)
     if a.dry_run:print(json.dumps({'command':args,'physical_attempts':1,'memory_enabled':True},indent=2));return
     if out.exists():raise ValueError('Use a new output directory')
     start=time.perf_counter();result=subprocess.run(args,cwd=ROOT)

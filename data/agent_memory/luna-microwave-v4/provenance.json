@@ -1,0 +1,9 @@
+{
+  "source_run": "results/subscription-prepared-sequence-practice-20261020",
+  "agent_guidelines_sha256": "37773379437a009821a494b62e1035de99558133f515b5f9b8a741bda32be298",
+  "source_agent_text_preserved_except_raw_evidence_links": true,
+  "relative_parameters_extracted_only_from_agent_tool_calls": true,
+  "human_action_rules_added": false,
+  "validation_source": "results/frozen-prepared-method-transfer-20261020/summary.json",
+  "older_memory_versions_preserved": true
+}

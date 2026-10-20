@@ -1,0 +1,64 @@
+{
+  "principles": [
+    {
+      "principle": "For upright hinged doors, verify the cabinet-connected hinge edge opposite the visible handle from current views and RGB-D before planning.",
+      "applicability": "Microwave-like panels with distinguishable cabinet boundary, handle and usable depth. Re-measure on each reset or if view/geometry differs.",
+      "procedure": "Inspect front and another view, fit current panel and handle, and compare the candidate hinge to cabinet attachment and stationary depth context. Reground if views conflict. Fresh observed opening supports the geometry assignment; a handle-side pivot contradicts it.",
+      "failure_modes": "Camera perspective or a prominent wrong edge can mislead. Reinspect multiple views and depth. The current ground diagnostic handle_on_opposite_observed_face was false, and its meaning remains unclear.",
+      "evidence": {
+        "support": "Fresh RGB-D ground and current views repeatedly selected the opposite cabinet-connected edge; attempts 01/02 succeeded.",
+        "counterexamples": "Unexplained false handle_on_opposite_observed_face diagnostic.",
+        "limitations": "One development microwave and view setup.",
+        "status": "supported repeatedly in this episode"
+      },
+      "reobserve": "Handle side, cabinet-connected panel edge, panel boundaries, camera orientation, depth continuity and approach clearance.",
+      "transfer_test": "Test on a mirrored door layout. Falsify if current image/depth checks consistently pick an edge inconsistent with physical panel attachment.",
+      "attribution": "Inherited method and episode guidance, checked against current-session observations."
+    },
+    {
+      "principle": "Do not treat TCP travel, planned angle or hand-predicted scene updates as proof of panel movement; use fresh panel views and official task_success.",
+      "applicability": "Articulated panels where the arm occludes geometry or RGB-D tracking has weak support.",
+      "procedure": "After movement, inspect a fresh front and another view, compare panel material to stationary cabinet context, and keep tracking diagnostics separate from hand prediction. If no material motion is observable, report uncertainty. Task completion requires the official simulator signal.",
+      "failure_modes": "Tracking can fail despite real motion due to occlusion; an apparently open panel can remain task-false. Seek alternate views and a valid fresh plan; do not lower the goal based on appearance.",
+      "evidence": {
+        "support": "Tracking was rejected/low-support while views showed motion. Attempt 05 looked open but task_success remained false; official replies distinguished completion.",
+        "counterexamples": "No exception to the caution; images do not give exact angle.",
+        "limitations": "No exact panel angle or physical retention measured.",
+        "status": "supported across this session"
+      },
+      "reobserve": "Panel material, stationary cabinet, finger/handle relation, tracker support and fit, occlusion, model update source, official success.",
+      "transfer_test": "Use a different camera with arm occlusion. Falsify if method cannot distinguish panel from hand motion yet still assigns progress.",
+      "attribution": "Current-session observations and inherited documented tool limitations."
+    },
+    {
+      "principle": "On this microwave scene, an 85-degree plan_sequence followed by execute_sequence has twice reached official success in one execution, using fewer calls and steps than corrected 70/80-degree sequence candidates; the baseline still uses fewer steps.",
+      "applicability": "Same microwave/Panda and sequence/contact model after fresh RGB-D grounding. This does not establish transfer.",
+      "procedure": "Plan fresh geometry with plan_sequence at the tested angle and execute with 8 closure steps and neutral manipulation hold. Record planning search, calls, control steps, simulator success and whether success truncated the path. Repeat from fresh reset before preference; compare with local baseline and state whether calls or steps have priority.",
+      "failure_modes": "Sequence planning does not verify physical retention. Attempt 90-degree sequence completed but failed task_success and left invalid start; 70/80-degree sequences needed corrections. If task-false, inspect endpoint validity and fresh views before corrective planning.",
+      "evidence": {
+        "support": "Attempts 08/09 succeeded at 283 steps with 1 planning/1 physical call; attempts 03/04 70 degrees used 293 steps and 3/3; attempts 06/07 80 degrees used 301 steps and 2/2.",
+        "counterexamples": "Baseline attempts 01/02 remain 33 steps lower. Attempt 05 at 90 degrees failed at 315 steps.",
+        "limitations": "Same-scene only; views occluded and actual contact/angle unmeasured.",
+        "status": "supported repeatedly in this episode"
+      },
+      "reobserve": "Current geometry, approach clearance, grasp appearance, endpoint validity, official outcome, search time, command truncation, calls and steps.",
+      "transfer_test": "Test on a frozen scene with a different hinge/handle and its own baseline. Falsify if success or call/step advantage does not persist.",
+      "attribution": "Sequence interface inherited from tools.txt; angle choice and evidence are current-session findings."
+    },
+    {
+      "principle": "When a large sequence leaves the task incomplete, use corrective arcs only if fresh planning confirms a valid start; a larger requested angle can create an unrecoverable moving-object collision state.",
+      "applicability": "After sequence execution when task_success is false and robot is still in the scene.",
+      "procedure": "Inspect new views and plan diagnostics. Try a fresh short point arc only when the start is collision free and contact appears plausible. If arc, grasp and free-motion planning all reject the start, record incomplete and stop the attempt rather than interpreting planned motion as progress.",
+      "failure_modes": "Finite planners cannot prove all recovery infeasible, but repeated invalid-start diagnostics indicate current plans cannot proceed. Attempt 05 had invalid starts for arc, grasp and joint planning after 90 degrees; attempts 06/07 had valid 10-degree corrections after 80 degrees.",
+      "evidence": {
+        "support": "90-degree sequence left invalid starts; 80-degree sequence left valid starts for successful corrections.",
+        "counterexamples": "Only one 90-degree failure; alternate recovery was not tested.",
+        "limitations": "Scene-specific collision outcomes.",
+        "status": "conditional hypothesis supported by tool diagnostics"
+      },
+      "reobserve": "Task flag, panel pose, current arm/panel collision status, planner start validity, available steps.",
+      "transfer_test": "Repeat on another articulated door and compare start-validity response after two sequence lengths. Falsify if start validity does not track the proposed distinction.",
+      "attribution": "Current-session outcomes; planner diagnostic meaning documented in tools.txt."
+    }
+  ]
+}

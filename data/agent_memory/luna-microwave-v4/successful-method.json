@@ -1,0 +1,382 @@
+{
+  "origin": "Prior acting agent, copied without new robotics strategies",
+  "source_guidelines_sha256": "37773379437a009821a494b62e1035de99558133f515b5f9b8a741bda32be298",
+  "observed_successful_attempts": [
+    1,
+    2,
+    3,
+    4,
+    6,
+    7,
+    8,
+    9
+  ],
+  "observed_attempt_outcomes": [
+    {
+      "attempt": 1,
+      "task_success": true,
+      "final_task_success": true
+    },
+    {
+      "attempt": 2,
+      "task_success": true,
+      "final_task_success": true
+    },
+    {
+      "attempt": 3,
+      "task_success": true,
+      "final_task_success": true
+    },
+    {
+      "attempt": 4,
+      "task_success": true,
+      "final_task_success": true
+    },
+    {
+      "attempt": 5,
+      "task_success": false,
+      "final_task_success": false
+    },
+    {
+      "attempt": 6,
+      "task_success": true,
+      "final_task_success": true
+    },
+    {
+      "attempt": 7,
+      "task_success": true,
+      "final_task_success": true
+    },
+    {
+      "attempt": 8,
+      "task_success": true,
+      "final_task_success": true
+    },
+    {
+      "attempt": 9,
+      "task_success": true,
+      "final_task_success": true
+    }
+  ],
+  "agent_conclusion": "For call efficiency in this microwave scene: fresh RGB-D grounding, plan_sequence(85), and execute_sequence with 8 physical closure steps and neutral manipulation hold; this succeeded on attempts 08/09 in one sequence execution. Use the original fresh-grasp/refined-arc baseline when minimizing control steps is the priority (250 steps vs 283).",
+  "agent_remaining_tradeoffs": "The baseline minimizes control steps. The repeatable 85-degree sequence minimizes calls among tested successful procedures but costs 33 additional steps and is supported only in this scene. Final views obscure contact and no transfer evidence exists.",
+  "tested_relative_tool_choices": [
+    {
+      "operation": "plan_grasp",
+      "provided_parameters": {},
+      "attempts": [
+        1,
+        2,
+        5
+      ],
+      "rpc_ok_count": 2,
+      "rpc_error_count": 1,
+      "episode_outcomes": {
+        "1": true,
+        "2": true,
+        "5": false
+      },
+      "interpretation": "Observed choices, not isolated causal effects or universal prescriptions. Omitted parameters used the documented defaults."
+    },
+    {
+      "operation": "execute",
+      "provided_parameters": {
+        "gripper": -1
+      },
+      "plan_kind": "approach",
+      "attempts": [
+        1,
+        2
+      ],
+      "rpc_ok_count": 2,
+      "rpc_error_count": 0,
+      "episode_outcomes": {
+        "1": true,
+        "2": true
+      },
+      "interpretation": "Observed choices, not isolated causal effects or universal prescriptions. Omitted parameters used the documented defaults."
+    },
+    {
+      "operation": "gripper",
+      "provided_parameters": {
+        "close": true,
+        "steps": 8
+      },
+      "attempts": [
+        1,
+        2
+      ],
+      "rpc_ok_count": 2,
+      "rpc_error_count": 0,
+      "episode_outcomes": {
+        "1": true,
+        "2": true
+      },
+      "interpretation": "Observed choices, not isolated causal effects or universal prescriptions. Omitted parameters used the documented defaults."
+    },
+    {
+      "operation": "plan_arc",
+      "provided_parameters": {
+        "degrees": 20,
+        "refined": true
+      },
+      "attempts": [
+        1,
+        2
+      ],
+      "rpc_ok_count": 8,
+      "rpc_error_count": 2,
+      "episode_outcomes": {
+        "1": true,
+        "2": true
+      },
+      "interpretation": "Observed choices, not isolated causal effects or universal prescriptions. Omitted parameters used the documented defaults."
+    },
+    {
+      "operation": "execute",
+      "provided_parameters": {
+        "gripper": 0
+      },
+      "plan_kind": "arc",
+      "attempts": [
+        1,
+        2,
+        3,
+        4,
+        6,
+        7
+      ],
+      "rpc_ok_count": 16,
+      "rpc_error_count": 0,
+      "episode_outcomes": {
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "6": true,
+        "7": true
+      },
+      "interpretation": "Observed choices, not isolated causal effects or universal prescriptions. Omitted parameters used the documented defaults."
+    },
+    {
+      "operation": "plan_arc",
+      "provided_parameters": {
+        "degrees": 20,
+        "refined": true,
+        "grasp_constraint": "jaw_axis"
+      },
+      "attempts": [
+        1
+      ],
+      "rpc_ok_count": 0,
+      "rpc_error_count": 1,
+      "episode_outcomes": {
+        "1": true
+      },
+      "interpretation": "Observed choices, not isolated causal effects or universal prescriptions. Omitted parameters used the documented defaults."
+    },
+    {
+      "operation": "plan_arc",
+      "provided_parameters": {
+        "degrees": 10,
+        "refined": true
+      },
+      "attempts": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "rpc_ok_count": 8,
+      "rpc_error_count": 1,
+      "episode_outcomes": {
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": false,
+        "6": true,
+        "7": true
+      },
+      "interpretation": "Observed choices, not isolated causal effects or universal prescriptions. Omitted parameters used the documented defaults."
+    },
+    {
+      "operation": "plan_sequence",
+      "provided_parameters": {
+        "degrees": 70
+      },
+      "attempts": [
+        3,
+        4
+      ],
+      "rpc_ok_count": 2,
+      "rpc_error_count": 0,
+      "episode_outcomes": {
+        "3": true,
+        "4": true
+      },
+      "interpretation": "Observed choices, not isolated causal effects or universal prescriptions. Omitted parameters used the documented defaults."
+    },
+    {
+      "operation": "execute_sequence",
+      "provided_parameters": {
+        "close_steps": 8,
+        "manipulation_gripper": 0
+      },
+      "attempts": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "rpc_ok_count": 7,
+      "rpc_error_count": 0,
+      "episode_outcomes": {
+        "3": true,
+        "4": true,
+        "5": false,
+        "6": true,
+        "7": true,
+        "8": true,
+        "9": true
+      },
+      "interpretation": "Observed choices, not isolated causal effects or universal prescriptions. Omitted parameters used the documented defaults."
+    },
+    {
+      "operation": "plan_sequence",
+      "provided_parameters": {
+        "degrees": 90
+      },
+      "attempts": [
+        5
+      ],
+      "rpc_ok_count": 1,
+      "rpc_error_count": 0,
+      "episode_outcomes": {
+        "5": false
+      },
+      "interpretation": "Observed choices, not isolated causal effects or universal prescriptions. Omitted parameters used the documented defaults."
+    },
+    {
+      "operation": "plan_sequence",
+      "provided_parameters": {
+        "degrees": 80
+      },
+      "attempts": [
+        6,
+        7
+      ],
+      "rpc_ok_count": 2,
+      "rpc_error_count": 0,
+      "episode_outcomes": {
+        "6": true,
+        "7": true
+      },
+      "interpretation": "Observed choices, not isolated causal effects or universal prescriptions. Omitted parameters used the documented defaults."
+    },
+    {
+      "operation": "plan_sequence",
+      "provided_parameters": {
+        "degrees": 85
+      },
+      "attempts": [
+        8,
+        9
+      ],
+      "rpc_ok_count": 2,
+      "rpc_error_count": 0,
+      "episode_outcomes": {
+        "8": true,
+        "9": true
+      },
+      "interpretation": "Observed choices, not isolated causal effects or universal prescriptions. Omitted parameters used the documented defaults."
+    }
+  ],
+  "scope": "Candidate procedure for the practiced microwave scene. Different-initial-state frozen transfer succeeded in 1 of 4 cases. Preserve the short-motion alternative and all counterexamples; no universal reliability claim.",
+  "representation": "Historical evidence links removed. Tested relative control choices retained. No historical image regions, world poses, trajectories or raw replies supplied.",
+  "method": {
+    "principles": [
+      {
+        "principle": "For upright hinged doors, verify the cabinet-connected hinge edge opposite the visible handle from current views and RGB-D before planning.",
+        "applicability": "Microwave-like panels with distinguishable cabinet boundary, handle and usable depth. Re-measure on each reset or if view/geometry differs.",
+        "procedure": "Inspect front and another view, fit current panel and handle, and compare the candidate hinge to cabinet attachment and stationary depth context. Reground if views conflict. Fresh observed opening supports the geometry assignment; a handle-side pivot contradicts it.",
+        "failure_modes": "Camera perspective or a prominent wrong edge can mislead. Reinspect multiple views and depth. The current ground diagnostic handle_on_opposite_observed_face was false, and its meaning remains unclear.",
+        "evidence": {
+          "support": "Fresh RGB-D ground and current views repeatedly selected the opposite cabinet-connected edge; attempts 01/02 succeeded.",
+          "counterexamples": "Unexplained false handle_on_opposite_observed_face diagnostic.",
+          "limitations": "One development microwave and view setup.",
+          "status": "supported repeatedly in this episode"
+        },
+        "reobserve": "Handle side, cabinet-connected panel edge, panel boundaries, camera orientation, depth continuity and approach clearance.",
+        "transfer_test": "Test on a mirrored door layout. Falsify if current image/depth checks consistently pick an edge inconsistent with physical panel attachment.",
+        "attribution": "Inherited method and episode guidance, checked against current-session observations."
+      },
+      {
+        "principle": "Do not treat TCP travel, planned angle or hand-predicted scene updates as proof of panel movement; use fresh panel views and official task_success.",
+        "applicability": "Articulated panels where the arm occludes geometry or RGB-D tracking has weak support.",
+        "procedure": "After movement, inspect a fresh front and another view, compare panel material to stationary cabinet context, and keep tracking diagnostics separate from hand prediction. If no material motion is observable, report uncertainty. Task completion requires the official simulator signal.",
+        "failure_modes": "Tracking can fail despite real motion due to occlusion; an apparently open panel can remain task-false. Seek alternate views and a valid fresh plan; do not lower the goal based on appearance.",
+        "evidence": {
+          "support": "Tracking was rejected/low-support while views showed motion. Attempt 05 looked open but task_success remained false; official replies distinguished completion.",
+          "counterexamples": "No exception to the caution; images do not give exact angle.",
+          "limitations": "No exact panel angle or physical retention measured.",
+          "status": "supported across this session"
+        },
+        "reobserve": "Panel material, stationary cabinet, finger/handle relation, tracker support and fit, occlusion, model update source, official success.",
+        "transfer_test": "Use a different camera with arm occlusion. Falsify if method cannot distinguish panel from hand motion yet still assigns progress.",
+        "attribution": "Current-session observations and inherited documented tool limitations."
+      },
+      {
+        "principle": "On this microwave scene, an 85-degree plan_sequence followed by execute_sequence has twice reached official success in one execution, using fewer calls and steps than corrected 70/80-degree sequence candidates; the baseline still uses fewer steps.",
+        "applicability": "Same microwave/Panda and sequence/contact model after fresh RGB-D grounding. This does not establish transfer.",
+        "procedure": "Plan fresh geometry with plan_sequence at the tested angle and execute with 8 closure steps and neutral manipulation hold. Record planning search, calls, control steps, simulator success and whether success truncated the path. Repeat from fresh reset before preference; compare with local baseline and state whether calls or steps have priority.",
+        "failure_modes": "Sequence planning does not verify physical retention. Attempt 90-degree sequence completed but failed task_success and left invalid start; 70/80-degree sequences needed corrections. If task-false, inspect endpoint validity and fresh views before corrective planning.",
+        "evidence": {
+          "support": "Attempts 08/09 succeeded at 283 steps with 1 planning/1 physical call; attempts 03/04 70 degrees used 293 steps and 3/3; attempts 06/07 80 degrees used 301 steps and 2/2.",
+          "counterexamples": "Baseline attempts 01/02 remain 33 steps lower. Attempt 05 at 90 degrees failed at 315 steps.",
+          "limitations": "Same-scene only; views occluded and actual contact/angle unmeasured.",
+          "status": "supported repeatedly in this episode"
+        },
+        "reobserve": "Current geometry, approach clearance, grasp appearance, endpoint validity, official outcome, search time, command truncation, calls and steps.",
+        "transfer_test": "Test on a frozen scene with a different hinge/handle and its own baseline. Falsify if success or call/step advantage does not persist.",
+        "attribution": "Sequence interface inherited from tools.txt; angle choice and evidence are current-session findings."
+      },
+      {
+        "principle": "When a large sequence leaves the task incomplete, use corrective arcs only if fresh planning confirms a valid start; a larger requested angle can create an unrecoverable moving-object collision state.",
+        "applicability": "After sequence execution when task_success is false and robot is still in the scene.",
+        "procedure": "Inspect new views and plan diagnostics. Try a fresh short point arc only when the start is collision free and contact appears plausible. If arc, grasp and free-motion planning all reject the start, record incomplete and stop the attempt rather than interpreting planned motion as progress.",
+        "failure_modes": "Finite planners cannot prove all recovery infeasible, but repeated invalid-start diagnostics indicate current plans cannot proceed. Attempt 05 had invalid starts for arc, grasp and joint planning after 90 degrees; attempts 06/07 had valid 10-degree corrections after 80 degrees.",
+        "evidence": {
+          "support": "90-degree sequence left invalid starts; 80-degree sequence left valid starts for successful corrections.",
+          "counterexamples": "Only one 90-degree failure; alternate recovery was not tested.",
+          "limitations": "Scene-specific collision outcomes.",
+          "status": "conditional hypothesis supported by tool diagnostics"
+        },
+        "reobserve": "Task flag, panel pose, current arm/panel collision status, planner start validity, available steps.",
+        "transfer_test": "Repeat on another articulated door and compare start-validity response after two sequence lengths. Falsify if start validity does not track the proposed distinction.",
+        "attribution": "Current-session outcomes; planner diagnostic meaning documented in tools.txt."
+      }
+    ]
+  },
+  "validation": {
+    "status": "locally_supported_candidate; transfer not established",
+    "same_scene_sequence_confirmations": 2,
+    "same_scene_confirmation_attempts": [
+      8,
+      9
+    ],
+    "frozen_initial_state_transfer_planned": 4,
+    "frozen_initial_state_transfer_successes": 1,
+    "frozen_transfer_attempts_per_case": 1,
+    "all_transfer_failures_retained": true,
+    "general_reliability_claim": false,
+    "simulator_object_geometry_included_in_memory": false,
+    "new_diagnostic_tools_after_evaluation": "Read-only scene/depth consistency inspection; not yet evaluated in additional agent episodes."
+  }
+}

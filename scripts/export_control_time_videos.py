@@ -15,6 +15,8 @@ SOURCES=[
     'adaptive-family-payload-boundary-20261020/open_middle_drawer-state001/initial/rollout.mp4',
     'adaptive-family-payload-boundary-20261020/turn_on_stove-state001/initial/rollout.mp4',
     'subscription-scene-sync-practice-20261020/attempt01/initial/rollout.mp4',
+    'subscription-prepared-sequence-practice-20261020/attempt08/initial/rollout.mp4',
+    'frozen-prepared-method-transfer-20261020/state011/attempt01/initial/rollout.mp4',
 ]
 
 

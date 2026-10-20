@@ -54,7 +54,7 @@ Tool interfaces (all coordinate conventions are explicit):
   and _known_robot_depth_prior. Calibration maps optical camera coordinates into
   world. Robot TCP poses are [x,y,z,qx,qy,qz,qw]. Joint angles are radians.
 - ground(regions): numerical initial geometry fit from your current RGB choices.
-  regions={"camera":"frontview" or "agentview", "contact_box_xyxy":[l,t,r,b],
+  regions={"camera": a name returned by observe, "contact_box_xyxy":[l,t,r,b],
   "moving_panel_box_xyxy":[l,t,r,b], "hinge_pixels_xy":[[x,y],[x,y]],
   "initial_image_direction_xy":[dx,dy]}. Pixel coordinates are local to the
   original 512x512 camera. The contact box selects the handle; moving panel box
@@ -72,6 +72,13 @@ Tool interfaces (all coordinate conventions are explicit):
   to establish a new reference; no automatic reference renewal occurs.
 - set_model(hinge_world_m=null, axis_world=null): set your numerical hypothesis.
   Updating geometry makes previously planned trajectories stale.
+- inspect_scene(camera=null): compare the current predicted moving/contact
+  points with current calibrated depth and save a coloured overlay. Green points
+  have depth support in at least one view; red points conflict with measured
+  free space in at least two views; gray points are occluded or unresolved.
+  This is geometric evidence, not a semantic or contact guarantee. It changes
+  neither the model nor the robot. Failed arc queries also report depth-support
+  summaries. Use the images and diagnostics when investigating a scene mismatch.
 - plan_grasp(probe_degrees=3, max_candidates=24, seed=0): generate GraspGen proposals,
   search robot IK/approach and a contact probe of your chosen angle. Returns an
   approach plan id and pose. Makes no motion; the probe is planning admission.

@@ -119,8 +119,10 @@ retain the short-path fallback. Bowl preflight retreat points are excluded:
 execution ends at placement/release or earlier native success.
 
 A final uniform 35-case cohort is recorded separately in
-`results/prepared-final-all-tasks-20261020`. Its result file is authoritative
-while it runs; the earlier cohorts are not combined into a synthetic score.
+`results/prepared-final-all-tasks-20261020`: **35/35 native successes**, with
+five states (1, 11, 21, 31, 41) for each of seven tasks. The earlier cohorts
+are not combined into this score. These are regression states, not unseen
+appliances or a held-out generalization set.
 
 ## Public sequence tool and agent continuation
 
@@ -154,3 +156,89 @@ particular, the microwave contact proposals selected in these runs come from
 the existing RGB-D frontal-handle generator within the hybrid grasp tool.
 These results do not establish that Luna learned every family or that GraspGen
 alone produced the successful contacts.
+
+## Final agent outcomes and memory
+
+Stage 1 completed seven attempts, with five native successes. The corrected
+stage 2 completed nine attempts, with eight native successes. Luna established
+two current-version successes before trying to reduce tool use. It tried
+prepared 70°, 90°, 80° and 85° motions; the 90° attempt failed. The final two
+85° attempts both succeeded at 283 recorded control steps, using eight closure
+steps and neutral gripper hold for manipulation. These parameters came from
+the acting agent's experiments.
+
+The final recipe uses one planning RPC and one prepared execution RPC containing
+three physical stages: approach, closure and manipulation. The current-version
+baseline used seven to eight planning RPCs and 17 total robot RPCs; the final
+recipe used one planning RPC and four to five total robot RPCs. However, the
+baseline succeeded in 250 control steps and the final recipe took 283. Fewer
+calls therefore does not mean fewer physical steps. Measured tool time fell
+from approximately 173–203 s to 55–56 s, excluding Luna reasoning. Concurrent
+development activity prevents a controlled end-to-end timing claim.
+
+The remaining four attempts evaluated the frozen recipe on states 1, 11, 21
+and 31, with fresh agent grounding, one attempt each and no shared updates.
+Only state 1 succeeded: **1/4**. The three failures stopped at approximately
+57°, 29° and 46° of actual opening, respectively, below native success.
+These angles are evaluation-only. No more agent episodes were run: seven
+plus nine practice attempts plus four transfers exhaust the twenty-attempt cap.
+
+The project memory is saved in `data/agent_memory/luna-microwave-v4/`.
+It contains agent-authored principles, evidence scope, outcome summaries and
+whitelisted relative tool parameters. It excludes historical image regions,
+world coordinates, joint paths, plan identifiers and raw episode replies.
+The profile explicitly marks this as a locally supported candidate with failed
+transfer evidence, not a generally validated method. The old profile and memory
+versions remain available. Native success stops execution; auxiliary completion
+measurements do not veto it.
+
+## Transfer diagnosis and tool parity
+
+The numerical and agent pipelines are not identical. The numerical microwave
+adapter uses the existing refined handle fit and finite-finger support menu.
+The agent tool uses the older fit's height quantiles. The selected agent TCPs
+were 13–16 mm higher on these four cases than the numerical runner's TCPs.
+This is a concrete contact-geometry difference, not an isolated causal test.
+Different grounding, hinge hypotheses, control settings and recovery behavior
+also prevent attributing the 35/35 versus 1/4 gap solely to agent reasoning.
+
+A sensor-only audit transported saved public scene points using the recorded
+applied transformations and compared them with the retained final RGB-D.
+All initial models were supported by measured depth. At the ends of the failed
+transfers, 77–83% of the predicted contact points conflicted with observed
+free space in at least two views. Tracking had failed, so model updates relied
+on hand motion. Moving the hand did not establish that the door followed.
+This supports a scene-estimation/contact-recovery problem; it does not prove
+that every rejected path was physically safe.
+
+After this frozen study, `inspect_scene` was added as a read-only diagnostic.
+It exposes calibrated depth support, free-space conflicts and an overlay.
+Nonterminal scene updates and failed planning queries also return compact
+support summaries. No motion rule, automatic model correction or execution
+veto was added. No agent success is credited to this later change.
+Failed queries additionally report the first blocking surface role and known
+robot part. The source of independent wrist limits is now logged accurately.
+
+## Final validation and retained evidence
+
+The broad non-integration suite in the GraspGen environment produced 1,162
+passes, 13 failures, three skips and six deselections. Two failures were absent
+optional dependencies in that environment; both passed when rerun in the
+original LIBERO environment. Ten failures require historical result fixtures
+that had been pruned before this experiment. The remaining frozen-baseline hash
+guard already differed at the pre-work checkpoint; the three relevant source
+files are unchanged by this experiment. That guard was not weakened. The new
+and relevant regression tests passed, but the entire repository suite is not
+reported as green.
+
+The HTML report retains every started case, source/protocol provenance,
+selected geometry, plans, issued commands, native outcomes and representative
+videos. Display copies use recorded 20 Hz control timing, excluding planning
+and model pauses; original videos remain. Completed-run scratch files are
+removed, and SHA-verified byte-identical large evidence files share storage
+without changing paths or contents. No separately billed API requests were made.
+
+The pre-work checkpoint and first implementation checkpoint were pushed.
+Automatic approval review blocked a later push to the public repository.
+The final work remains committed locally pending authorization of that
+specific public source update.

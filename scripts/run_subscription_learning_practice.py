@@ -44,13 +44,22 @@ an unavailable measurement alone is not a reason to stop investigating.
 Incomplete and uncertain remain legitimate judgments for unsuccessful attempts.''',
     }
     prompt = registered_prompt
-    for old, new in replacements.items():
-        if prompt.count(old) != 1:
-            raise ValueError('Registered prompt changed; review practice adaptation')
-        prompt = prompt.replace(old, new)
-    first = prompt.index('Before moving, use declare_completion')
-    last = prompt.index('\nUse fresh plans via robot.py.', first)
-    prompt = prompt[:first]+'''Before moving, interpret the instruction and identify its intended end state.
+    if 'Episode protocol: native-success-v1.' in prompt:
+        old='Episode budget: one physical attempt with at most 600 control steps. Reset once; do not retry with another reset.'
+        if prompt.count(old)!=1:raise ValueError('Native episode budget block changed')
+        prompt=prompt.replace(old,f'''Episode budget: initially {initial_attempts} granted attempts,
+with a hard maximum of {attempts}, and 600 recorded control steps per attempt.
+This is one continuous learning session. Each reset restores the initial scene;
+notes persist. Re-measure geometry and make fresh plans after every reset.
+Completion measurements are advisory; native simulator success ends the episode.''')
+    else:
+        for old, new in replacements.items():
+            if prompt.count(old) != 1:
+                raise ValueError('Registered prompt changed; review practice adaptation')
+            prompt = prompt.replace(old, new)
+        first = prompt.index('Before moving, use declare_completion')
+        last = prompt.index('\nUse fresh plans via robot.py.', first)
+        prompt = prompt[:first]+'''Before moving, interpret the instruction and identify its intended end state.
 Judge progress from fresh images and other available observations. Optional
 measure_surface, compare_surfaces, DINO and check_completion tools can inform
 that judgment. If you choose quantitative criteria, declare them before motion.
@@ -195,9 +204,9 @@ def relative_tool_choices(run,outcomes):
             if k in allowed[op] and safe(k,v)}}
         if op=='execute':entry['plan_kind']=plans.get(args.get('plan_id'),'unknown')
         key=json.dumps(entry,sort_keys=True)
-        record=choices.setdefault(key,{**entry,'attempts':[],'successful_calls':0,'failed_calls':0})
+        record=choices.setdefault(key,{**entry,'attempts':[],'rpc_ok_count':0,'rpc_error_count':0})
         if current not in record['attempts']:record['attempts'].append(current)
-        record['successful_calls' if response['ok'] else 'failed_calls']+=1
+        record['rpc_ok_count' if response['ok'] else 'rpc_error_count']+=1
     return [{**r,'episode_outcomes':{str(n):successes.get(n) for n in r['attempts']},
         'interpretation':'Observed choices, not isolated causal effects or universal prescriptions. Omitted parameters used the documented defaults.'} for r in choices.values()]
 
@@ -253,7 +262,7 @@ def build_command(args, prompt_path):
     command[command.index('--attempts')+1] = str(args.attempts)
     command[command.index('--prompt-file')+1] = str(prompt_path)
     command.append('--learning-practice')
-    command.append('--stop-on-success')
+    if '--stop-on-success' not in command:command.append('--stop-on-success')
     command.extend(['--initial-attempts', str(initial)])
     if getattr(args,'successful_method_file',None):
         command.extend(['--successful-method-file',str(args.successful_method_file)])

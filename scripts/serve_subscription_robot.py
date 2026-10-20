@@ -37,6 +37,7 @@ from vlm_tamp.timed_execution import schedule
 from vlm_tamp.mcvamp_microwave import NativeScene, clear_native_cache
 from vlm_tamp.scene_pose_sync import hand_motion, transport_scene
 from vlm_tamp.planning_feedback import summarize_arc_failure
+from vlm_tamp.scene_observation_diagnostics import depth_support,overlay
 from vlm_tamp.rekep_libero.geometry import transform_points
 from run_mcvamp_microwave import select_grasp, contact_plan
 from run_coupled_door import fresh_mask
@@ -119,6 +120,8 @@ class RobotService:
         return p
 
     def capture(self):
+        if getattr(self,'sim',None) is None:
+            raise ValueError('Call reset before observing an episode')
         folder = self.folder('observation')
         self.state = self.sim.observe(folder)
         self.cameras, _ = read_observation_v3(folder, self.state['metadata'])
@@ -311,6 +314,34 @@ class RobotService:
                 'point_clouds': str((dest/'points.npz').relative_to(self.workspace)),
                 'fit_diagnostics': evidence}
 
+    def scene_evidence(self):
+        if self.scene is None:raise ValueError('Ground the target before inspecting its model')
+        moving,_,_=depth_support(self.scene.moving_reference,self.cameras)
+        contact,_,_=depth_support(self.scene.contact_reference,self.cameras)
+        return {'moving':moving,'contact':contact,'control_steps':self.state['control_steps'],
+            'geometry_epoch':self.epoch,
+            'pose_source':(getattr(self.scene,'pose_update',None) or {}).get('source','grounding_or_model_rebuild')}
+
+    def safe_scene_evidence(self):
+        try:return self.scene_evidence()
+        except Exception as error:
+            return {'available':False,'diagnostic_error':str(error),'execution_veto':False}
+
+    def inspect_scene(self,camera=None):
+        evidence=self.scene_evidence()
+        name=camera or self.choices['camera']
+        if name not in self.cameras:raise ValueError('Choose a camera in the current observation')
+        destination=self.public/f'attempt{self.attempt:02d}'/f'scene{self.calls:03d}'
+        destination.mkdir()
+        _,points,status=depth_support(self.scene.moving_reference,self.cameras)
+        overlay(points,status,self.cameras[name],destination/(name+'.png'))
+        write_json(destination/'support.json',evidence)
+        np.savez_compressed(destination/'model-points.npz',moving=self.scene.moving_reference,
+            contact=self.scene.contact_reference,static=self.scene.static_points)
+        return {'evidence':evidence,'images':[str((destination/(name+'.png')).relative_to(self.workspace))],
+            'model_points':str((destination/'model-points.npz').relative_to(self.workspace)),
+            'robot_motion_executed':False,'planner_model_updated':False}
+
     def rebuild(self, transform=None):
         robot = RobotVolumes(self.ik.chain, self.state['metadata']['robot_collision_volumes_world'],
                              self.state['metadata']['joint_positions'])
@@ -446,7 +477,7 @@ class RobotService:
                 error.planning_diagnostic={'status':'contact_search_failed','requested_probe_degrees':float(probe_degrees),
                     'attempted_postures':len(records),'search_stage_counts':counts,
                     'full_diagnostic':str(target.relative_to(self.workspace)),
-                    'physical_motion_issued':False}
+                    'physical_motion_issued':False,'scene_observation_support':self.safe_scene_evidence()}
             raise
         self.selected = selected
         return selected
@@ -493,8 +524,10 @@ class RobotService:
                 diagnostic = read_json(folder/'result.json')
                 target = self.public/f'attempt{self.attempt:02d}'/f'plan{self.calls:03d}-failure.json'
                 write_json(target, diagnostic)
-                error.planning_diagnostic = {**summarize_arc_failure(diagnostic),
+                native=read_json(folder/'native-scene.json') if (folder/'native-scene.json').exists() else None
+                error.planning_diagnostic = {**summarize_arc_failure(diagnostic,native),
                     'full_diagnostic':str(target.relative_to(self.workspace))}
+                error.planning_diagnostic['scene_observation_support']=self.safe_scene_evidence()
             raise
         return self.keep_plan(path, result, 'arc')
 
@@ -504,7 +537,7 @@ class RobotService:
         with NativeScene(self.scene,self.record,self.state['metadata'],start,.05,articulated=False) as native:
             path, result = native.plan(start,goal,constrained=False,seconds=8.)
         if not result['exact_solution']:
-            return {'planned': False, 'result': result}
+            return {'planned': False, 'result': result,'scene_observation_support':self.safe_scene_evidence()}
         return self.keep_plan(path,result,'free')
 
     def ik_solutions(self, pose_world_xyzw):
@@ -603,6 +636,7 @@ class RobotService:
             update = {**self.scene.pose_update, 'hand_predicted_angle_rad':angle, 'geometry_epoch':self.epoch}
             write_json(self.episode/f'{self.calls:03d}-scene-pose-update.json', update)
             response['scene_pose_update'] = {k:v for k,v in update.items() if k!='parent_pose_update'}
+            response['scene_pose_update']['observation_support']=self.safe_scene_evidence()
         if self.stop_on_success:
             self.episode_success=bool(result.get('terminated_on_simulator_success'))
             response.update(task_success=self.episode_success,episode_done=self.episode_success)
@@ -656,6 +690,7 @@ class RobotService:
             if operation not in {'reset','practice_status','request_attempts'}:
                 raise ValueError('Episode already ended on simulator success; no further motion is permitted. Reset for another practice attempt if needed.')
         operations={'reset':self.reset,'observe':self.capture,'ground':self.ground,
+            'inspect_scene':self.inspect_scene,
             'start_tracking':self.start_tracking,'measure_tracking':self.measure_tracking,
             'apply_tracking':self.apply_tracking,'set_model':self.set_model,
             'plan_grasp':self.plan_grasp,'plan_arc':self.plan_arc,'plan_joint':self.plan_joint,
