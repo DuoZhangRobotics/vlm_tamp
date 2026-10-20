@@ -167,6 +167,41 @@ is reached, but explain the blocker and preserve every unsuccessful attempt.
     return full
 
 
+def relative_tool_choices(run,outcomes):
+    """Extract only scalar/categorical parameters from the agent's own calls."""
+    path=Path(run)/'tool-events.jsonl'
+    if not path.exists():return []
+    allowed={'plan_arc':{'degrees','refined','grasp_constraint'},
+        'plan_grasp':{'probe_degrees','max_candidates','seed'},
+        'plan_sequence':{'degrees','max_candidates','seed','grasp_constraint'},
+        'execute':{'gripper','speed','hold'},
+        'execute_sequence':{'close_steps','speed','hold','manipulation_gripper'},
+        'gripper':{'close','steps'}}
+    successes={r['attempt']:bool(r['official_task_success']) for r in outcomes}
+    current=None;plans={};choices={}
+    for line in path.read_text().splitlines():
+        event=json.loads(line);request=event['request'];response=event['response']
+        op=request['operation'];args=request.get('arguments',{});result=response.get('result',{})
+        if op=='reset' and response['ok']:
+            current=result.get('attempt');plans={}
+        if current is None:continue
+        if response['ok'] and op.startswith('plan_') and result.get('plan_id'):
+            plans[result['plan_id']]=result.get('kind')
+        if op not in allowed:continue
+        def safe(k,v):
+            return (v is None or (isinstance(v,(int,float,bool)) and -float('inf')<v<float('inf'))
+                    or (k=='grasp_constraint' and isinstance(v,str) and v in {'point','rigid','jaw_axis'}))
+        entry={'operation':op,'provided_parameters':{k:v for k,v in args.items()
+            if k in allowed[op] and safe(k,v)}}
+        if op=='execute':entry['plan_kind']=plans.get(args.get('plan_id'),'unknown')
+        key=json.dumps(entry,sort_keys=True)
+        record=choices.setdefault(key,{**entry,'attempts':[],'successful_calls':0,'failed_calls':0})
+        if current not in record['attempts']:record['attempts'].append(current)
+        record['successful_calls' if response['ok'] else 'failed_calls']+=1
+    return [{**r,'episode_outcomes':{str(n):successes.get(n) for n in r['attempts']},
+        'interpretation':'Observed choices, not isolated causal effects or universal prescriptions. Omitted parameters used the documented defaults.'} for r in choices.values()]
+
+
 def successful_method_payload(run):
     """Copy agent-authored principles, omitting links to historical raw evidence."""
     run=Path(run).resolve()
@@ -194,6 +229,7 @@ def successful_method_payload(run):
                 'final_task_success':row['final_task_success']} for row in outcomes],
             'agent_conclusion':clean(conclusion.get('best_supported_method')),
             'agent_remaining_tradeoffs':clean(conclusion.get('remaining_tradeoffs')),
+            'tested_relative_tool_choices':relative_tool_choices(run,outcomes),
             'scope':'Repeated success in the same development scene; not transfer evidence.',
             'representation':'Historical evidence links removed. Tested relative control choices retained. No historical image regions, world poses, trajectories or raw replies supplied.',
             'method':clean(original)}
@@ -243,6 +279,8 @@ def efficiency_metrics(events):
             row['failed_planning_calls']+=int(not response['ok'] or result.get('planned') is False)
         if operation=='execute' and response['ok']:
             row['executed_trajectories']+=1
+        if operation=='execute_sequence' and response['ok']:
+            row['executed_trajectories']+=sum(s['stage']!='closure' for s in result.get('stages',[]))
     return list(rows.values())
 
 
@@ -289,6 +327,7 @@ def main():
     parser.add_argument('--agent-seconds', type=int, help='Total session limit; default 1800 seconds per allowed attempt')
     parser.add_argument('--memory-profile', default='configs/subscription_memory.json')
     parser.add_argument('--baseline-run',help='Prior successful agent methodology to reproduce before further learning')
+    parser.add_argument('--study-note-file',help='Additional recorded experiment question; does not change phase gating')
     parser.add_argument('--dry-run', action='store_true')
     args = parser.parse_args()
     if args.agent_seconds is None:
@@ -296,6 +335,8 @@ def main():
     profile = read(ROOT/args.memory_profile)
     baseline,baseline_source=load_successful_method(profile,args.baseline_run)
     prompt = practice_prompt((ROOT/profile['prompt']).read_text(), args.attempts, args.initial_attempts)
+    if args.study_note_file:
+        prompt+='\nCurrent experiment note:\n'+Path(args.study_note_file).read_text()+'\n'
     if args.dry_run and baseline is not None:
         args.successful_method_file=(ROOT/profile['successful_method']) if not args.baseline_run else '<generated-successful-method>'
     command, output = build_command(args, '<generated-practice-prompt>')

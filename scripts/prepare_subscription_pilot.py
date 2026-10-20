@@ -103,6 +103,27 @@ Tool interfaces (all coordinate conventions are explicit):
   remain available. No update vetoes an executing trajectory.
 - ik(pose_world_xyzw): return robot-valid IK proposals for a chosen TCP pose.
 - plan_joint(joints): collision-aware free-motion plan to seven arm joint angles.
+- plan_sequence(degrees, max_candidates=24, seed=0, grasp_constraint="point"):
+  plan an approach and the complete requested relative manipulation together,
+  using the current observations and predicted closed-gripper geometry. Angle
+  is positive and at most 90 degrees. There is no separate legacy wrist limit:
+  the chosen grasp constraint determines orientation freedom. No robot moves.
+  A full motion must be admitted before a sequence plan_id is returned.
+- execute_sequence(plan_id, close_steps=40, speed=0.35, hold=6,
+  manipulation_gripper=1): execute the prepared approach with open fingers,
+  physical closure, then the admitted manipulation path. Use 0 to hold the
+  gripper command during manipulation or 1 to continue closing. Timing uses
+  the same limits as execute. The entire sequence must fit the remaining
+  control-step budget before it starts. It does not replan or run collision
+  checks after closure. Native success ends all remaining stages immediately.
+  This tool requires the native-success termination policy enabled for practice.
+  If the sequence finishes without success, use the returned observation to
+  decide what to do next. A planned contact relationship does not establish
+  that the physical grasp was retained.
+Successful arc/sequence responses are concise. planning_details names a JSON
+file with the full numerical evidence when deeper inspection is useful.
+Cloud synchronization applies to both continuing-close and neutral-hold
+commands during an arc. The neutral command does not disable scene updates.
 - finish(): end the current physical attempt and retain the experiment evidence.
 
 The planners check the observed point cloud. Intended finger contact with the

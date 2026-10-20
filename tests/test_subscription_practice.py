@@ -9,7 +9,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'scripts'))
-from run_subscription_learning_practice import practice_prompt, build_command, summarize, efficiency_metrics, successful_method_payload, load_successful_method
+from run_subscription_learning_practice import practice_prompt, build_command, summarize, efficiency_metrics, successful_method_payload, load_successful_method, relative_tool_choices
 from run_subscription_remembered_agent import command as evaluation_command
 from vlm_tamp.subscription_agent import validate_attempt_budget
 from vlm_tamp.practice_budget import PracticeBudget
@@ -146,6 +146,32 @@ def test_efficiency_counts_failed_planning_and_keeps_tool_time_separate():
     assert rows[0]['robot_tool_calls']==4 and rows[0]['executed_trajectories']==1
     assert rows[0]['tool_seconds']==10. and rows[0]['attempt_wall_seconds'] is None
     assert rows[1]['failed_planning_calls']==1
+
+
+def test_prepared_sequence_rpc_counts_its_motion_stages():
+    events=[{'request':{'operation':op},'response':{'ok':True,'result':result},'wall_seconds':1.}
+            for op,result in [('reset',{'attempt':1}),('plan_sequence',{'plan_id':'p'}),
+                ('execute_sequence',{'stages':[{'stage':'approach'},{'stage':'closure'},{'stage':'manipulation'}]})]]
+    row=efficiency_metrics(events)[0]
+    assert row['robot_tool_calls']==3 and row['planning_calls']==1
+    assert row['executed_trajectories']==2
+
+
+def test_relative_memory_preserves_flags_but_excludes_geometry_and_plan_identifiers(tmp_path):
+    events=[
+        {'request':{'operation':'reset','arguments':{}},'response':{'ok':True,'result':{'attempt':1}}},
+        {'request':{'operation':'plan_arc','arguments':{'degrees':20,'refined':True,'position':[999,999,999]}},
+         'response':{'ok':True,'result':{'plan_id':'private-token','kind':'arc'}}},
+        {'request':{'operation':'execute','arguments':{'plan_id':'private-token','gripper':0,'pose_world':[999,999,999]}},
+         'response':{'ok':True,'result':{}}},
+        {'request':{'operation':'plan_arc','arguments':{'degrees':'[999,999,999]','grasp_constraint':'/home/private'}},
+         'response':{'ok':False}}]
+    (tmp_path/'tool-events.jsonl').write_text('\n'.join(json.dumps(x) for x in events))
+    result=relative_tool_choices(tmp_path,[{'attempt':1,'official_task_success':True}])
+    text=json.dumps(result)
+    assert '999' not in text and 'private-token' not in text and '/home/' not in text
+    assert any(r['provided_parameters'].get('refined') is True for r in result)
+    assert any(r['provided_parameters'].get('gripper')==0 and r['plan_kind']=='arc' for r in result if r['operation']=='execute')
 
 
 def test_efficiency_instructions_are_withheld_until_two_consecutive_successes():

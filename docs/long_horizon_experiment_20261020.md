@@ -101,3 +101,56 @@ The subsequent agent practice is configured as 5 attempts initially, extendable
 to 20, with success-first phase gating and a 10,800-second session ceiling:
 `results/subscription-scene-sync-practice-20261020`.
 These paths name planned work; consult their result files for actual completion.
+
+## Subsequent complete-sequence experiments
+
+The first seven-task/five-state cohort finished with 32/35 native successes.
+Its failures were bowl placement on states 21 and 31, and middle-drawer opening
+on state 21. Both state-21 cases already had admitted complete manipulation
+paths during grasp selection. A separate composition executed those paths
+after closure instead of replanning from the newly estimated scene.
+
+That comparison recovered both failures. Initial sensor arrays, selected grasp
+candidates, and every approach/closure reference were exactly equal to their
+failed counterparts. The prepared execution then passed 15/15 family cases on
+states 1, 11 and 21, and 10/10 on states 31 and 41. Rotary controls retain their
+existing observed direction probe; cases without a full admissible motion
+retain the short-path fallback. Bowl preflight retreat points are excluded:
+execution ends at placement/release or earlier native success.
+
+A final uniform 35-case cohort is recorded separately in
+`results/prepared-final-all-tasks-20261020`. Its result file is authoritative
+while it runs; the earlier cohorts are not combined into a synthetic score.
+
+## Public sequence tool and agent continuation
+
+`plan_sequence` plans the approach and complete requested manipulation before
+motion. `execute_sequence` checks the whole sequence's remaining-step budget,
+then executes approach, physical closure and manipulation. It checks freshness
+before starting, permits its own stage transitions, and does no collision
+admission or replanning after closure. Native success cancels all remaining
+stages immediately. The physical public-interface smoke test succeeded at 340
+steps with one prepared manipulation.
+
+Successful planner replies now retain concise scalar summaries and point to
+full numerical JSON artifacts. The first agent practice used seven attempts,
+with five native successes. Its later attempts used a neutral gripper command
+that accidentally bypassed scene synchronization. That trigger is now corrected
+for both continuing-close and neutral-hold commands; the earlier outcomes remain
+unchanged and their efficiency interpretation is explicitly qualified.
+
+The continuation in
+`results/subscription-prepared-sequence-practice-20261020` is limited to thirteen
+additional attempts, preserving twenty combined attempts. It receives the prior
+agent's abstract principles and an automatic whitelist of its own relative tool
+parameters. Image regions, world poses, joint paths, plan IDs and raw historical
+replies are excluded. The note describes the tool correction and asks the agent
+to test longer prepared sequences after current-version success is established.
+Human numerical solutions and the successful smoke-test trajectory are withheld.
+
+The acting agent has been evaluated on microwave opening. The broader family
+cohorts use established numerical adapters and inherited geometry priors. In
+particular, the microwave contact proposals selected in these runs come from
+the existing RGB-D frontal-handle generator within the hybrid grasp tool.
+These results do not establish that Luna learned every family or that GraspGen
+alone produced the successful contacts.

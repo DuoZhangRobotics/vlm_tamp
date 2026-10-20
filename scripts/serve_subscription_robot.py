@@ -401,11 +401,20 @@ class RobotService:
             control_steps=self.state['control_steps'], epoch=self.epoch, extra=extra)
         dest = self.public/f'attempt{self.attempt:02d}'/(token+'.npy')
         np.save(dest,path)
+        details=None
+        if kind in {'arc','sequence'}:
+            detail_path=dest.with_name(token+'-planning.json')
+            write_json(detail_path,result)
+            details=str(detail_path.relative_to(self.workspace))
+            result={**{k:v for k,v in result.items() if isinstance(v,(str,int,float,bool,type(None)))},
+                'goal_proposals_tried':len(result.get('goal_proposals',[])),
+                'global_queries':len(result.get('global_queries',[]))}
         return {'plan_id': token, 'joint_path': str(dest.relative_to(self.workspace)),
                 'kind': kind, 'result': result,
+                'planning_details':details,
                 'note': 'Planning makes no robot motion. Execute explicitly.'}
 
-    def plan_grasp(self, probe_degrees=3., max_candidates=24, seed=0):
+    def _select_contact(self, probe_degrees, max_candidates, seed, options=None):
         if not 0<float(probe_degrees)<=90 or not 1<=int(max_candidates)<=100:
             raise ValueError('Use probe 0..90 degrees and 1..100 grasp candidates')
         if self.scene is None:
@@ -422,13 +431,49 @@ class RobotService:
                              self.state['metadata']['joint_positions'])
         closed_scene = ArcContactScene(self.cameras, self.state['metadata'], self.spec,
             self.cloud, self.mask, self.choices, self.config, robot=robot)
-        selected = select_grasp(generated, self.anchors, self.state, self.ik, self.record,
-            self.scene, closed_scene, self.spec, np.radians(float(probe_degrees)), folder/'selection',
-            {**self.config,'maximum_grasp_poses':int(max_candidates)})
+        try:
+            selected = select_grasp(generated, self.anchors, self.state, self.ik, self.record,
+                self.scene, closed_scene, self.spec, np.radians(float(probe_degrees)), folder/'selection',
+                {**self.config,**(options or {}),'maximum_grasp_poses':int(max_candidates)})
+        except Exception as error:
+            source=folder/'selection/grasp-attempts.json'
+            if source.exists():
+                records=read_json(source);counts={}
+                for row in records:
+                    tag=row.get('status','unknown');counts[tag]=counts.get(tag,0)+1
+                target=self.public/f'attempt{self.attempt:02d}'/f'grasp{self.calls:03d}-search.json'
+                write_json(target,records)
+                error.planning_diagnostic={'status':'contact_search_failed','requested_probe_degrees':float(probe_degrees),
+                    'attempted_postures':len(records),'search_stage_counts':counts,
+                    'full_diagnostic':str(target.relative_to(self.workspace)),
+                    'physical_motion_issued':False}
+            raise
         self.selected = selected
+        return selected
+
+    def plan_grasp(self, probe_degrees=3., max_candidates=24, seed=0):
+        selected=self._select_contact(probe_degrees,max_candidates,seed)
         return self.keep_plan(selected['approach'], {'status':'solved',
             'grasp_pose_world_xyzw':selected['pose_world_xyzw'], 'proposal_source':selected['source'],
             'initial_contact_probe_degrees':probe_degrees}, 'approach', {'grasp_joints':selected['joints']})
+
+    def plan_sequence(self, degrees, max_candidates=24, seed=0, grasp_constraint='point'):
+        if grasp_constraint not in {'point','rigid','jaw_axis'}:
+            raise ValueError('Choose point, rigid or jaw_axis grasp constraint')
+        selected=self._select_contact(degrees,max_candidates,seed,{
+            'motion_policy':'full','grasp_constraint':grasp_constraint})
+        contact=np.asarray(selected['planned_contact'])
+        result=self.keep_plan(selected['approach'],{
+            'status':'solved','planner':'MC-VAMP approach and complete requested contact motion',
+            'goal_degrees':float(degrees),'grasp_constraint':grasp_constraint,
+            'proposal_source':selected['source'],'search_seconds':selected['search_seconds'],
+            'independent_wrist_limit':False,'physical_grasp_retention_verified':False},'sequence',
+            {'manipulation':contact,'grasp_joints':selected['joints']})
+        destination=self.public/f'attempt{self.attempt:02d}'/(result['plan_id']+'-manipulation.npy')
+        np.save(destination,contact)
+        result['manipulation_path']=str(destination.relative_to(self.workspace))
+        result['note']='Approach and complete requested manipulation are planned before motion. Execute the sequence explicitly; physical retention is an assumption.'
+        return result
 
     def plan_arc(self, degrees, refined=False, grasp_constraint=None):
         angle = float(degrees)
@@ -468,6 +513,8 @@ class RobotService:
 
     def execute_plan(self, plan_id, gripper=1, speed=.35, hold=6):
         plan = self.plans[plan_id]
+        if plan['kind']=='sequence':
+            raise ValueError('Use execute_sequence for a prepared multi-stage plan')
         if plan['control_steps']!=self.state['control_steps'] or plan['epoch']!=self.epoch:
             raise ValueError('Plan belongs to an earlier state/model; request a fresh plan')
         if gripper not in [-1,0,1] or not .05<=float(speed)<=1.0 or not 0<=int(hold)<=40:
@@ -475,17 +522,48 @@ class RobotService:
         refs = schedule(plan['path'],maximum_joint_speed=float(speed),endpoint_hold_steps=int(hold))
         return self.issue(refs,gripper,plan_id)
 
+    def execute_sequence(self, plan_id, close_steps=40, speed=.35, hold=6, manipulation_gripper=1):
+        if not self.stop_on_success:
+            raise ValueError('Prepared sequence execution requires native-success termination')
+        plan=self.plans[plan_id]
+        if plan['kind']!='sequence':
+            raise ValueError('Use execute for a single-path plan')
+        if plan['control_steps']!=self.state['control_steps'] or plan['epoch']!=self.epoch:
+            raise ValueError('Sequence belongs to an earlier state/model; request a fresh plan')
+        if (type(close_steps) is not int or not 1<=close_steps<=60
+                or not .05<=float(speed)<=1.0 or not 0<=int(hold)<=40
+                or manipulation_gripper not in [0,1]):
+            raise ValueError('Invalid sequence timing or gripper command')
+        stages=[
+            ('approach',schedule(plan['path'],maximum_joint_speed=float(speed),endpoint_hold_steps=int(hold)),-1),
+            ('closure',np.repeat(np.asarray(plan['extra']['grasp_joints'])[None],close_steps,axis=0),1),
+            ('manipulation',schedule(plan['extra']['manipulation'],maximum_joint_speed=float(speed),endpoint_hold_steps=int(hold)),manipulation_gripper)]
+        count=sum(len(refs) for _,refs,_ in stages)
+        if count>600-int(self.state['control_steps']):
+            raise ValueError(f'Complete sequence needs {count} steps; only {600-int(self.state["control_steps"])} remain')
+        records=[];last={}
+        for index,(name,refs,gripper) in enumerate(stages):
+            if index:self.calls+=1  # Distinct retained observation/artifact IDs inside one RPC.
+            last=self.issue(refs,gripper,f'{plan_id}-{name}',articulated=name=='manipulation')
+            records.append({'stage':name,'artifact_id':self.calls,**last})
+            if last.get('task_success'):break
+        return {'plan_id':plan_id,'stages':records,'planned_control_steps':count,
+            'task_success':bool(last.get('task_success')),'episode_done':bool(last.get('episode_done')),
+            'observation':last.get('observation'),'post_closure_replanning':False,
+            'remaining_stages_discarded_on_success':len(stages)-len(records)}
+
     def gripper(self, close=True, steps=40):
         if not 1<=int(steps)<=60:
             raise ValueError('Gripper hold steps must be 1..60')
         refs = np.repeat(np.asarray(self.state['metadata']['joint_positions'])[None],int(steps),axis=0)
         return self.issue(refs,1 if close else -1,'close' if close else 'open')
 
-    def issue(self, refs, gripper, label):
+    def issue(self, refs, gripper, label, *, articulated=False):
         if len(refs)>600-self.state['control_steps']:
             raise ValueError('Complete requested trajectory exceeds remaining physical-step budget')
         synchronize = (getattr(self,'config',{}).get('scene_pose_sync','none') != 'none'
-                       and self.plans.get(label, {}).get('kind') == 'arc' and gripper == 1)
+                       and (articulated or self.plans.get(label, {}).get('kind') == 'arc')
+                       and gripper in [0,1])
         before = self.state['metadata'] if synchronize else None
         pose_tracker = None
         if synchronize and self.config.get('scene_pose_sync') == 'rgbd':
@@ -581,6 +659,7 @@ class RobotService:
             'start_tracking':self.start_tracking,'measure_tracking':self.measure_tracking,
             'apply_tracking':self.apply_tracking,'set_model':self.set_model,
             'plan_grasp':self.plan_grasp,'plan_arc':self.plan_arc,'plan_joint':self.plan_joint,
+            'plan_sequence':self.plan_sequence,'execute_sequence':self.execute_sequence,
             'ik':self.ik_solutions,'execute':self.execute_plan,'gripper':self.gripper}
         if self.dino_tools:operations.update(dino_landmarks=self.dino_landmarks,dino_match=self.dino_match)
         if self.completion_checks:
