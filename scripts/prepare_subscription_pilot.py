@@ -7,26 +7,77 @@ import shutil
 
 ROOT=Path(__file__).resolve().parents[1]
 
-CLIENT='''"""Client for the numerical robot service; no implementation or policy here."""
+CLIENT=r'''"""Client for the numerical service; transport coordination only."""
 import json
 from pathlib import Path
 import time
 import uuid
 import sys
+import fcntl
+import re
 
-def call(operation, **arguments):
-    root=Path(__file__).resolve().parent
-    token=uuid.uuid4().hex
-    request=root/'requests'/(token+'.json')
-    temporary=request.with_suffix('.pending')
-    temporary.write_text(json.dumps({'operation':operation,'arguments':arguments}))
-    temporary.rename(request)
-    response=root/'replies'/(token+'.json')
-    deadline=time.monotonic()+900
+
+def pending(root):
+    result=[]
+    for path in (root/'requests').glob('*.json'):
+        if not re.fullmatch(r'[0-9a-f]{32}\.json',path.name) or (root/'replies'/path.name).exists():continue
+        try:data=json.loads(path.read_text())
+        except ValueError:continue
+        result.append({'request_id':path.stem,'operation':data.get('operation')})
+    return result
+
+
+def await_reply(root,request_id):
+    if not isinstance(request_id,str) or not re.fullmatch(r'[0-9a-f]{32}',request_id):
+        return {'ok':False,'error':'Use a request_id returned by the transport'}
+    response=root/'replies'/(request_id+'.json');deadline=time.monotonic()+900
     while not response.exists():
-        if time.monotonic()>deadline: raise TimeoutError('Numerical service request timed out; do not repeat a physical command blindly')
+        if time.monotonic()>deadline:raise TimeoutError('Request still pending; inspect episode_status or await_request, do not resubmit blindly')
         time.sleep(.2)
     return json.loads(response.read_text())
+
+
+def _call(operation, **arguments):
+    root=Path(__file__).resolve().parent
+    if operation=='episode_status':
+        path=root/'robot_data/episode-status.json'
+        result=json.loads(path.read_text()) if path.exists() else {'needs_initial_reset':True,'control_steps':0,'remaining_control_steps':600,'task_success':False}
+        deadline=root/'robot_data/episode-deadline.json'
+        if deadline.exists():result['remaining_wall_seconds']=max(0.,json.loads(deadline.read_text())['deadline_monotonic']-time.monotonic())
+        result['in_flight_requests']=pending(root)
+        if not result.get('task_success') and result.get('remaining_wall_seconds',1)==0:
+            result.update(episode_done=True,termination_reason='wall_budget_exhausted')
+        result['control_state_is_last_completed_request']=True
+        return {'ok':True,'result':result}
+    if operation=='await_request':return await_reply(root,arguments.get('request_id'))
+    with (root/'rpc.lock').open('a') as lock:
+        try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        except BlockingIOError:
+            return {'ok':False,'error_type':'RequestInFlight','error':'Another request is running. Wait for that client or use await_request; do not resubmit.','in_flight_requests':pending(root)}
+        active=pending(root)
+        if active:
+            return {'ok':False,'error_type':'RequestInFlight','error':'A submitted request still has no reply. Use await_request to collect it before another request.','in_flight_requests':active}
+        token=uuid.uuid4().hex;request=root/'requests'/(token+'.json')
+        temporary=request.with_suffix('.pending')
+        temporary.write_text(json.dumps({'operation':operation,'arguments':arguments}))
+        temporary.rename(request)
+        return await_reply(root,token)
+
+
+def call(operation, **arguments):
+    begin=time.monotonic()
+    try:
+        result=_call(operation,**arguments)
+    except Exception as error:
+        result={'ok':False,'error_type':type(error).__name__,'error':str(error)}
+    root=Path(__file__).resolve().parent
+    with (root/'robot_data/transport-events.jsonl').open('a') as log:
+        log.write(json.dumps({'operation':operation,'ok':result.get('ok'),
+            'error_type':result.get('error_type'),'wall_seconds':time.monotonic()-begin,
+            'local_status_query':operation=='episode_status',
+            'existing_reply_query':operation=='await_request'})+'\n')
+    return result
+
 
 if __name__=='__main__':
     print(json.dumps(call(sys.argv[1],**(json.loads(sys.argv[2]) if len(sys.argv)>2 else {})),indent=2))
@@ -45,6 +96,12 @@ or: python3 robot.py observe
 Each response is {"ok": true, "result": ...} or {"ok": false, "error": ...}.
 Failed planning does not end the experiment. You decide what to do next.
 Do not launch tool calls in parallel: the physical robot is one stateful process.
+The client admits only one in-flight request. If a call is still running, wait
+for its existing process rather than sending it again. episode_status is a
+read-only local snapshot that remains available during a long request. It lists
+pending request_ids and the last completed request_id. await_request(request_id) retrieves that existing reply
+without issuing another robot/planner command. Snapshot control steps reflect
+the last completed request; wall time is updated when queried.
 
 Tool interfaces (all coordinate conventions are explicit):
 - reset(): reset the same development case; return instruction, current images,
@@ -310,6 +367,8 @@ def main():
     p.add_argument('--learning-practice',action='store_true')
     p.add_argument('--initial-attempts',type=int)
     p.add_argument('--stop-on-success',action='store_true')
+    p.add_argument('--persistent-episode',action='store_true')
+    p.add_argument('--surface-contact-tools',action='store_true')
     p.add_argument('--successful-method-file')
     p.add_argument('--memory-store')
     p.add_argument('--completion-checks',action='store_true')
@@ -409,6 +468,54 @@ tools are optional diagnostics; use task_success for the benchmark outcome.
 While task_success is false, continue within budget when a useful action remains.
 finish(claim="completed") cannot override the simulator's result. You may end a
 failed attempt as incomplete or uncertain and then reset to test a correction.\n'''
+    if a.persistent_episode:
+        document=document.replace('- finish(): end the current physical attempt and retain the experiment evidence.',
+            '- finish(): finalize only after simulator success or an exhausted episode budget; an early request is rejected.')
+        document=document.replace('You may end a\nfailed attempt as incomplete or uncertain and then reset to test a correction.',
+            'An incomplete episode must continue until success or an actual budget limit. No reset retry is allowed.')
+        document+='''\nPersistence policy:
+- episode_status(): read native success, remaining control steps, remaining wall
+  time and whether the episode is terminal. The limit is shared across all
+  reasoning turns of this episode.
+Do not voluntarily stop while success is false and budget remains. A failed
+plan, uncertain perception or unsuccessful contact is feedback for another
+decision, not episode termination. If you end a reasoning turn early, the same
+agent context will be resumed with a budget reminder. No reset is performed.
+Use the remaining budget purposefully; do not issue idle or meaningless actions
+merely to consume control steps. Runtime/account failures are reported separately
+from simulator outcomes and do not become fabricated budget exhaustion.\n'''
+    if a.surface_contact_tools:
+        document+='''\nGeneral multi-stage manipulation:
+A task may require several stages and different contacts. A continuous grasp is
+not mandatory. Grasping, releasing, regrasping, pushing, pulling and sliding are
+possible choices when justified by current observations and the available tools.
+You choose the contact surface, contact mode, geometry and stage sequence.
+Past successful recipes are hypotheses, not restrictions to one contact mode.
+No specific object surface, direction, trajectory or recovery sequence is supplied.
+
+Additional generic contact interfaces:
+- select_surface_contact(camera, region_xyxy, radius_m=0.02): select a bounded
+  patch of the CURRENT observed surface. Radius is 0.005..0.04 metres. Returns a
+  measured point, approximate surface normal toward the camera, point clouds,
+  and configured finger-pad centres in the TCP frame. It builds a fresh
+  observed scene and permits configured-finger contact with only that patch.
+  Arm, palm and other observed surfaces remain checked. No grasp, closure,
+  cylinder fit or hinge model is required. No object motion is predicted.
+  This switches to a free-motion surface scene. It does not move the robot.
+- plan_pose(pose_world_xyzw): find IK and a collision-aware joint path to YOUR
+  requested TCP pose in the current scene. It returns a plan_id for execute.
+  No gripper closure or grasp sequence is imposed. plan_joint is also available.
+  For a chosen contact landmark c in the TCP frame and orientation R, the TCP
+  translation placing it at observed point p is p - R*c. Choose orientations,
+  offsets and motion stages from current geometry; the tool supplies no policy.
+Choose the gripper setting before selecting/planning with its geometry. After a
+plan, execute with gripper=0 to keep that aperture command; changing the gripper
+during the motion changes the geometry for which the path was checked. After a
+physical motion, refresh select_surface_contact from current observations before
+planning again in this mode. This prevents reusing a pre-motion static snapshot.
+An articulated arc requires a new ground call; a surface patch is not a hinge
+estimate. Planned finger contact does not certify physical contact or task
+progress. The simulator's success signal remains the stopping criterion.\n'''
     (work/'robot.py').write_text(CLIENT);(work/'tools.txt').write_text(document)
     if a.guidelines_source:
         experience=work/'experience';experience.mkdir(exist_ok=True)
@@ -447,6 +554,8 @@ failed attempt as incomplete or uncertain and then reset to test a correction.\n
     write['initial_attempts_granted']=a.initial_attempts if a.initial_attempts is not None else a.attempts
     write['adaptive_attempt_budget']=a.initial_attempts is not None
     write['stop_on_simulator_success']=bool(a.stop_on_success)
+    write['persistent_episode']=bool(a.persistent_episode)
+    write['surface_contact_tools']=bool(a.surface_contact_tools)
     write['task_outcome_feedback']='success_boolean' if a.stop_on_success else 'none'
     write['successful_method_sha256']=hashlib.sha256(Path(a.successful_method_file).read_bytes()).hexdigest() if a.successful_method_file else None
     write['delayed_efficiency_instructions']=bool(a.learning_practice and a.initial_attempts is not None)

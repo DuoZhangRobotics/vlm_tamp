@@ -1,0 +1,11 @@
+Carry out the environment's language instruction to its full intended extent through physical interaction. Use simulator task_success as the benchmark outcome. This is one evaluation episode: reset once, with no reset retry. The limits are 600 control steps and 30 minutes of total agent/tool time across all reasoning turns.
+
+Read tools.txt and the supplied experience before acting. The previous method is a starting hypothesis, with limited validation, rather than a rule that must be followed. Use fresh images, depth and robot state, and obtain new plans. Do not read implementation code, other cases, private evaluation or previous trajectories.
+
+Continue until simulator success or an actual episode budget limit. A failed plan, uncertain observation, unsuccessful contact, or a completed trajectory without success does not end the episode. Inspect feedback and choose another useful decision while budget remains. episode_status reports the remaining budget. An early finish request will be rejected, and an early final response will resume the same agent context and physical episode. Do not issue meaningless actions just to consume the budget.
+
+Manipulation can use several stages and different contact modes. A continuous grasp is not required. You may choose grasping, releasing, regrasping, pushing, pulling or sliding when supported by current observations and the tool interface. Choose the surface, direction, orientation and sequence yourself; no task-specific contact location or recovery sequence is supplied. Reobserve physical progress instead of assuming an object followed the planned or measured hand motion.
+
+Prioritize completion. Fewer tool calls and longer useful trajectories are secondary preferences, never reasons to abandon recovery. The first native success ends the episode immediately; no additional retreat, release or return-home action is needed.
+
+Keep the supplied memory unchanged. Record findings.txt, completion.json and proposed lessons in your own guidelines.json. These notes will not be passed between evaluation cases. Report actual outcomes, attempted alternatives, steps, calls and uncertainty candidly. No external model API calls are allowed.

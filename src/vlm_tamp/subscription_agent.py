@@ -64,9 +64,9 @@ def permission_arguments(*, readonly_paths=()):
     ]
 
 
-def codex_arguments(workspace, output, *, model='gpt-6-luna', readonly_paths=()):
+def codex_arguments(workspace, output, *, model='gpt-6-luna', readonly_paths=(), ephemeral=True):
     return [shutil.which('codex') or 'codex', 'exec', '--ignore-user-config',
-            '--ephemeral', '--skip-git-repo-check', '--json', '--color', 'never',
+            *(['--ephemeral'] if ephemeral else []), '--skip-git-repo-check', '--json', '--color', 'never',
             '-C', str(Path(workspace).resolve()), '-m', model,
             '-c', 'model_reasoning_effort="high"', '-c', 'approval_policy="never"',
             '-c', 'forced_login_method="chatgpt"', '-c', 'project_doc_max_bytes=0',
@@ -78,6 +78,17 @@ def codex_arguments(workspace, output, *, model='gpt-6-luna', readonly_paths=())
             '--disable', 'shell_snapshot', *permission_arguments(readonly_paths=readonly_paths),
             '-o', str(Path(output).resolve()), '-']
 
+
+def codex_resume_arguments(workspace,output,thread_id,*,readonly_paths=()):
+    """Resume the same model context with the same restricted read profile."""
+    import uuid
+    uuid.UUID(thread_id)
+    initial=codex_arguments(workspace,output,readonly_paths=readonly_paths,ephemeral=False)
+    options=initial[2:-1];filtered=[];i=0
+    while i<len(options):
+        if options[i] in {'-C','--color'}:i+=2;continue
+        filtered.append(options[i]);i+=1
+    return [initial[0],'exec','resume',*filtered,thread_id,'-']
 
 def verify_isolation(workspace, forbidden_paths, *, readonly_paths=()):
     """Exercise the same OS profile with harmless reads before model access."""

@@ -1,0 +1,27 @@
+{
+  "version": 3,
+  "scope": "One persistent evaluation episode per state; generic contact choices; same previous agent method, no across-case learning",
+  "public_library": "data/agent_memory/luna-microwave-v2/library",
+  "library_manifest_sha256": "a5f763d80ed55d0a40e0b8ecd6930747d317e5f6260edf5c5a1cb5bcfe99c51a",
+  "prompt": "prompts/persistent_transfer.txt",
+  "prompt_sha256": "29d945ecc1e26fcb239b485ee6ab39e746c0f597135f319757c706832d0d7220",
+  "common_guide": "results/overnight-long-horizon-report-20261020/transfer-inputs/guidelines.json",
+  "common_guide_sha256": "df7a0fc3e047e77118cd762865a276d6eea50a6d4d7ae5098d75b927bfd79872",
+  "protected_inputs": [
+    "data/agent_memory/luna-microwave-v1",
+    "results/state11-observed-contact-recovery-20261015/open_microwave-state011",
+    "data/agent_memory/luna-microwave-v2",
+    "data/agent_memory/luna-microwave-v3"
+  ],
+  "approved_example_public_backup": "data/agent_memory/luna-microwave-v1/library/episode-0001/evidence/workspace/example",
+  "completion_checks": false,
+  "abstract_experience": true,
+  "completion_protocol_version": 2,
+  "successful_method": "results/overnight-long-horizon-report-20261020/transfer-inputs/successful-method.json",
+  "successful_method_sha256": "14fa81e353e319040f16a7dffa000a645e1b9830c47a475c228af8842d81ab7d",
+  "successful_method_source_run": "results/subscription-prepared-sequence-practice-20261020",
+  "native_success_stop": true,
+  "persistent_episode": true,
+  "surface_contact_tools": true,
+  "prior_profile": "results/overnight-long-horizon-report-20261020/transfer-inputs/profile.json"
+}

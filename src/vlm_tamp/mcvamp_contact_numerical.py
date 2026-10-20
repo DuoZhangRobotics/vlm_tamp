@@ -270,6 +270,12 @@ class NativeScene:
             grasp_orientation_reference='current measured TCP transported with the estimated articulation',
             independent_wrist_excursion_limit_used=None,
             wrist_policy_source='Resolved by the planning request, separately from the grasp constraint')
+        if getattr(scene,'contact_policy_kind',None)=='observed_finger_patch':
+            self.record.update(contact_exemption='configured fingers versus the selected observed patch only; arm/palm and other observed points checked',
+                contact_geometry_source='fresh depth-selected bounded patch',
+                object_motion_predicted=False,articulation_constraint_used=bool(articulated),
+                bar_contact_distance_m=None,local_mount_distance_m=None,
+                local_mount_plane_association_extra_m=None)
         update=getattr(scene,'pose_update',None)
         if update is not None:
             self.record.update(contact_geometry_source='observed endpoints transported to the current query frame',

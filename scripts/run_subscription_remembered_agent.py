@@ -38,6 +38,8 @@ def command(args, *, include_successful_method=False):
         *method,
         *(['--stop-on-success'] if getattr(args,'stop_on_success',False) or profile.get('native_success_stop',False) else []),
         *(['--evaluation-case'] if getattr(args,'evaluation_case',False) else []),
+        *(['--persistent-episode'] if getattr(args,'persistent_episode',False) or profile.get('persistent_episode',False) else []),
+        *(['--surface-contact-tools'] if getattr(args,'surface_contact_tools',False) or profile.get('surface_contact_tools',False) else []),
         *(['--completion-checks'] if profile.get('completion_checks') else []),
         *(['--abstract-experience'] if profile.get('abstract_experience') else [])],output
 
@@ -48,6 +50,8 @@ def main():
     p.add_argument('--memory-profile',default='configs/subscription_memory.json')
     p.add_argument('--stop-on-success',action='store_true')
     p.add_argument('--evaluation-case',action='store_true')
+    p.add_argument('--persistent-episode',action='store_true')
+    p.add_argument('--surface-contact-tools',action='store_true')
     p.add_argument('--dry-run',action='store_true');a=p.parse_args()
     if not 0<=a.state<50:raise ValueError('Official state must be 0..49')
     if a.agent_seconds<=0:raise ValueError('Use a positive session time budget')

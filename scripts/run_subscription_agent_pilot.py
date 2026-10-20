@@ -46,11 +46,16 @@ def main():
     p.add_argument('--learning-practice',action='store_true')
     p.add_argument('--initial-attempts',type=int)
     p.add_argument('--stop-on-success',action='store_true')
+    p.add_argument('--persistent-episode',action='store_true')
+    p.add_argument('--surface-contact-tools',action='store_true')
     p.add_argument('--successful-method-file')
     p.add_argument('--memory-store',help='Read-only public episodic library; no implementation or evaluation files')
     p.add_argument('--completion-checks',action='store_true')
     p.add_argument('--abstract-experience',action='store_true')
     a=p.parse_args();out=(ROOT/a.output).resolve()
+    if a.agent_seconds<=0:raise ValueError('Use a positive episode time budget')
+    if a.persistent_episode and (a.attempts!=1 or not a.stop_on_success or a.learning_practice):
+        raise ValueError('Persistent transfer requires one attempt with native-success termination')
     validate_attempt_budget(a.attempts,learning_practice=a.learning_practice,evaluation_case=a.evaluation_case,initial_attempts=a.initial_attempts)
     if a.learning_practice and not a.prompt_file:
         raise ValueError('Learning practice requires an explicit practice prompt')
@@ -72,6 +77,8 @@ def main():
         *(['--learning-practice'] if a.learning_practice else []),
         *(['--initial-attempts',str(a.initial_attempts)] if a.initial_attempts is not None else []),
         *(['--stop-on-success'] if a.stop_on_success else []),
+        *(['--persistent-episode'] if a.persistent_episode else []),
+        *(['--surface-contact-tools'] if a.surface_contact_tools else []),
         *(['--successful-method-file',str(Path(a.successful_method_file).resolve())] if a.successful_method_file else []),
         *(['--guidelines-source',str(Path(a.guidelines_source).resolve())] if a.guidelines_source else []),
         *(['--evaluation-case'] if a.evaluation_case else []),'--attempts',str(a.attempts),
@@ -80,6 +87,9 @@ def main():
     protocol['unconditioned_hinge_fit_diagnostics']=bool(a.fit_diagnostics)
     protocol['scene_variant']=a.scene_variant
     protocol['scene_variant_parameters_exposed_to_agent']=False
+    protocol['episode_wall_budget_seconds']=a.agent_seconds
+    protocol['persistent_episode']=a.persistent_episode
+    protocol['surface_contact_tools']=a.surface_contact_tools
     (out/'protocol.json').write_text(json.dumps(protocol,indent=2)+'\n')
     forbidden=[ROOT/'src/vlm_tamp/rigid_hinge_tracking.py',ROOT/'docs/state11_recovery.md',
                ROOT/'results/state11-observed-contact-recovery-20261015/summary.json',
@@ -116,6 +126,8 @@ def main():
                 *(['--learning-practice'] if a.learning_practice else []),
                 *(['--initial-attempts',str(a.initial_attempts)] if a.initial_attempts is not None else []),
                 *(['--stop-on-success'] if a.stop_on_success else []),
+                *(['--persistent-episode'] if a.persistent_episode else []),
+                *(['--surface-contact-tools'] if a.surface_contact_tools else []),
                 *(['--dino-tools'] if a.dino_tools else [])],
                 cwd=ROOT,env=env,stdout=service_log,stderr=subprocess.STDOUT)
             deadline=time.monotonic()+60
@@ -123,19 +135,23 @@ def main():
                 if backend.poll() is not None:raise RuntimeError('Numerical service failed; inspect service.log')
                 if time.monotonic()>deadline:raise TimeoutError('Numerical service startup timed out')
                 time.sleep(.1)
-            args=codex_arguments(work,out/'agent-last.txt',readonly_paths=readonly)
-            (out/'agent-command.json').write_text(json.dumps(args,indent=2))
-            (out/'agent-prompt.txt').write_text(prompt)
-            started=time.time()
-            with (out/'agent-events.jsonl').open('w') as log,(out/'agent-stderr.log').open('w') as err:
-                agent=subprocess.Popen(args,stdin=subprocess.PIPE,text=True,env=env,stdout=log,stderr=err)
-                agent.stdin.write(prompt);agent.stdin.close()
-                (out/'agent-process.json').write_text(json.dumps({'pid':agent.pid,'started':started}))
-                try:code=agent.wait(timeout=a.agent_seconds)
-                except subprocess.TimeoutExpired:
-                    agent.terminate();code=agent.wait(timeout=30)
-                    (out/'agent-timeout.json').write_text(json.dumps({'timeout_seconds':a.agent_seconds}))
-            (out/'agent-exit.json').write_text(json.dumps({'returncode':code,'wall_seconds':time.time()-started}))
+            if a.persistent_episode:
+                from vlm_tamp.episode_persistence import run_persistent_agent
+                code=run_persistent_agent(work,out,env,readonly,prompt,a.agent_seconds)
+            else:
+                args=codex_arguments(work,out/'agent-last.txt',readonly_paths=readonly)
+                (out/'agent-command.json').write_text(json.dumps(args,indent=2))
+                (out/'agent-prompt.txt').write_text(prompt)
+                started=time.time()
+                with (out/'agent-events.jsonl').open('w') as log,(out/'agent-stderr.log').open('w') as err:
+                    agent=subprocess.Popen(args,stdin=subprocess.PIPE,text=True,env=env,stdout=log,stderr=err)
+                    agent.stdin.write(prompt);agent.stdin.close()
+                    (out/'agent-process.json').write_text(json.dumps({'pid':agent.pid,'started':started}))
+                    try:code=agent.wait(timeout=a.agent_seconds)
+                    except subprocess.TimeoutExpired:
+                        agent.terminate();code=agent.wait(timeout=30)
+                        (out/'agent-timeout.json').write_text(json.dumps({'timeout_seconds':a.agent_seconds}))
+                (out/'agent-exit.json').write_text(json.dumps({'returncode':code,'wall_seconds':time.time()-started}))
     finally:
         if agent is not None and agent.poll() is None:
             agent.terminate();agent.wait(timeout=30)
