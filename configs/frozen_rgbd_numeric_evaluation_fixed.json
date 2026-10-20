@@ -1,0 +1,369 @@
+{
+  "version": "rgbd-numerical-1.0",
+  "config": {
+    "model": "gpt-5.4-mini-2026-03-17",
+    "dataset": "data/rgb-role-generalization",
+    "depth_dataset": "data/rgbd-numerical-pilot",
+    "prompt": "configs/prompts/rgbd_numerical_blanks_v1.txt",
+    "frozen_protocol": "configs/frozen_rgbd_numeric_evaluation_fixed.json",
+    "reasoning_effort": "medium",
+    "image_detail": "high",
+    "service_tier": "default",
+    "max_output_tokens": 3000,
+    "timeout_seconds": 180,
+    "max_requests": 6,
+    "max_retries": 0,
+    "max_budget_usd": 0.1,
+    "image_token_allowance": 4096,
+    "capture_usage_details": true,
+    "pricing": {
+      "input_per_million": 0.75,
+      "output_per_million": 4.5
+    },
+    "pricing_source": "https://developers.openai.com/api/docs/models/gpt-5.4-mini",
+    "pricing_checked": "2026-10-13",
+    "cases": [
+      {
+        "id": "bowl_plate",
+        "example_id": "libero_goal-08-state005-seed0",
+        "upright": false
+      },
+      {
+        "id": "middle_bowl_plate",
+        "example_id": "libero_90-14-state004-seed0",
+        "upright": false
+      },
+      {
+        "id": "red_mug_left_plate",
+        "example_id": "libero_90-65-state005-seed0",
+        "upright": false
+      },
+      {
+        "id": "yellow_mug_right_plate",
+        "example_id": "libero_90-68-state004-seed0",
+        "upright": false
+      },
+      {
+        "id": "bowl_plate_upright",
+        "example_id": "libero_goal-08-state005-seed0",
+        "upright": true
+      },
+      {
+        "id": "red_mug_left_plate_upright",
+        "example_id": "libero_90-65-state005-seed0",
+        "upright": true
+      }
+    ],
+    "geometry": {
+      "depth_patch_radius_pixels": 1,
+      "maximum_depth_jump_m": 0.03,
+      "maximum_depth_m": 5.0,
+      "plane_patch_radius_pixels": 7,
+      "plane_depth_band_m": 0.02,
+      "maximum_plane_rms_m": 0.003,
+      "maximum_support_tilt_degrees": 25.0,
+      "minimum_closing_span_m": 0.002,
+      "maximum_gripper_width_m": 0.08,
+      "finger_clearance_m": 0.004,
+      "pregrasp_distance_m": 0.08,
+      "minimum_object_axis_length_m": 0.01,
+      "placement_clearance_m": 0.01,
+      "point_tolerance_m": 0.01,
+      "upright_tolerance_degrees": 5.0
+    }
+  },
+  "dataset_sha256": "e4d4cd9a74e47a3c319a671c6f0af8c7b37f63914e8081832fe16691e79f7aee",
+  "prompt_sha256": "4891c2dc94cb6334abf167158f724831d0a658be9410b54413f4dd4f6ff7a5a7",
+  "schema_sha256": "4a4b018eaf6c3dddf845c85b2e321576f537617f7ae0b25e711e1877d91adfc6",
+  "captures": {
+    "libero_goal-08-state005-seed0": {
+      "rgb_matches_existing": true,
+      "files": {
+        "rgb.png": "e7998156e564ee0f483b66edb21cff55f5ffc60e40cc2f0f8567b25f7ea68e60",
+        "depth_meters.npy": "afc05f5f047db82ebc9b01f6ec2ea795e997be1e45c87a64dc28bb1c2bd9a530",
+        "world_points.npy": "34bf9032cb164ba4f69c7a6a37edee268900b897024cd93393ec055a1ea88e68",
+        "calibration.json": "adae163d18def68a2dfb539b1cc22a163d5f52d6bf97177238e79e45bc718033"
+      }
+    },
+    "libero_90-14-state004-seed0": {
+      "rgb_matches_existing": true,
+      "files": {
+        "rgb.png": "febeaf84d4f8abce8e9082e4fefc694d80f0396b15e3dfcc4a31845e33842363",
+        "depth_meters.npy": "c59c04dc9588ff7a6d4ce85cd0bebd01ec91681c9f787279cbfbcda29b86050c",
+        "world_points.npy": "717a112018b37535b7e63655181c7c18662af2764aa407ccfcc36fb36a0b5965",
+        "calibration.json": "8c1518d8949a3663aa8de36bcf88f94f2891349df2110901bb91fb4ec7c6f9d7"
+      }
+    },
+    "libero_90-65-state005-seed0": {
+      "rgb_matches_existing": true,
+      "files": {
+        "rgb.png": "64a12ec18397edcd5671fb58eb6519119d9b895691cf034a2b68a0d0effd1555",
+        "depth_meters.npy": "f216abf086e7b9a69fbe8ba67c1e6d79a44044de3a7d61628c15f45a6b3f0ee9",
+        "world_points.npy": "4a6a200c168abbcf9c96b29a96aabff5d83c063f5a80b72a3d1f695a5ae3ba6f",
+        "calibration.json": "4bb4bd2fbfb21b57739a831da7bbbbc01c004baded4c7c086aee87015a44d5e2"
+      }
+    },
+    "libero_90-68-state004-seed0": {
+      "rgb_matches_existing": true,
+      "files": {
+        "rgb.png": "8a3855282e9d44dc30ea1ac4a64fe2a10319924f17a821075077cea74edf6d12",
+        "depth_meters.npy": "865b8c9ea0ea293c47c67686c1652dfdd718cfe9e9d7073c126887d3ce5f1011",
+        "world_points.npy": "90ceed2918088f62de549666aeb99ddb2fa943d19bd48bd93f085dee51338dfc",
+        "calibration.json": "4bb4bd2fbfb21b57739a831da7bbbbc01c004baded4c7c086aee87015a44d5e2"
+      }
+    }
+  },
+  "requests": [
+    {
+      "case_id": "bowl_plate",
+      "payload": {
+        "instruction": "put the bowl on the plate",
+        "source_description": "the bowl",
+        "target_description": "the plate",
+        "blanks": [
+          "source_uv",
+          "grasp_uv",
+          "closing_a_uv",
+          "closing_b_uv",
+          "axis_low_uv",
+          "axis_high_uv",
+          "target_uv",
+          "grasp_mode",
+          "path_constraint"
+        ],
+        "coordinate_convention": "[x,y] normalized to [0,1], origin top-left"
+      },
+      "payload_sha256": "d39b20248ef6ca553b32158f3b5d6fa9be8bff3e555d8e48ceb8f88807cd401b",
+      "image_sha256": "e7998156e564ee0f483b66edb21cff55f5ffc60e40cc2f0f8567b25f7ea68e60"
+    },
+    {
+      "case_id": "middle_bowl_plate",
+      "payload": {
+        "instruction": "put the middle black bowl on the plate",
+        "source_description": "the middle black bowl",
+        "target_description": "the plate",
+        "blanks": [
+          "source_uv",
+          "grasp_uv",
+          "closing_a_uv",
+          "closing_b_uv",
+          "axis_low_uv",
+          "axis_high_uv",
+          "target_uv",
+          "grasp_mode",
+          "path_constraint"
+        ],
+        "coordinate_convention": "[x,y] normalized to [0,1], origin top-left"
+      },
+      "payload_sha256": "46338b8b023699124d0742cb5c44c335e1ace40c9319bf906431b795a69d48c0",
+      "image_sha256": "febeaf84d4f8abce8e9082e4fefc694d80f0396b15e3dfcc4a31845e33842363"
+    },
+    {
+      "case_id": "red_mug_left_plate",
+      "payload": {
+        "instruction": "put the red mug on the left plate",
+        "source_description": "the red mug",
+        "target_description": "the left plate",
+        "blanks": [
+          "source_uv",
+          "grasp_uv",
+          "closing_a_uv",
+          "closing_b_uv",
+          "axis_low_uv",
+          "axis_high_uv",
+          "target_uv",
+          "grasp_mode",
+          "path_constraint"
+        ],
+        "coordinate_convention": "[x,y] normalized to [0,1], origin top-left"
+      },
+      "payload_sha256": "b5632608c2e217fe1915ab7685f22ae0d318140703d22409d9ff6eb0bb2e593e",
+      "image_sha256": "64a12ec18397edcd5671fb58eb6519119d9b895691cf034a2b68a0d0effd1555"
+    },
+    {
+      "case_id": "yellow_mug_right_plate",
+      "payload": {
+        "instruction": "put the yellow and white mug on the right plate",
+        "source_description": "the yellow and white mug",
+        "target_description": "the right plate",
+        "blanks": [
+          "source_uv",
+          "grasp_uv",
+          "closing_a_uv",
+          "closing_b_uv",
+          "axis_low_uv",
+          "axis_high_uv",
+          "target_uv",
+          "grasp_mode",
+          "path_constraint"
+        ],
+        "coordinate_convention": "[x,y] normalized to [0,1], origin top-left"
+      },
+      "payload_sha256": "a8d9d490132811dabd27ae2fbd0fe894a6c2d3f7530c96f7e23cad65d94ee7f7",
+      "image_sha256": "8a3855282e9d44dc30ea1ac4a64fe2a10319924f17a821075077cea74edf6d12"
+    },
+    {
+      "case_id": "bowl_plate_upright",
+      "payload": {
+        "instruction": "put the bowl on the plate while keeping the moved object upright throughout transport",
+        "source_description": "the bowl",
+        "target_description": "the plate",
+        "blanks": [
+          "source_uv",
+          "grasp_uv",
+          "closing_a_uv",
+          "closing_b_uv",
+          "axis_low_uv",
+          "axis_high_uv",
+          "target_uv",
+          "grasp_mode",
+          "path_constraint"
+        ],
+        "coordinate_convention": "[x,y] normalized to [0,1], origin top-left"
+      },
+      "payload_sha256": "a4d77193984bd7e73c8cfff2f55f91a97fbc3d4c050529a4bf9525a9bae1eede",
+      "image_sha256": "e7998156e564ee0f483b66edb21cff55f5ffc60e40cc2f0f8567b25f7ea68e60"
+    },
+    {
+      "case_id": "red_mug_left_plate_upright",
+      "payload": {
+        "instruction": "put the red mug on the left plate while keeping the moved object upright throughout transport",
+        "source_description": "the red mug",
+        "target_description": "the left plate",
+        "blanks": [
+          "source_uv",
+          "grasp_uv",
+          "closing_a_uv",
+          "closing_b_uv",
+          "axis_low_uv",
+          "axis_high_uv",
+          "target_uv",
+          "grasp_mode",
+          "path_constraint"
+        ],
+        "coordinate_convention": "[x,y] normalized to [0,1], origin top-left"
+      },
+      "payload_sha256": "ffa4e74867c270687771d517972caaaa0b55aca8d79aaf17331485f1644e3518",
+      "image_sha256": "64a12ec18397edcd5671fb58eb6519119d9b895691cf034a2b68a0d0effd1555"
+    }
+  ],
+  "implementation_hashes": {
+    "src/vlm_tamp/rgbd_numericals.py": "8e79f2d0c943b2ef0d734f8153ff34939a4640f5b52b302b99dd41f4f4c716d8",
+    "src/vlm_tamp/pose_constraints.py": "fe6f1b743232b28566be7fb37dc0ea76384666e450ab83f95748574b653896cb",
+    "src/vlm_tamp/rgbd_numeric_trial.py": "240bea20fd71a2b3f10caa5f8630f147a2c49bf18811f614f203688caeb92d4a",
+    "scripts/prepare_rgbd_numericals.py": "02e359755e5b7f9c10995abfce24e20296c5228d19704ae0c7033fa7eba9d80c",
+    "src/vlm_tamp/rgbd_numeric_evaluation.py": "ce739c6d9fcc488f7703f529956cdf58f5ac8f503085231289efc7808efba319",
+    "src/vlm_tamp/rgb_role_choices.py": "24aa3dbdcea929fe87e2905d994934455ecf96fbadcd94edb05f4441a85cd379",
+    "src/vlm_tamp/rgb_role_points.py": "512a4b25f0e68ca16d25bb20a2251d70246886c2cca484757dffd70f3a77764f",
+    "src/vlm_tamp/experiment.py": "667c7c341342b06e671adde915e163e35bbaf6021b29eb57d85b21cd1ab9c657"
+  },
+  "preserved_artifacts": {
+    "results/backbone-41mini/predictions.jsonl": "4862edf52481112017ed948a4360b8c35a7e6904df1a2edc55e747ef016dbd0f",
+    "results/backbone-54mini/predictions.jsonl": "c3440eb1df2911b804d99832a7634cec53ab47dbed8c6c66c79f5e0e013fdd34",
+    "results/expanded-grounding-linked/predictions.jsonl": "1bfd2b1834a4c0ba7727be3127f8e6dad27419c0ad0e04bd41d807e43ffc14fc",
+    "results/expanded-grounding-raw/predictions.jsonl": "94077b5e339cb761b03346e78c755b8170ac2934db123098a024397da5643216",
+    "results/logic-markers-41mini/predictions.jsonl": "a195193e9db2ee254e9d8effefd1ad29f90c5b5f56312eefe5f0fb824e9ef1e7",
+    "results/logic-markers-54mini/predictions.jsonl": "3f0177d8a44ea8e4295ac62e4e5fb5b009588f5f4074b3accadbe8d0cfbe05fd",
+    "results/offline/predictions.jsonl": "397e303fbde34f7b367cff0f7f8b67fbe19a6daf33588fd1de2db27398a88b81",
+    "results/offline-direct/predictions.jsonl": "6215c5110c61b6b485a17e4000ad94d351d4e74d5ba7e58050bc2248614e7170",
+    "results/offline-initial/predictions.jsonl": "9eafed8655406dae29995de7c7728e39a85f0c54ffb60c3e6433de20baee3c45",
+    "results/openai-pilot/predictions.jsonl": "f6d80c2691c2258adf30ec20f25ec9f4c4a9478a197493f6f478fdf2079e0d2c",
+    "results/openai-pilot-v2/predictions.jsonl": "bc38477de25533308a37f816c3a5594da68dc4f0e3a45995fd9888e345c5cb5f",
+    "results/reasoning-astra-medium-linked/predictions.jsonl": "a9a449a415ab1f0db9edb7feb3d737550e6497772ed7500381fa3c48ed21c42a",
+    "results/reasoning-astra-medium-raw/predictions.jsonl": "c6716ba11a72e23fc8fedf85c52a6f6407e5e06f713455ecf7fac327884bad5a",
+    "results/reasoning-mini-medium-linked/predictions.jsonl": "56cd920eb889369914a3f63d0b44b9f7103d9b0eb895e6736d94ece0f4c104a3",
+    "results/reasoning-mini-medium-raw/predictions.jsonl": "94f70129cccb27a93f462637a9626a3815c484dde390d5f95a6d099f021a8daa",
+    "results/rgb-choice-astra/predictions.jsonl": "2e196f62949939b6549001afc12de7451e3cece67ee5978d861ad517b0517155",
+    "results/rgb-choice-mini/predictions.jsonl": "c04adc3172f9fc98a48a8f7b4e0b9b1cf6e183c8eb920690e65ddb4da2aece55",
+    "results/rgb-choice-v2-mini-dev/predictions.jsonl": "fd41446410a0b3c834af922b1e7c77d1aec93109a50d1d155dbf6b1a7af513e5",
+    "results/rgb-choice-v2-mini-validation/predictions.jsonl": "90368af7f17a2219c20175a799dd623b29a6581381f7fe135121166036c2831e",
+    "results/rgb-object-mini-dev/predictions.jsonl": "3728e4658b4417190174226ee2937799bcd6d70eeb400d4e7de595cfb143c88b",
+    "results/rgb-object-mini-validation/predictions.jsonl": "af02c03830316c0a5625eb9bbeafd670f836110761edfe5f8ca1babc5b72eeda",
+    "results/rgb-repair-mini/predictions.jsonl": "61c8a2183da530ada9839727128ef8d132841064f5271eea0a5d01512d036b27",
+    "results/rgb-role-generalization-mini/predictions.jsonl": "c15c02c385b6c43e941f8c57caf743f26ebe7633a52bd356204f23d4e20c5183",
+    "results/rgb-role-mini-dev/predictions.jsonl": "d7c07a9274a6d353bdff0b7441486dff192c6f854ce6da70d003635c704b8cd1",
+    "results/rgb-role-mini-validation/predictions.jsonl": "972e891676e12d594a7b32a9c39ddd8b85c323c93ca5a03301e48c32c0ae7c15",
+    "results/rgb-role-points-mini/predictions.jsonl": "6f1e145b0956add93cd1a0d24d9c1727a4db974cc10603fe41bb405d61aee5ad",
+    "results/robopoint-generalization/predictions.jsonl": "6749ba78d19989a5456eda2c8ce7a5187be2ae014c5cdc59d67f74b8ee544eb6",
+    "results/robopoint-native-cap/predictions.jsonl": "2ae2801968df1057c9d77b4d9194ce7a9387e4ff44d39d0ffbd6f23e96f8c907",
+    "results/semantic-development/predictions.jsonl": "74e85478f0be70e62eb093c8503e9944888316f4e4881131da76624c02ac2317",
+    "results/semantic-development-linked/predictions.jsonl": "8e06c05145a5d04597c427e72ecdf274880d0c4215c0c6b765d13ef0e57e6d92",
+    "results/semantic-heldout/predictions.jsonl": "6f2df9cc8b6e1e272fb1f30cb11a6a07e74c9f7ab675bf1ad55cf31dd3bee94a",
+    "results/semantic-heldout-linked/predictions.jsonl": "12b5e42f903b79ef5f3015b8a22f74890aa699d53f181f22e5bb031b5eb18354",
+    "results/backbone-41mini/summary.json": "8b2b9d7e90a661aab64cbb22366a4e90fcc17e0318020e9ba6cffd9bddffb314",
+    "results/backbone-41mini-eval13/summary.json": "5649a46d544e631de5e7409745cfd4f9bf532699986c08d3a18e195978950f66",
+    "results/backbone-41mini-preservation-eval14/summary.json": "0ca94572044818f6f171069fbcbb7c0572279242162a7fa7f2fdf89cb1274cc0",
+    "results/backbone-54mini/summary.json": "fa64e0560b59e0ce94ab1d9db7c60c09793e79017342433a14854bc27371bcf5",
+    "results/backbone-54mini-eval13/summary.json": "f2240255d7b7a19faedb92ce239f14b934c05bf421bbd81adab0749f24ade4d8",
+    "results/backbone-54mini-preservation-eval14/summary.json": "4a97ea07f85177ddf454d97f342650477d1ec288ce531e87e514d0a556a68111",
+    "results/drawer-verifier-trial/summary.json": "96c73fb35313a73964af10ab254c0a582d9bc7f231118965ef2da8234636a6f8",
+    "results/expanded-grounding-linked/summary.json": "a49dfa5b11f030ac25985184005d9bf072cfc4b625388c0e48a6cb57cd324881",
+    "results/expanded-grounding-raw/summary.json": "4d609952536de89e602a0becf724aec82b4dbb8d85baf42bbe7178c51fdbbde4",
+    "results/expanded-grounding-review/summary.json": "272e6c57aa08100d8b5d17fce0b48155b78b8a34c1985d6eb53849f49b92151b",
+    "results/external-baselines-report/summary.json": "fc572795d1adae283a2f19d907298c75e6f2b40b15746d51ce4baaccfb84b9c9",
+    "results/logic-markers-41mini/summary.json": "2a2f0a5598cfe818830890ee269c9ab65b2522f55ba4511714b186ab1dbef224",
+    "results/logic-markers-41mini-preservation-eval14/summary.json": "24c0098455f8f8f0c93ef7e996e6e44a9ea7a8e0ef90027f668c976ca42cfcaa",
+    "results/logic-markers-54mini/summary.json": "60f949708317813b37c8604e37f024cd261b9d3b1de240d3833d7f4678f5c3b7",
+    "results/logic-markers-54mini-eval14/summary.json": "8b266323f84be550f823f0fe7fc8fade588e3610a8702566292edf37070ce289",
+    "results/logic-markers-54mini-preservation-eval14/summary.json": "8b266323f84be550f823f0fe7fc8fade588e3610a8702566292edf37070ce289",
+    "results/offline/summary.json": "303e3aba1a3a787f9f7565f9d64a4494295039d23a82cae21b0237d3a3234625",
+    "results/offline-direct/summary.json": "2ef496ea4e78794b26daa9788353af4d5299591b13160f8d709f8a1ca9957fdf",
+    "results/offline-initial/summary.json": "961c47f616122d805da47aa90e388c30e002a4bea6b4168dcc882c3f23d09d20",
+    "results/openai-pilot/summary.json": "7608a8c6601771e5c24635e0ad2c8cefc50484d95df6baa564637964c648de84",
+    "results/openai-pilot-preservation-eval14/summary.json": "5cb8bee21fab4ec8ff7cbc19300a1c2c32412ad3838e8667664e5911837a60e9",
+    "results/openai-pilot-v1-facts/summary.json": "85da52a9ff24a74f0520c945a99ad9905915b3ef0c40f4c3edafa908bee64a87",
+    "results/openai-pilot-v2-facts/summary.json": "49768746eb43eb6edf2cf0fa18e33488388b9668065c0515bb3d9b2e5eb92870",
+    "results/openai-pilot-v2-preservation-eval14/summary.json": "72f312778822e92060b10dd14bc60d39886be20835b176942d97f1748f2f23ce",
+    "results/reasoning-astra-medium-linked/summary.json": "42da1c4f05907209f1af4a852e1f33964fbd77183e98a246fe12141d29c07e30",
+    "results/reasoning-astra-medium-raw/summary.json": "bdb427d7fe54a36a183640a19bcf1a14450605857e26af39ddf6077da21496a7",
+    "results/reasoning-comparison/summary.json": "174981793c293f37a6534e71a9588ab166776946c71ad0cec6bfec347e4a8938",
+    "results/reasoning-mini-medium-linked/summary.json": "ff65c5a7d82a38a20c0379d333b45324919179662d6d35b0aef96689455271dd",
+    "results/reasoning-mini-medium-raw/summary.json": "c1dab1d421dffddbee78063f2c0979793b4e7c2ee06de9bc2201800cbf9418d9",
+    "results/rgb-choice-astra/summary.json": "a60b0ad1556cfd454fa51d7ac7baccf845582275d4c9d6fbbb24c502bce9c954",
+    "results/rgb-choice-astra-report/summary.json": "4efd07f450425340eb820f081198fa4a13e4ae29f456d13e20e759ff06831e98",
+    "results/rgb-choice-mini/summary.json": "56fe112395f9bbae70fccb4b121a5a4d42ebcda3e6f50929b0962a2e32dd0c4e",
+    "results/rgb-choice-report/summary.json": "6f3482aab13c879a5f35db6fde6281ac5575327cc47141ccc380add328ea28b6",
+    "results/rgb-choice-v2-mini-dev/summary.json": "92848e77a5de101bca41142499fb5c5054a5eb208f2bb4ebbe152a947bc5ce51",
+    "results/rgb-choice-v2-mini-validation/summary.json": "e99286f17dfea6178afaf8dabc5fed59406ae2811fef89cdf940f1eeae1713bd",
+    "results/rgb-choice-v2-report/summary.json": "12ad3327f5eb52eb2f87cf03f2209d183e0baad771e7ca8068105c6414b4c5c3",
+    "results/rgb-object-choice-report/summary.json": "2b0ebac76600bbdf8646341cba94f512e0c2852a591438d06bd132a22bf5a241",
+    "results/rgb-object-mini-dev/summary.json": "97bc2080a412712062766b9138233dbd463ff044f32be807b4dcb6c9a3ea2091",
+    "results/rgb-object-mini-validation/summary.json": "774a74c499d8325f125ec3d67dbdfbf7d871c51e89ffb6a18bfab16334346162",
+    "results/rgb-repair-mini/summary.json": "dd4d23701157d29c3d61387814735db50f2d0c781fe816ae76f41f796198701f",
+    "results/rgb-repair-report/summary.json": "40fb20ca24ab65a54ce894d465525646ce9f76cea3c282d99da81f29a9f78299",
+    "results/rgb-role-choice-report/summary.json": "b44d66cc73568d6c39cf32defe815ae0ca72df39c522984f35fa24761e1e2957",
+    "results/rgb-role-generalization-mini/summary.json": "ece429df30786bea258550f1b2398159f6a71e4fc4953fa631500c6c25cb291b",
+    "results/rgb-role-generalization-report/summary.json": "eaf7ca31940fa2c98d5f51dccff06dc934a798dba3c95e0d4acfedcd6b4b3762",
+    "results/rgb-role-mini-dev/summary.json": "a0d241a7d25e48943f2b05e05963d142d1fdac8d0983cf68af6f944616817831",
+    "results/rgb-role-mini-validation/summary.json": "c3230244dea3bd924c057e7d1c735e738d8d0d2bbe75ad7e559f26f2e1781985",
+    "results/rgb-role-points-mini/summary.json": "f4e06161adf1e5325d4066ba8831dd61d831eb714b2d488d80578c741185c8e6",
+    "results/rgb-role-points-report/summary.json": "39932134ef382fdded7cb4e4455d25a8c9c4bd79d9dd4fcc218850fb5881d2f7",
+    "results/robopoint-generalization/summary.json": "99058d6c8df36d317f3a292f8a525ab2e938eb3c57d9c3f9caacc859a4451270",
+    "results/robopoint-native-cap/summary.json": "3ff8ef524b0b2f1647bc383df2815d785c76c835405b0fa6683847e7dc877b64",
+    "results/semantic-development/summary.json": "c8f265a714960c41167cbbe61ce6d96928e718c2bbd2b0452f5840f5da842ec9",
+    "results/semantic-development-linked/summary.json": "7bc8be1842eee53b4deba3796b4ebcebe0fb09e7026604110ad7fd8ce0fb7353",
+    "results/semantic-heldout/summary.json": "3d9dcfb8c3fb2bd06fd5b7a2c0a098b37cd28015e954e555b2c7a7a8d141e6b5",
+    "results/semantic-heldout-linked/summary.json": "4a4f74b82708f0e660f2cec780677ee7666157fa563bfb90a5814fe3cbea3386",
+    "results/rgbd-numerical-mini/predictions.jsonl": "ab131643090a41811f7975dce4ce935ac8221c3ff2ac888dee755cf3d613e69f",
+    "results/rgbd-numerical-mini/middle_bowl_plate/response.json": "e6f24d560a61e547a23b123de88f40b72a9bce7df3081ba9cd6c8890d64f0a0d",
+    "results/rgbd-numerical-mini/red_mug_left_plate/response.json": "438f64f2767ec0017ea52f761209caf3bdf46ab31eeb7e0cf999cea298a21301",
+    "results/rgbd-numerical-mini/bowl_plate/response.json": "9d833908de025de9650e9976c664899b8a4ae008efe45bcd11960c08f11ff615",
+    "results/rgbd-numerical-mini/red_mug_left_plate_upright/response.json": "221984dfe77f847c8ec71fd7c124fedd9c810890c08ebb3bcf214f9ebb7e4295",
+    "results/rgbd-numerical-mini/bowl_plate_upright/response.json": "dbbfdf5f5b5d7ad1df78daf524a2d156dc7bbdf8366a4af6c793a448c35ac3ea",
+    "results/rgbd-numerical-mini/yellow_mug_right_plate/response.json": "c0be088dc81f7a3533e253d58349325b38d79b4d9ad2e7e65b30a7e1221f0f0a"
+  },
+  "scope": "four previously queried scenes; six development cases, two explicit upright variants",
+  "model_inventory": false,
+  "simulator_answers_in_inference": false,
+  "grasp_validation": "geometric proposals only; no IK/contact/execution success claimed",
+  "parent_protocol": {
+    "path": "configs/frozen_rgbd_numeric_trial.json",
+    "sha256": "89067e2d53bba094aa66cfa51544220271561d01310002448bb29cd97bd191dd"
+  },
+  "evaluation_repair": {
+    "scope": "offline reference decoding only; no inference or geometry policy changes",
+    "reason": "LIBERO stores reference rotation matrices as flat nine-element arrays",
+    "original_evaluator_snapshot": "results/rgbd-numerical-audit/evaluation_v1_pre_repair.py",
+    "original_evaluator_sha256": "29104799365968275a0ce49b9db575b5d38bb49d173b197dd4f0fa87ff8a4e0d"
+  }
+}

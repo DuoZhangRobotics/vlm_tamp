@@ -1,0 +1,9 @@
+Interpret the requested manipulation using the image and instruction. Return the RGBPrediction JSON schema.
+
+Identify the referenced objects with short local names. Locate each visible object using a point on its actual visible pixels and, when useful, a tight box. Coordinates are normalized [0,1], origin top-left. A location must follow the image, not an assumed layout.
+
+For a part or region, declare its owner object and a selector (for example bottom_drawer or interior). Localize the owner if the interior is hidden. Preserve distinctions between similar objects, colors, left/right plates, and drawer levels. A multicolored object is one object unless the instruction explicitly requests several.
+
+Describe final desired states separately from intermediate actions. On means supported on; In means inside a container; InFrontOf means in front of an object. Open, Close, Turnon and Turnoff describe final states. Use the requested natural-language relation: placement in a bowl is In. Opening to obtain access is an intermediate step unless requested as a final state.
+
+Propose useful stages and task-specific contact/path constraints as hypotheses. Keep numerical geometry unresolved and all constraints unverified. State ambiguity honestly. Do not guess simulator IDs or precise 3D geometry.

@@ -1,0 +1,76 @@
+{
+  "baseline_raw": "results/expanded-grounding-raw",
+  "baseline_linked": "results/expanded-grounding-linked",
+  "baseline_manifest_sha256": "4e4260aec6daf6cb8a0ef13096cfc98a1c457a0a973dfaf416ccbfe9f6732aac",
+  "dataset_sha256": "b6ad176c389a5d6ffc7063d05e6eaac924319769f19cb09cce97b3febbc0c623",
+  "schema_sha256": "1f49681fec9e7e6322dcbd2e7c98eafe7ef43023e1ecb64841ccb3b251b05955",
+  "prompt_sha256": "49ec63875f6183401f8cbc6d818d7d186e28d64d0f858333b5b75ddf79f5ebb5",
+  "configs": {
+    "mini-medium": "configs/reasoning_mini_medium.json",
+    "astra-medium": "configs/reasoning_astra_medium.json"
+  },
+  "maximum_new_calls": 40,
+  "maximum_new_estimated_usage_usd": 8.75,
+  "previous_api_attempts": 134,
+  "previous_estimated_usage_usd": 0.45537685,
+  "prior_paid_history": [
+    {
+      "manifest": "results/backbone-41mini/manifest.json",
+      "sha256": "436ecf6d94adf46aa776cc7112bff2cd3886ffd0954ab1b77ef51843b0c9fa30"
+    },
+    {
+      "manifest": "results/backbone-54mini/manifest.json",
+      "sha256": "29213a001ce39e6c3a130813ac53ab2e45f45b64438429dae6316872ad328955"
+    },
+    {
+      "manifest": "results/drawer-verifier-trial/manifest.json",
+      "sha256": "2cd79e45d62f628c7edf550d0bb3131d336f71335b4390ddde5ab746b2234438"
+    },
+    {
+      "manifest": "results/expanded-grounding-raw/manifest.json",
+      "sha256": "4e4260aec6daf6cb8a0ef13096cfc98a1c457a0a973dfaf416ccbfe9f6732aac"
+    },
+    {
+      "manifest": "results/logic-markers-41mini/manifest.json",
+      "sha256": "4ff3e3c603dd315cc4ba2d9290eff1f1493b5aae002d0c9bea3ea878cda709b4"
+    },
+    {
+      "manifest": "results/logic-markers-54mini/manifest.json",
+      "sha256": "e6170a23a802ac61989f1a6e889b7f1621314a0784e7f0020186173fdb3ed021"
+    },
+    {
+      "manifest": "results/openai-pilot/manifest.json",
+      "sha256": "b64b90c1719c3222d6ba2071a31c7ee458230d9aae841e7c0670ebaeadfb6d2e"
+    },
+    {
+      "manifest": "results/openai-pilot-v2/manifest.json",
+      "sha256": "a445463c16f138b7b482d7c305fd5ee4de97135deafb3280cf1ec77a51b649f2"
+    },
+    {
+      "manifest": "results/semantic-development/manifest.json",
+      "sha256": "7e5dd9c988eac55e46398f3bb4870bb88e7f1f1b2e8649ddc83ff7b3367c361a"
+    },
+    {
+      "manifest": "results/semantic-heldout/manifest.json",
+      "sha256": "f1616b382b4aba1f82673693fb428bb2a0adffe2f868b6ee78ff78214dfe06c2"
+    }
+  ],
+  "primary_endpoints": [
+    "raw and linked request-bound schema validity",
+    "strict complete ordered instance-goal agreement",
+    "visible whole-object goal-role identity",
+    "image point-in-mask and visible-target localization",
+    "latency, input/output/reasoning tokens and conservative cost"
+  ],
+  "controlled_backbone_pair": [
+    "mini-medium",
+    "astra-medium"
+  ],
+  "baseline_comparison_limit": "Saved Mini-none results used temperature 0 and a 1500-token cap. Both new arms use no temperature and a 25000-token cap that includes reasoning. Mini-none versus Mini-medium is a practical configuration comparison, not an isolated reasoning intervention.",
+  "interpretation": "Ten previously inspected diagnostic tasks, not a fresh held-out test. One output per task/condition. No prompt, schema, perception, ontology, linker or scoring changes. Inventory remains simulator-assisted. No constraint expert labels or robot execution.",
+  "pricing_sources": [
+    "https://developers.openai.com/api/docs/models/gpt-5.4-mini",
+    "https://developers.openai.com/api/docs/models/gpt-6-astra"
+  ],
+  "pricing_checked": "2026-10-11"
+}

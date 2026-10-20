@@ -1,0 +1,155 @@
+{
+  "model": "gpt-6-luna",
+  "dataset": "data/rgb-role-generalization",
+  "depth_dataset": "data/rgbd-numerical-pilot",
+  "prompt": "configs/prompts/rgbd_landmark_choices_v1.txt",
+  "frozen_protocol": "configs/frozen_rgbd_dino_luna_comparison.json",
+  "reasoning_effort": "none",
+  "image_detail": "high",
+  "service_tier": "default",
+  "max_output_tokens": 1000,
+  "timeout_seconds": 180,
+  "max_requests": 12,
+  "max_retries": 0,
+  "max_budget_usd": 2.0,
+  "image_token_allowance": 8192,
+  "capture_usage_details": true,
+  "pricing": {
+    "input_per_million": 0.1,
+    "cached_input_per_million": 0.01,
+    "cache_write_per_million": 0.125,
+    "output_per_million": 0.5
+  },
+  "pricing_source": "https://developers.openai.com/api/docs/models/gpt-6-luna",
+  "pricing_checked": "2026-10-13",
+  "cases": [
+    {
+      "id": "dinov2_bowl_plate",
+      "example_id": "libero_goal-08-state005-seed0",
+      "upright": false,
+      "base_case_id": "bowl_plate",
+      "condition": "dinov2"
+    },
+    {
+      "id": "dinov2_middle_bowl_plate",
+      "example_id": "libero_90-14-state004-seed0",
+      "upright": false,
+      "base_case_id": "middle_bowl_plate",
+      "condition": "dinov2"
+    },
+    {
+      "id": "dinov2_red_mug_left_plate",
+      "example_id": "libero_90-65-state005-seed0",
+      "upright": false,
+      "base_case_id": "red_mug_left_plate",
+      "condition": "dinov2"
+    },
+    {
+      "id": "dinov2_yellow_mug_right_plate",
+      "example_id": "libero_90-68-state004-seed0",
+      "upright": false,
+      "base_case_id": "yellow_mug_right_plate",
+      "condition": "dinov2"
+    },
+    {
+      "id": "dinov2_bowl_plate_upright",
+      "example_id": "libero_goal-08-state005-seed0",
+      "upright": true,
+      "base_case_id": "bowl_plate_upright",
+      "condition": "dinov2"
+    },
+    {
+      "id": "dinov2_red_mug_left_plate_upright",
+      "example_id": "libero_90-65-state005-seed0",
+      "upright": true,
+      "base_case_id": "red_mug_left_plate_upright",
+      "condition": "dinov2"
+    },
+    {
+      "id": "dinov3_bowl_plate",
+      "example_id": "libero_goal-08-state005-seed0",
+      "upright": false,
+      "base_case_id": "bowl_plate",
+      "condition": "dinov3"
+    },
+    {
+      "id": "dinov3_middle_bowl_plate",
+      "example_id": "libero_90-14-state004-seed0",
+      "upright": false,
+      "base_case_id": "middle_bowl_plate",
+      "condition": "dinov3"
+    },
+    {
+      "id": "dinov3_red_mug_left_plate",
+      "example_id": "libero_90-65-state005-seed0",
+      "upright": false,
+      "base_case_id": "red_mug_left_plate",
+      "condition": "dinov3"
+    },
+    {
+      "id": "dinov3_yellow_mug_right_plate",
+      "example_id": "libero_90-68-state004-seed0",
+      "upright": false,
+      "base_case_id": "yellow_mug_right_plate",
+      "condition": "dinov3"
+    },
+    {
+      "id": "dinov3_bowl_plate_upright",
+      "example_id": "libero_goal-08-state005-seed0",
+      "upright": true,
+      "base_case_id": "bowl_plate_upright",
+      "condition": "dinov3"
+    },
+    {
+      "id": "dinov3_red_mug_left_plate_upright",
+      "example_id": "libero_90-65-state005-seed0",
+      "upright": true,
+      "base_case_id": "red_mug_left_plate_upright",
+      "condition": "dinov3"
+    }
+  ],
+  "proposal": {
+    "candidates_per_region": 8,
+    "max_regions": 32,
+    "min_region_pixels": 12,
+    "min_separation_m": 0.003,
+    "bounds_min": [
+      -1.5,
+      -1.5,
+      0.0
+    ],
+    "bounds_max": [
+      1.5,
+      1.5,
+      2.0
+    ],
+    "minimum_depth_m": 0.1,
+    "maximum_depth_m": 5.0
+  },
+  "segmentation": {
+    "points_per_side": 16,
+    "pred_iou_thresh": 0.75,
+    "stability_score_thresh": 0.88,
+    "minimum_area": 90,
+    "maximum_area_fraction": 0.4,
+    "duplicate_iou": 0.98,
+    "maximum_regions": 32
+  },
+  "geometry_source_config": "configs/rgbd_numeric_trial.json",
+  "candidate_datasets": {
+    "dinov2": "data/rgbd-dino-comparison-candidates/dinov2",
+    "dinov3": "data/rgbd-dino-comparison-candidates/dinov3"
+  },
+  "candidate_root": "data/rgbd-dino-comparison-candidates",
+  "conditions": [
+    "dinov2",
+    "dinov3"
+  ],
+  "proposal_revision_reason": "Initial inherited height bounds excluded low-table scenes, sparse mask prompts missed bowl; development diagnostic correction before paid calls",
+  "initial_dinov2_protocol": "configs/frozen_rgbd_dinov2_choices_trial.json",
+  "feature_sources": {
+    "dinov2": "data/rgbd-dinov2-candidates",
+    "dinov3": "data/rgbd-dinov3-features"
+  },
+  "parent_config": "configs/rgbd_dino_comparison.json"
+}

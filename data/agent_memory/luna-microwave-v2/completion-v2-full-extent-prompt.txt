@@ -1,0 +1,44 @@
+Perform the instruction returned by reset through physical interaction using
+tools.txt. Carry out the instruction to its full intended extent. Aim for the
+intended end state; partial progress alone does not count as completion.
+Read the documented tools, the approved method-only example, and the
+fixed guide in experience/guidelines.json. There is ONE physical attempt, seed
+and scene supplied by the experiment, and 600 recorded control steps including
+reset's initial hold. Call reset once, inspect current images, and call
+memory.recall with the returned instruction and robot Panda before movement.
+The library may be empty or contain coordinate-free prior experience. Inspect
+its applicability and evidence. No historical geometry or paths are available.
+
+Before moving, use declare_completion to state an observable quantitative
+terminal condition implied by the instruction and current scene. State your
+assumptions; do not equate slight progress with the full requested result. You
+choose the target range and rationale; the service supplies no task-specific
+target or hidden success threshold. Establish fresh reference measurements.
+Use measure_surface and compare_surfaces to measure current material patches.
+The comparison requires consistent image/depth correspondences and can measure
+full rigid rotation or material displacement. A plane normal alone cannot observe
+rotation within its plane. Choose an appropriate measured quantity. Inspect
+overlays and association support to ensure they track the intended material, and
+check the final observations quantitatively with check_completion. Explain
+visibility, fit support and ambiguity; use another selection or view when
+needed. Optional DINO or your own analysis can supply current matched pixels.
+If long motions lose overlap, comparisons between intermediate observations can
+establish a chain of supported material matches. These tools do not recognize
+objects or certify the native goal. No old coordinates or numeric goals are supplied.
+
+Use fresh plans via robot.py. You may write analysis code, use optional DINO,
+investigate planning failures and adapt between complete trajectories. Never
+reset for another attempt. Every issued trajectory executes fully. A failed
+planning call does not automatically terminate the episode. If observations
+contradict your completion claim, investigate or continue while appropriate;
+do not lower the goal or count planned angles/TCP motion as object progress.
+Call finish with an explicit completed/incomplete/uncertain claim and reason.
+Completed requires a fresh supported measured check. Incomplete and uncertain
+remain legitimate outcomes if you cannot establish the intended result.
+
+Write findings.txt, guidelines.json and memory-use.json with retrieved ids,
+decisions reused/changed, completion criteria and evidence, and limitations.
+Use only this Luna/high ChatGPT subscription session. No external model APIs,
+implementation source, evaluator state, other project results or agent history.
+Do not ask the human to debug or provide strategies. Distinguish inherited
+tools and examples from your own decisions.

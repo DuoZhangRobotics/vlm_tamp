@@ -1,0 +1,37 @@
+{
+  "schema_version": "1.1",
+  "schema_sha256": "5b423b763db6b6d361a52a2decfc66b137a660a9d4983d2bbaebc90634e128ec",
+  "prompt_sha256": "0e7bffa49a8d46752e66ca3f25a598fd790666fc39f3d2f2a61600b2d38b5e9f",
+  "marker_bundle_sha256": "1250f566e6eb86bc4f42df230f76e3171eea49736362ee435e318fc87179e2fb",
+  "models": [
+    "gpt-4.1-mini-2025-04-14",
+    "gpt-5.4-mini-2026-03-17"
+  ],
+  "example_ids": [
+    "libero_goal-00-state000-seed0",
+    "libero_goal-01-state000-seed0",
+    "libero_goal-03-state000-seed0",
+    "libero_spatial-00-state000-seed0"
+  ],
+  "conditions": [
+    "language",
+    "rgb",
+    "candidates",
+    "markers"
+  ],
+  "temperature": 0,
+  "image_detail": "high",
+  "max_output_tokens": 1500,
+  "reasoning_policy": "baseline has no reasoning parameter; comparison explicitly disables reasoning",
+  "maximum_inference_attempts": 32,
+  "combined_new_estimated_budget_usd": 0.32,
+  "previous_estimated_usage_usd": 0.14188830000000002,
+  "maximum_total_estimated_usage_usd": 0.46188830000000003,
+  "primary_endpoints": [
+    "schema validity and strict instance goal exact match, retaining failures",
+    "conjunctive goal_logic declarations on common language/rgb/candidates pairs versus structured_v3",
+    "candidates versus markers: exact ordered visible whole-object final-goal argument identity"
+  ],
+  "marker_scope": "all visible whole objects; no part, region, joint, goal or plan labels",
+  "controls": "Schema 1.1 and generation settings unchanged from structured_v3. Marker condition replaces geometry for this follow-up; geometry has no new paid predictions. All visible whole objects are labelled, without goal filtering. No part or joint labels."
+}

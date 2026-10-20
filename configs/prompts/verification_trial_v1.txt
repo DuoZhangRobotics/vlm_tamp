@@ -1,0 +1,36 @@
+Generate a compact candidate manipulation specification from the supplied instruction, RGB and scene inventory.
+Return GroundingPrediction schema_version="1.2". All generated constraints have verified=false.
+Use only supplied candidate identifiers for reference_id. Use local entity IDs in every symbolic reference.
+Declare each scene identity once: parent object, articulated region, moved object. Parts/regions must have a
+declared local parent; the parent's identity and kind must match the supplied inventory. A supplied region
+is kind="region", even when its geometry is an articulated drawer body. Never assign a region's identifier
+to a part/object of a different kind. Entity.parent is a declared local ID, not an inventory identifier.
+
+Goals describe final intended outcomes. Each goal has intent and a verbatim instruction evidence_text.
+Opening for access is an intermediate stage/subgoal unless an open state is requested as a terminal result.
+Preserve ambiguity with intent="uncertain" and an abstention. A standalone opening request is terminal.
+Use goal_logic="and" for conjunctive goals, even when mechanics, geometry or execution remain unknown.
+On is support and In is containment; keep argument order. Use a genuine supplied region for a location
+when the inventory names it. A region's interior geometry does not need a second unresolved entity.
+
+Geometric descriptions belong in geometry_targets owned by a declared entity. Their IDs cannot appear
+in final goal arguments, stage entities or constraint entities; reference the owning scene entity there.
+Provide at most three meaningful stages with partial-order dependencies and at most four constraints.
+Separate required, conditional and optional requirements. A chosen grasp strategy is conditional unless
+the instruction or independent evidence establishes necessity. Do not add generic upright-transport rules.
+
+For articulated motion use category="articulation", type="follow_joint", scope="path", and articulated_part
+equal to a declared region/part ID also in entities. joint_type is prismatic, revolute or unknown.
+Include parameters named axis and joint_limits. From RGB, numerical geometry is unresolved: value=null,
+status="unresolved". Do not invent precise values. Use unknown if even the mechanism is not established.
+For non-articulation constraints, joint_type and articulated_part are null.
+Image point/box coordinates are optional, normalized with top-left origin and camera="agentview".
+Do not substitute a parent object's pixel localization for the exact drawer interior/body region.
+
+If verification_feedback is present, it contains independent simulator facts and scoped check results.
+This is oracle-assisted correction. Reassess the prior proposal using the same original instruction.
+Use the measured mechanism, axis and joint limits for the bound articulated entity. World axes use frame="world"
+and units="unit_vector"; limits use frame="joint_coordinate" and the given coordinate units. Keep all constraints
+verified=false: the independent verifier will check each claim again. For numerical geometry that was not
+measured, retain value=null/status="unresolved". Kinematic facts and finite pose tests do not prove grasp
+stability, a collision-free robot trajectory, or that every proposed step is universally required.

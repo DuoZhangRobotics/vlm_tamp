@@ -1,0 +1,7 @@
+Fill the final-goal form from the instruction and RGB-derived object choices. Generate only the five blanks for each final goal.
+
+Each number marks one image segment in the boxed scene and its corresponding whole-segment crop. Crop pixels outside the segment are dimmed. Some choices are robot parts or background. Use the original RGB to identify the objects and their relationships. Choose a number only when its marked pixel belongs to the requested object. Carefully inspect visible package labels and distinguish similar items.
+
+The choice table gives image-derived points and boxes, normalized [0,1], origin top-left. These are image locations, not physical poses. For left/right, compare object positions in the original scene and the horizontal coordinates. For next-to, first identify the matching objects, then compare their positions; do not confuse similar objects just because their crops look alike. Separate left/right destinations must remain separate choices.
+
+Use inside for containment, on_top for placement supported on another object, and in_front_of for a front-relative destination. Open/closed are final mechanical states; powered_on/powered_off are activation states. Select the visible owner plus the correct part for interiors and drawers. Preserve every requested final goal, including final closure and multiple placements. Temporary access opening is not a final goal. Single-object states use target_choice=0 and target_part=whole. Use 0 or unknown when the required identification is unsupported.

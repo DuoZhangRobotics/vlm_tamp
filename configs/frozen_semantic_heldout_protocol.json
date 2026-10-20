@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.2",
+  "schema_sha256": "1f49681fec9e7e6322dcbd2e7c98eafe7ef43023e1ecb64841ccb3b251b05955",
+  "prompt_sha256": "49ec63875f6183401f8cbc6d818d7d186e28d64d0f858333b5b75ddf79f5ebb5",
+  "models": [
+    "gpt-5.4-mini-2026-03-17"
+  ],
+  "temperature": 0,
+  "image_detail": "high",
+  "max_output_tokens": 1500,
+  "previous_estimated_usage_usd": 0.24371635000000003,
+  "combined_new_estimated_budget_usd": 0.23,
+  "maximum_total_estimated_usage_usd": 0.47371635,
+  "maximum_inference_attempts": 20,
+  "primary_endpoints": [
+    "schema and request-bound validity, failures retained",
+    "strict complete ordered instance-goal agreement with logical and terminal-intent status",
+    "visible whole-object goal-role identity"
+  ],
+  "interpretation": "Prompt and schema change together. Development cases are diagnostics, held-out task groups are separate. No goal-answer access in model input or validation, no automatic repair of old responses.",
+  "prior_paid_history": [
+    {
+      "manifest": "results/openai-pilot-v2/manifest.json",
+      "sha256": "a445463c16f138b7b482d7c305fd5ee4de97135deafb3280cf1ec77a51b649f2"
+    },
+    {
+      "manifest": "results/logic-markers-54mini/manifest.json",
+      "sha256": "e6170a23a802ac61989f1a6e889b7f1621314a0784e7f0020186173fdb3ed021"
+    },
+    {
+      "manifest": "results/backbone-54mini/manifest.json",
+      "sha256": "29213a001ce39e6c3a130813ac53ab2e45f45b64438429dae6316872ad328955"
+    },
+    {
+      "manifest": "results/logic-markers-41mini/manifest.json",
+      "sha256": "4ff3e3c603dd315cc4ba2d9290eff1f1493b5aae002d0c9bea3ea878cda709b4"
+    },
+    {
+      "manifest": "results/openai-pilot/manifest.json",
+      "sha256": "b64b90c1719c3222d6ba2071a31c7ee458230d9aae841e7c0670ebaeadfb6d2e"
+    },
+    {
+      "manifest": "results/backbone-41mini/manifest.json",
+      "sha256": "436ecf6d94adf46aa776cc7112bff2cd3886ffd0954ab1b77ef51843b0c9fa30"
+    }
+  ],
+  "previously_queried_task_keys": [
+    [
+      "libero_goal",
+      0
+    ],
+    [
+      "libero_goal",
+      1
+    ],
+    [
+      "libero_goal",
+      3
+    ],
+    [
+      "libero_spatial",
+      0
+    ]
+  ],
+  "partition": "previously_unqueried_tasks",
+  "example_ids": [
+    "libero_goal-02-state000-seed0",
+    "libero_spatial-01-state000-seed0",
+    "libero_spatial-02-state000-seed0",
+    "libero_spatial-03-state000-seed0"
+  ],
+  "conditions": [
+    "rgb",
+    "candidates"
+  ],
+  "partition_budget_usd": 0.1
+}

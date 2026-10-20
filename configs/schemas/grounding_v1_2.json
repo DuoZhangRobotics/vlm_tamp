@@ -1,0 +1,691 @@
+{
+  "$defs": {
+    "Constraint": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "category": {
+          "enum": [
+            "goal",
+            "path",
+            "articulation",
+            "contact",
+            "temporal"
+          ],
+          "title": "Category",
+          "type": "string"
+        },
+        "type": {
+          "title": "Type",
+          "type": "string"
+        },
+        "joint_type": {
+          "anyOf": [
+            {
+              "enum": [
+                "prismatic",
+                "revolute",
+                "unknown"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Required for articulation: explicit joint mechanism or unknown. Null for other categories.",
+          "title": "Joint Type"
+        },
+        "articulated_part": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "For articulation, the local ID of a declared part/region entity in this constraint's entities. Null otherwise.",
+          "title": "Articulated Part"
+        },
+        "entities": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Entities",
+          "type": "array"
+        },
+        "stages": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Stages",
+          "type": "array"
+        },
+        "scope": {
+          "enum": [
+            "goal",
+            "path",
+            "transition"
+          ],
+          "title": "Scope",
+          "type": "string"
+        },
+        "requirement": {
+          "enum": [
+            "required",
+            "conditional",
+            "optional"
+          ],
+          "title": "Requirement",
+          "type": "string"
+        },
+        "condition": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Condition"
+        },
+        "parameters": {
+          "items": {
+            "$ref": "#/$defs/Parameter"
+          },
+          "title": "Parameters",
+          "type": "array"
+        },
+        "frame_assumption": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Frame Assumption"
+        },
+        "evidence": {
+          "enum": [
+            "instruction",
+            "observation",
+            "oracle_inventory",
+            "oracle_geometry",
+            "planning_hypothesis"
+          ],
+          "title": "Evidence",
+          "type": "string"
+        },
+        "verified": {
+          "title": "Verified",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "category",
+        "type",
+        "joint_type",
+        "articulated_part",
+        "entities",
+        "stages",
+        "scope",
+        "requirement",
+        "condition",
+        "parameters",
+        "frame_assumption",
+        "evidence",
+        "verified"
+      ],
+      "title": "Constraint",
+      "type": "object"
+    },
+    "Dependency": {
+      "additionalProperties": false,
+      "properties": {
+        "before": {
+          "title": "Before",
+          "type": "string"
+        },
+        "after": {
+          "title": "After",
+          "type": "string"
+        },
+        "requirement": {
+          "enum": [
+            "required",
+            "conditional",
+            "optional"
+          ],
+          "title": "Requirement",
+          "type": "string"
+        },
+        "condition": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Condition"
+        },
+        "evidence": {
+          "enum": [
+            "instruction",
+            "observation",
+            "oracle_inventory",
+            "oracle_geometry",
+            "planning_hypothesis"
+          ],
+          "title": "Evidence",
+          "type": "string"
+        }
+      },
+      "required": [
+        "before",
+        "after",
+        "requirement",
+        "condition",
+        "evidence"
+      ],
+      "title": "Dependency",
+      "type": "object"
+    },
+    "Entity": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Local semantic ID used by goal/stage arguments, not a simulator identity.",
+          "title": "Id",
+          "type": "string"
+        },
+        "category": {
+          "title": "Category",
+          "type": "string"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "object",
+            "part",
+            "region"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Local semantic parent entity ID, declared in entities, or null. This is not an inventory identifier.",
+          "title": "Parent"
+        },
+        "reference_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Exact supplied candidate identifier if resolved; null without candidate inventory or if ambiguous.",
+          "title": "Reference Id"
+        },
+        "point": {
+          "anyOf": [
+            {
+              "items": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Normalized [x,y] point, top-left image origin.",
+          "title": "Point"
+        },
+        "bbox": {
+          "anyOf": [
+            {
+              "items": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "maxItems": 4,
+              "minItems": 4,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Normalized [x_min,y_min,x_max,y_max] corner coordinates; x_min<x_max and y_min<y_max. Never center/width/height.",
+          "title": "Bbox"
+        },
+        "camera": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Camera"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Confidence"
+        },
+        "ambiguous": {
+          "title": "Ambiguous",
+          "type": "boolean"
+        },
+        "evidence": {
+          "enum": [
+            "instruction",
+            "observation",
+            "oracle_inventory",
+            "oracle_geometry",
+            "planning_hypothesis"
+          ],
+          "title": "Evidence",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "category",
+        "description",
+        "kind",
+        "parent",
+        "reference_id",
+        "point",
+        "bbox",
+        "camera",
+        "confidence",
+        "ambiguous",
+        "evidence"
+      ],
+      "title": "Entity",
+      "type": "object"
+    },
+    "FinalGoal": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "arguments": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Arguments",
+          "type": "array"
+        },
+        "intent": {
+          "type": "string",
+          "enum": [
+            "explicit_terminal",
+            "task_outcome",
+            "uncertain"
+          ],
+          "description": "In schema 1.2: explicit_terminal for a requested terminal state; task_outcome for the intended result; uncertain if persistence as a final goal is ambiguous. Access actions belong in stages."
+        },
+        "evidence_text": {
+          "type": "string",
+          "minLength": 1,
+          "description": "In schema 1.2: a verbatim phrase from the supplied instruction supporting this goal. It is not a benchmark answer."
+        }
+      },
+      "required": [
+        "name",
+        "arguments",
+        "intent",
+        "evidence_text"
+      ],
+      "title": "FinalGoal",
+      "type": "object"
+    },
+    "GeometryTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "entity": {
+          "description": "Declared local entity ID whose geometry is described. Never a goal argument or invented scene identity.",
+          "title": "Entity",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "support_surface",
+            "interior",
+            "handle",
+            "articulated_body",
+            "other"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "parameters": {
+          "items": {
+            "$ref": "#/$defs/Parameter"
+          },
+          "title": "Parameters",
+          "type": "array"
+        },
+        "evidence": {
+          "enum": [
+            "instruction",
+            "observation",
+            "oracle_inventory",
+            "oracle_geometry",
+            "planning_hypothesis"
+          ],
+          "title": "Evidence",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "entity",
+        "role",
+        "description",
+        "parameters",
+        "evidence"
+      ],
+      "title": "GeometryTarget",
+      "type": "object"
+    },
+    "Parameter": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        },
+        "status": {
+          "enum": [
+            "known",
+            "unresolved"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "frame": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Frame"
+        },
+        "units": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Units"
+        },
+        "evidence": {
+          "enum": [
+            "instruction",
+            "observation",
+            "oracle_inventory",
+            "oracle_geometry",
+            "planning_hypothesis"
+          ],
+          "title": "Evidence",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "value",
+        "status",
+        "frame",
+        "units",
+        "evidence"
+      ],
+      "title": "Parameter",
+      "type": "object"
+    },
+    "Predicate": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "arguments": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Arguments",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "arguments"
+      ],
+      "title": "Predicate",
+      "type": "object"
+    },
+    "Stage": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "action": {
+          "title": "Action",
+          "type": "string"
+        },
+        "entities": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Entities",
+          "type": "array"
+        },
+        "subgoals": {
+          "items": {
+            "$ref": "#/$defs/Predicate"
+          },
+          "title": "Subgoals",
+          "type": "array"
+        },
+        "requirement": {
+          "enum": [
+            "required",
+            "conditional",
+            "optional"
+          ],
+          "title": "Requirement",
+          "type": "string"
+        },
+        "condition": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Condition"
+        },
+        "evidence": {
+          "enum": [
+            "instruction",
+            "observation",
+            "oracle_inventory",
+            "oracle_geometry",
+            "planning_hypothesis"
+          ],
+          "title": "Evidence",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "action",
+        "entities",
+        "subgoals",
+        "requirement",
+        "condition",
+        "evidence"
+      ],
+      "title": "Stage",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.2"
+    },
+    "entities": {
+      "items": {
+        "$ref": "#/$defs/Entity"
+      },
+      "title": "Entities",
+      "type": "array"
+    },
+    "goal_logic": {
+      "enum": [
+        "and",
+        "unresolved"
+      ],
+      "title": "Goal Logic",
+      "type": "string"
+    },
+    "goals": {
+      "items": {
+        "$ref": "#/$defs/FinalGoal"
+      },
+      "title": "Goals",
+      "type": "array"
+    },
+    "geometry_targets": {
+      "items": {
+        "$ref": "#/$defs/GeometryTarget"
+      },
+      "title": "Geometry Targets",
+      "type": "array"
+    },
+    "stages": {
+      "items": {
+        "$ref": "#/$defs/Stage"
+      },
+      "title": "Stages",
+      "type": "array"
+    },
+    "dependencies": {
+      "items": {
+        "$ref": "#/$defs/Dependency"
+      },
+      "title": "Dependencies",
+      "type": "array"
+    },
+    "constraints": {
+      "items": {
+        "$ref": "#/$defs/Constraint"
+      },
+      "title": "Constraints",
+      "type": "array"
+    },
+    "abstentions": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Abstentions",
+      "type": "array"
+    }
+  },
+  "title": "GroundingPrediction",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "entities",
+    "goal_logic",
+    "goals",
+    "geometry_targets",
+    "stages",
+    "dependencies",
+    "constraints",
+    "abstentions"
+  ]
+}

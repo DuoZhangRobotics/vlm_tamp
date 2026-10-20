@@ -1,0 +1,19 @@
+{
+  "version": "1.0",
+  "linker_sha256": "b6fc8f2168e7d30faa8c5fcc6b721cadd39816e577a3971ca57cfe42b9f8cdc1",
+  "frozen_before_heldout_inference": true,
+  "development_source_sha256": "7e5dd9c988eac55e46398f3bb4870bb88e7f1f1b2e8649ddc83ff7b3367c361a",
+  "rules": [
+    "bind declared geometric-owner aliases in stages/constraints",
+    "bind unique local/reference aliases",
+    "bind ownership using supplied candidate parents when the parent is already declared",
+    "retain ambiguity and remove conflicting identity claims"
+  ],
+  "invariants": [
+    "no final-goal name/argument/intent/evidence changes",
+    "no added entities or identity claims",
+    "no numerical geometry changes",
+    "no benchmark goal access",
+    "no new model calls or cache writes"
+  ]
+}

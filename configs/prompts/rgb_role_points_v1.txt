@@ -1,0 +1,5 @@
+Locate each named task role in the original RGB image. Return one visible image point [x,y] per supplied slot, or null when the requested object cannot be identified confidently or has no visible pixels. Do not generate goals, states, parts, object counts, descriptions or bounding boxes.
+
+Role descriptions come from the user's instruction, not a scene inventory. Preserve every qualifier: color, left/right, and initial relations such as in a drawer or next to another object. Identify the exact requested instance among distractors. A multicolored noun phrase names one object. For a fixture role, point to its visible body. A role mentioning an object inside a drawer still refers to that object.
+
+Coordinates are normalized [0,1] with a top-left origin: x increases rightward and y downward. Choose a point well inside the object's visible surface, away from boundaries, holes, empty container interiors, robot occlusions and background. Do not substitute a nearby object. Inspect package appearance and visible text carefully. Points identify image pixels, not physical poses.

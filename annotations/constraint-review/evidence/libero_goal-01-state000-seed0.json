@@ -1,0 +1,28 @@
+{
+  "example_id": "libero_goal-01-state000-seed0",
+  "instruction": "put the bowl on the stove",
+  "published_goal_expression": [
+    "And",
+    [
+      "On",
+      "akita_black_bowl_1",
+      "flat_stove_1_cook_region"
+    ]
+  ],
+  "published_goal_predicates": [
+    {
+      "name": "On",
+      "arguments": [
+        "akita_black_bowl_1",
+        "flat_stove_1_cook_region"
+      ],
+      "normalized_name": "on"
+    }
+  ],
+  "bddl_sha256": "c6812d6c988be830412aa6fc4801af04d60f8c4565d2625763b6a0f2b843a87f",
+  "initial_state_sha256": "5b071f3bb26bf0ce3b866621d8c9037d793aae5d25f9ae686a1d9048c4e56b88",
+  "image_sha256": "613ed0fa3402cb9c778eb0f74ccc33ce9591c1e6cf37d763cf574826e1441729",
+  "libero_commit": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+  "simulator_facts": null,
+  "proposal_status": "unreviewed; excluded from Track B scoring"
+}

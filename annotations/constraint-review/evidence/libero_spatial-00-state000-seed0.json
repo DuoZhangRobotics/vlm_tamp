@@ -1,0 +1,28 @@
+{
+  "example_id": "libero_spatial-00-state000-seed0",
+  "instruction": "pick up the black bowl between the plate and the ramekin and place it on the plate",
+  "published_goal_expression": [
+    "And",
+    [
+      "On",
+      "akita_black_bowl_1",
+      "plate_1"
+    ]
+  ],
+  "published_goal_predicates": [
+    {
+      "name": "On",
+      "arguments": [
+        "akita_black_bowl_1",
+        "plate_1"
+      ],
+      "normalized_name": "on"
+    }
+  ],
+  "bddl_sha256": "9b59eb1287802868ad9bc78d58e6d36d4ba31134e679cfdbdf4b0feb660c959b",
+  "initial_state_sha256": "4e3eaf7a315bc3bafb6db4837c8eef0e5f8aea717782a2a3ea33139392d966ed",
+  "image_sha256": "7b20b9036ebb02d6e328903a60c6ac4a7b42d20f162b5dec8b8adbd9b0140163",
+  "libero_commit": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+  "simulator_facts": null,
+  "proposal_status": "unreviewed; excluded from Track B scoring"
+}

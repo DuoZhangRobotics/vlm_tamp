@@ -1,0 +1,17 @@
+{
+  "provider": "openai",
+  "model": "gpt-4.1-mini-2025-04-14",
+  "prompt": "configs/prompts/structured_v2.txt",
+  "conditions": ["language", "rgb", "candidates", "geometry"],
+  "example_ids": ["libero_goal-00-state000-seed0", "libero_goal-01-state000-seed0", "libero_goal-03-state000-seed0", "libero_spatial-00-state000-seed0"],
+  "seed": 0,
+  "timeout_seconds": 60,
+  "max_retries": 2,
+  "max_output_tokens": 3000,
+  "max_requests": 16,
+  "max_budget_usd": 0.25,
+  "pricing": {"input_per_million": 0.4, "output_per_million": 1.6},
+  "pricing_checked": "2026-10-11",
+  "pricing_source": "https://developers.openai.com/api/docs/models/gpt-4.1-mini",
+  "image_token_allowance": 4096
+}

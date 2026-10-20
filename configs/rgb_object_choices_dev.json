@@ -1,0 +1,38 @@
+{
+  "model": "gpt-5.4-mini-2026-03-17",
+  "prompt": "configs/prompts/rgb_object_choices_v3.txt",
+  "conditions": [
+    "rgb_object_choices"
+  ],
+  "example_ids": [
+    "libero_goal-05-state001-seed0",
+    "libero_goal-06-state001-seed0",
+    "libero_goal-07-state001-seed0",
+    "libero_spatial-04-state001-seed0",
+    "libero_spatial-08-state001-seed0",
+    "libero_object-00-state001-seed0",
+    "libero_object-09-state001-seed0",
+    "libero_10-03-state001-seed0",
+    "libero_10-04-state001-seed0",
+    "libero_10-09-state001-seed0"
+  ],
+  "reasoning_effort": "medium",
+  "temperature": null,
+  "service_tier": "default",
+  "image_detail": "high",
+  "max_output_tokens": 8000,
+  "timeout_seconds": 180,
+  "max_requests": 10,
+  "max_retries": 0,
+  "max_budget_usd": 0.17,
+  "image_token_allowance": 16384,
+  "capture_usage_details": true,
+  "pricing": {
+    "input_per_million": 0.75,
+    "output_per_million": 4.5
+  },
+  "pricing_source": "https://developers.openai.com/api/docs/models/gpt-5.4-mini",
+  "pricing_checked": "2026-10-12",
+  "references": "configs/rgb_object_choices_references.json",
+  "frozen_protocol": "configs/frozen_rgb_object_choices_dev.json"
+}

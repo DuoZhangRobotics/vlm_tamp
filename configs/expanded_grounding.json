@@ -1,0 +1,39 @@
+{
+  "provider": "openai",
+  "model": "gpt-5.4-mini-2026-03-17",
+  "prompt": "configs/prompts/structured_v5.txt",
+  "conditions": [
+    "rgb",
+    "candidates"
+  ],
+  "example_ids": [
+    "libero_goal-05-state000-seed0",
+    "libero_goal-06-state000-seed0",
+    "libero_goal-07-state000-seed0",
+    "libero_spatial-04-state000-seed0",
+    "libero_spatial-08-state000-seed0",
+    "libero_object-00-state000-seed0",
+    "libero_object-09-state000-seed0",
+    "libero_10-03-state000-seed0",
+    "libero_10-04-state000-seed0",
+    "libero_10-09-state000-seed0"
+  ],
+  "seed": 0,
+  "temperature": 0,
+  "image_detail": "high",
+  "reasoning_effort": "none",
+  "timeout_seconds": 60,
+  "max_retries": 0,
+  "max_output_tokens": 1500,
+  "max_requests": 20,
+  "max_budget_usd": 0.14,
+  "pricing": {
+    "input_per_million": 0.75,
+    "output_per_million": 4.5
+  },
+  "pricing_checked": "2026-10-11",
+  "pricing_source": "https://developers.openai.com/api/docs/models/gpt-5.4-mini",
+  "image_token_allowance": 4096,
+  "schema_version": "1.2",
+  "frozen_protocol": "configs/frozen_expanded_grounding_protocol.json"
+}

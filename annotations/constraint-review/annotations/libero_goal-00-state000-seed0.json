@@ -1,0 +1,146 @@
+{
+  "schema_version": "1.0",
+  "example_id": "libero_goal-00-state000-seed0",
+  "status": "draft",
+  "provenance": [
+    {
+      "source": "official_benchmark",
+      "evidence": "Published final predicates and instruction; BDDL SHA256 832ab48ec476807c767e8985666e295700f92d1f8daeae1c34eee1e75293769b",
+      "reviewer": null
+    },
+    {
+      "source": "derived_rule",
+      "evidence": "Unreviewed conditional stage/contact proposals. Neither published goals nor joint kinematics prove required manipulation strategies.",
+      "reviewer": null
+    },
+    {
+      "source": "simulator",
+      "evidence": "Separately verified site/joint/body/mask/state facts. Known axis parameters come from that evidence; task necessity remains unreviewed.",
+      "reviewer": null
+    }
+  ],
+  "relevant_entities": [
+    "wooden_cabinet_1_middle_region"
+  ],
+  "manipulable_parts": null,
+  "alternatives": [
+    {
+      "id": "conditional_proposal_for_review",
+      "stages": [
+        {
+          "id": "engage",
+          "action": "establish_contact",
+          "entities": [
+            "wooden_cabinet_1_middle_region"
+          ],
+          "subgoals": [],
+          "requirement": "conditional",
+          "condition": "if opening is performed through robot contact",
+          "evidence": "planning_hypothesis"
+        },
+        {
+          "id": "open",
+          "action": "open",
+          "entities": [
+            "wooden_cabinet_1_middle_region"
+          ],
+          "subgoals": [],
+          "requirement": "conditional",
+          "condition": "if the requested opening/access state is not already satisfied",
+          "evidence": "instruction"
+        }
+      ],
+      "dependencies": [
+        {
+          "before": "engage",
+          "after": "open",
+          "requirement": "conditional",
+          "condition": "if contact-based actuation is selected",
+          "evidence": "planning_hypothesis"
+        }
+      ],
+      "constraints": [
+        {
+          "id": "published_goal_0",
+          "category": "goal",
+          "type": "open",
+          "joint_type": null,
+          "articulated_part": null,
+          "entities": [
+            "wooden_cabinet_1_middle_region"
+          ],
+          "stages": [],
+          "scope": "goal",
+          "requirement": "required",
+          "condition": null,
+          "parameters": [],
+          "frame_assumption": null,
+          "evidence": "instruction",
+          "verified": false
+        },
+        {
+          "id": "joint_motion",
+          "category": "articulation",
+          "type": "follow_joint",
+          "joint_type": "prismatic",
+          "articulated_part": "wooden_cabinet_1_middle_region",
+          "entities": [
+            "wooden_cabinet_1_middle_region"
+          ],
+          "stages": [
+            "open"
+          ],
+          "scope": "path",
+          "requirement": "conditional",
+          "condition": "if this verified articulated body is actuated during opening",
+          "parameters": [
+            {
+              "name": "axis",
+              "value": [
+                -1.2246467991473532e-16,
+                -1.0,
+                0.0
+              ],
+              "status": "known",
+              "frame": "world",
+              "units": "unit_vector",
+              "evidence": "oracle_geometry"
+            },
+            {
+              "name": "axis_point",
+              "value": [
+                0.03957236684465528,
+                -0.23401682871566554,
+                0.905
+              ],
+              "status": "known",
+              "frame": "world",
+              "units": "m",
+              "evidence": "oracle_geometry"
+            }
+          ],
+          "frame_assumption": null,
+          "evidence": "planning_hypothesis",
+          "verified": false
+        }
+      ]
+    }
+  ],
+  "coverage": {
+    "stages": false,
+    "dependencies": false,
+    "constraints": false,
+    "stages_complete": false,
+    "dependencies_complete": false,
+    "constraints_complete": false,
+    "constraint_categories": []
+  },
+  "axis_sign_invariant": true,
+  "gaps": [
+    "Human expert must confirm relevant entities, manipulable parts and appropriate stage granularity.",
+    "Review conditional assumptions against the observed initial state; remove unsupported proposals or add valid alternatives.",
+    "No task-specific grasp/contact/orientation/path requirement is established by final BDDL goals alone.",
+    "Kinematic facts do not establish a required task plan. All proposed constraints remain unverified.",
+    "Coverage is disabled until human review; completeness must be assessed independently."
+  ]
+}

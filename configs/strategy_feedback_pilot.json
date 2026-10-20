@@ -1,0 +1,28 @@
+{
+  "version": "vlm-strategy-feedback-pilot-1",
+  "api_run_id": "vlm-strategy-pilot-20261018",
+  "api_budget_usd": 2.0,
+  "api_scope_includes_development_and_comparisons": true,
+  "model": "gpt-6-luna",
+  "reasoning_effort": "high",
+  "strategy_max_output_tokens": 32000,
+  "grounding_max_output_tokens": 12000,
+  "maximum_decision_rounds": 5,
+  "maximum_control_steps": 600,
+  "maximum_motion_segments_per_goal_call": 4,
+  "seed": 0,
+  "policies": ["heuristic", "vlm"],
+  "frozen_cases": [
+    {"task": "open_bottom_drawer", "state": 15, "group": "known_case_reproduction"},
+    {"task": "close_bottom_drawer", "state": 15, "group": "known_case_reproduction"},
+    {"task": "close_top_drawer", "state": 1, "group": "successful_reference_case"},
+    {"task": "open_bottom_drawer", "state": 17, "group": "new_initial_state_same_assets"},
+    {"task": "close_bottom_drawer", "state": 17, "group": "new_initial_state_same_assets"}
+  ],
+  "comparison_scope": "Same contact tools, geometry, planner, controller and budgets; decision policy differs",
+  "retained_manual_priors": ["contact pose templates", "upright panel fitting", "numerical contact tolerances", "reactive controller gains"],
+  "not_claimed": ["new primitive discovery", "autonomous geometry-model revision", "cross-episode rule learning", "full 35-case regression", "new-object generalization"],
+  "execution_time_vetoes": false,
+  "native_success_is_evaluation_only": true,
+  "cleanup_after_each_episode": true
+}

@@ -1,0 +1,9 @@
+{
+  "id": "episode-0001",
+  "task": "Open a microwave door by grasping its vertical handle and moving the door toward an open pose.",
+  "robot": "Panda",
+  "support": "Abstraction of one prior failed and corrected episode; observations were not native evaluation.",
+  "representation": "Conditional prose with categorical event provenance; no historical scene geometry or executable paths.",
+  "raw_episode_accessible": false,
+  "private_evaluation_included": false
+}

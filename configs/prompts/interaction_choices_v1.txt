@@ -1,0 +1,66 @@
+Ground the instruction from these RGB images: {instruction}
+
+The sheet contains agentview (top row) and frontview (bottom row). Each row has
+a raw image at left and DINO-numbered proposals at right. Every image is 512x512.
+Use LOCAL 0..511 pixel coordinates in one selected view. Proposals have no object
+identities. No object inventory or simulator state is available.
+
+Choose an interaction model from the options below. Do not assume a particular
+handle orientation, object name, radius, hinge location, or cabinet arrangement.
+Mark the actual graspable part separately from the part that moves. A cylindrical
+bar can point in any direction. A round control is compact and turns about its
+supporting face normal. Select unknown when evidence does not support a model.
+For a straight bar, mark two points along its central shaft, avoiding its mounts.
+For an edge hinge, mark two points on the attachment edge, NOT the free handle edge.
+For plane alignment when closing, select a small VISIBLE stationary reference
+patch whose plane represents the final closed face. The reference need not be
+below the moving part. If that reference is hidden or offset from the final face,
+select unknown instead of fabricating a target. For placement select the receiving
+support, not the surrounding table. Boxes must tightly enclose their selected part.
+For every articulation select support_box_xyxy on a small, opaque, visibly planar
+surface: the MOVING front face for a sliding or hinged panel, or the FIXED mounting
+face for a rotary control. Do not include a window, cavity, handle, top surface or
+background in that patch. The whole moving-part box is not itself a plane sample.
+
+Return only JSON, filling this schema. Do not add metric estimates or Python code.
+{
+  "version": "interaction-v1",
+  "camera": "agentview | frontview",
+  "contact": {
+    "shape": "straight_bar | round_control | rim_or_edge | surface_patch | unknown",
+    "box_xyxy": [left, top, right, bottom],
+    "pixel_xy": [x, y],
+    "axis_pixels_xy": [[x,y], [x,y]] or null
+  },
+  "moving": {"shape": "planar_panel | compact_control | free_body | unknown", "box_xyxy": [left,top,right,bottom]},
+  "mechanism": {
+    "family": "free | prismatic | revolute | unknown",
+    "axis_source": "none | panel_normal | hinge_edge | control_face_normal | unknown",
+    "axis_pixels_xy": [[x,y], [x,y]] or null,
+    "support_box_xyxy": [left,top,right,bottom] or null,
+    "motion": "place | open | close | turn_on",
+    "initial_image_direction_xy": [dx,dy],
+    "turn_direction_view": "clockwise | counterclockwise" or null
+  },
+  "goal": {
+    "relation": "on_support | aligned_with_reference_plane | quarter_turn | hand_clearance | unknown",
+    "reference_box_xyxy": [left,top,right,bottom] or null
+  },
+  "contact_roles": ["grasp_selected_part", "fingers_on_local_moving_surface", "object_on_selected_support"],
+  "confidence": "high | medium | low",
+  "explanation": "one short sentence identifying the visible evidence and uncertainty"
+}
+
+Use only applicable contact_roles: grasp_selected_part is required; placement
+uses object_on_selected_support; fingers_on_local_moving_surface is optional for
+articulations. These roles never authorize arbitrary robot collisions.
+Use axis_source=panel_normal for sliding; hinge_edge for a hinged panel; and
+control_face_normal for a rotary control. All three require support_box_xyxy as
+described above. Free placement uses axis_source=none and support_box_xyxy=null.
+Use a nonzero image motion direction for sliding or a hinged panel. Components
+must be -1, 0 or 1. Rotary controls use turn_direction_view instead.
+Use aligned_with_reference_plane for closing with visible reference evidence,
+quarter_turn for opening a hinged panel or turning a rotary control, hand_clearance
+for opening a slider, and on_support for placement. hand_clearance means a bounded
+opening sized from the robot hand; it does not assert a hidden full joint range.
+If the scene does not support these choices, return unknown and explain why.

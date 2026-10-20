@@ -1,0 +1,84 @@
+{
+  "offline_only": true,
+  "roles": {
+    "libero_goal-04-state004-seed0": {
+      "slot_0": "akita_black_bowl_1",
+      "slot_1": "wooden_cabinet_1"
+    },
+    "libero_goal-08-state005-seed0": {
+      "slot_0": "akita_black_bowl_1",
+      "slot_1": "plate_1"
+    },
+    "libero_spatial-05-state004-seed0": {
+      "slot_0": "akita_black_bowl_1",
+      "slot_1": "plate_1"
+    },
+    "libero_spatial-06-state005-seed0": {
+      "slot_0": "akita_black_bowl_1",
+      "slot_1": "plate_1"
+    },
+    "libero_spatial-07-state004-seed0": {
+      "slot_0": "akita_black_bowl_1",
+      "slot_1": "plate_1"
+    },
+    "libero_spatial-09-state005-seed0": {
+      "slot_0": "akita_black_bowl_1",
+      "slot_1": "plate_1"
+    },
+    "libero_object-01-state004-seed0": {
+      "slot_0": "cream_cheese_1",
+      "slot_1": "basket_1"
+    },
+    "libero_object-02-state005-seed0": {
+      "slot_0": "salad_dressing_1",
+      "slot_1": "basket_1"
+    },
+    "libero_object-03-state004-seed0": {
+      "slot_0": "bbq_sauce_1",
+      "slot_1": "basket_1"
+    },
+    "libero_object-04-state005-seed0": {
+      "slot_0": "ketchup_1",
+      "slot_1": "basket_1"
+    },
+    "libero_object-05-state004-seed0": {
+      "slot_0": "tomato_sauce_1",
+      "slot_1": "basket_1"
+    },
+    "libero_object-06-state005-seed0": {
+      "slot_0": "butter_1",
+      "slot_1": "basket_1"
+    },
+    "libero_object-07-state004-seed0": {
+      "slot_0": "milk_1",
+      "slot_1": "basket_1"
+    },
+    "libero_object-08-state005-seed0": {
+      "slot_0": "chocolate_pudding_1",
+      "slot_1": "basket_1"
+    },
+    "libero_90-03-state004-seed0": {
+      "slot_0": "butter_2",
+      "slot_1": "wooden_cabinet_1"
+    },
+    "libero_90-04-state005-seed0": {
+      "slot_0": "butter_1",
+      "slot_1": "wooden_cabinet_1"
+    },
+    "libero_90-14-state004-seed0": {
+      "slot_0": "akita_black_bowl_2",
+      "slot_1": "plate_1"
+    },
+    "libero_90-65-state005-seed0": {
+      "slot_0": "red_coffee_mug_1",
+      "slot_1": "plate_1"
+    },
+    "libero_90-68-state004-seed0": {
+      "slot_0": "white_yellow_mug_1",
+      "slot_1": "plate_2"
+    },
+    "libero_90-39-state005-seed0": {
+      "slot_0": "flat_stove_1"
+    }
+  }
+}

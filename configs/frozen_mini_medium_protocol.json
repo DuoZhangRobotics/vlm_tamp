@@ -1,0 +1,44 @@
+{
+  "schema_version": "1.2",
+  "schema_sha256": "1f49681fec9e7e6322dcbd2e7c98eafe7ef43023e1ecb64841ccb3b251b05955",
+  "prompt_sha256": "49ec63875f6183401f8cbc6d818d7d186e28d64d0f858333b5b75ddf79f5ebb5",
+  "models": [
+    "gpt-5.4-mini-2026-03-17"
+  ],
+  "example_ids": [
+    "libero_goal-05-state000-seed0",
+    "libero_goal-06-state000-seed0",
+    "libero_goal-07-state000-seed0",
+    "libero_spatial-04-state000-seed0",
+    "libero_spatial-08-state000-seed0",
+    "libero_object-00-state000-seed0",
+    "libero_object-09-state000-seed0",
+    "libero_10-03-state000-seed0",
+    "libero_10-04-state000-seed0",
+    "libero_10-09-state000-seed0"
+  ],
+  "conditions": [
+    "rgb",
+    "candidates"
+  ],
+  "temperature": null,
+  "image_detail": "high",
+  "max_output_tokens": 25000,
+  "reasoning_effort": "medium",
+  "service_tier": "default",
+  "capture_usage_details": true,
+  "stop_on_api_failure": true,
+  "pricing": {
+    "input_per_million": 0.75,
+    "output_per_million": 4.5
+  },
+  "max_requests": 20,
+  "max_retries": 0,
+  "max_budget_usd": 0.75,
+  "dataset_sha256": "b6ad176c389a5d6ffc7063d05e6eaac924319769f19cb09cce97b3febbc0c623",
+  "evaluator_sha256": "bd773b6e6450a1df06557c59b15944a8a3977acafccd510715f0d74cdbaf1edb",
+  "linker_protocol_sha256": "a6a612e0c4c378467575ed2b1f7de3b7ca3fc916860677291f5d72e083784c6c",
+  "experiment_sha256": "667c7c341342b06e671adde915e163e35bbaf6021b29eb57d85b21cd1ab9c657",
+  "provider_sha256": "d80147c36ad26be5a692eaccc3fd6a98ce6f65366a886b355b6568c803034dca",
+  "inference_model_version": "Mini uses a dated snapshot; Astra uses its documented named model ID and records actual returned IDs."
+}

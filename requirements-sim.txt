@@ -1,0 +1,16 @@
+# Runtime-only dependencies; avoid LIBERO's policy-training stack.
+numpy==1.22.4
+scipy==1.10.1
+numba==0.57.1
+robosuite==1.4.0
+mujoco==2.3.7
+bddl==1.0.1
+gym==0.25.2
+easydict==1.9
+future==0.18.2
+cloudpickle==2.1.0
+opencv-python==4.6.0.66
+matplotlib==3.5.3
+PyOpenGL==3.1.7
+termcolor==3.3.0
+torch @ https://download.pytorch.org/whl/cpu/torch-2.2.2%2Bcpu-cp310-cp310-linux_x86_64.whl

@@ -1,0 +1,15 @@
+{
+  "scope": "Descriptive inspection by the coding agent after inference. These notes do not change scores, predictions or model inputs and are not human-reviewed constraint annotations.",
+  "task_notes": {
+    "libero_goal-05-state000-seed0": "The inventory output uses a geometric descriptor as a final-goal entity argument. This violates the entity/geometry contract and remains invalid after linking. The desired plate-front location itself is a plausible interpretation of the instruction.",
+    "libero_goal-06-state000-seed0": "The instruction says to put cheese in the bowl, and both responses declare In. The published task encodes On(cream_cheese_1, akita_black_bowl_1). This is a domain-predicate convention mismatch; the exact-goal failure alone does not establish misunderstanding of the physical outcome.",
+    "libero_goal-07-state000-seed0": "The inventory response correctly identifies the stove and declares its activation goal. The RGB-only stove localization resolves to the cabinet under measured mask matching. Neither output supplies the contact geometry needed to operate the stove.",
+    "libero_spatial-04-state000-seed0": "The inventory response identifies the intended bowl and plate, but declares In instead of On despite the instruction saying to place the bowl on the plate. Its drawer-opening mechanism is a model proposal and was not independently checked in this batch.",
+    "libero_spatial-08-state000-seed0": "The inventory response chooses akita_black_bowl_2, while the published task requires akita_black_bowl_1. This is an instance-selection disagreement in a scene containing several bowls.",
+    "libero_object-00-state000-seed0": "The inventory response resolves the soup and even declares basket_1_contain_region, but the final In goal points to the whole basket instead of that region. Object identity and final region binding have different outcomes here.",
+    "libero_object-09-state000-seed0": "The inventory response resolves the orange juice and basket interior. Its placement stage uses the interior, while the final goal uses the whole basket. The complete-goal mismatch is a region-binding inconsistency.",
+    "libero_10-03-state000-seed0": "The inventory response matches both required final goals: bowl containment and drawer closure. It proposes opening, placement and closing stages, but provides no verified grasp or numerical motion constraints.",
+    "libero_10-04-state000-seed0": "The inventory response assigns the same yellow-and-white mug to both plates and omits the separate white mug. This is a substantive multi-object reference error, even though both plates are resolved correctly.",
+    "libero_10-09-state000-seed0": "The inventory response proposes putting two mugs into the microwave, although the instruction refers to one yellow-and-white mug. It also uses the microwave object instead of its heating region in final containment goals, despite using that region in placement stages. Closure is correctly retained as a final goal."
+  }
+}

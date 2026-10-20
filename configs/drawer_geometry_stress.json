@@ -1,0 +1,105 @@
+{
+  "parent_config": "configs/drawer_plane_ablation.json",
+  "dataset": "data/rgbd-drawer-geometry-stress",
+  "frozen_protocol": "configs/frozen_drawer_geometry_stress.json",
+  "prompt": "configs/prompts/drawer_two_point_v1.txt",
+  "model": "gpt-6-luna",
+  "reasoning_effort": "high",
+  "image_detail": "high",
+  "service_tier": "default",
+  "max_output_tokens": 6000,
+  "timeout_seconds": 240,
+  "max_retries": 0,
+  "max_requests": 4,
+  "image_token_allowance": 8192,
+  "capture_usage_details": true,
+  "pricing": {
+    "input_per_million": 0.1,
+    "cached_input_per_million": 0.01,
+    "cache_write_per_million": 0.125,
+    "output_per_million": 0.5
+  },
+  "pricing_source": "https://developers.openai.com/api/docs/models/gpt-6-luna",
+  "pricing_checked": "2026-10-13",
+  "prior_usage_cost_usd": 0.152321,
+  "overall_budget_usd": 2.0,
+  "max_budget_usd": 1.847679,
+  "geometry": {
+    "depth_patch_radius_pixels": 1,
+    "maximum_depth_jump_m": 0.03,
+    "maximum_depth_m": 5.0,
+    "plane_patch_radius_pixels": 7,
+    "plane_depth_band_m": 0.02,
+    "maximum_plane_rms_m": 0.003,
+    "maximum_support_tilt_degrees": 25.0,
+    "minimum_closing_span_m": 0.002,
+    "maximum_gripper_width_m": 0.08,
+    "finger_clearance_m": 0.004,
+    "pregrasp_distance_m": 0.08,
+    "minimum_object_axis_length_m": 0.01,
+    "placement_clearance_m": 0.01,
+    "point_tolerance_m": 0.01,
+    "upright_tolerance_degrees": 5.0,
+    "minimum_drawer_face_span_m": 0.02,
+    "minimum_drawer_triangle_sine": 0.08,
+    "minimum_drawer_view_normal_cosine": 0.15,
+    "drawer_line_tolerance_m": 0.01
+  },
+  "local_plane": {
+    "depth_patch_radius_pixels": 1,
+    "minimum_depth_m": 0.1,
+    "maximum_depth_m": 5.0,
+    "maximum_depth_jump_m": 0.03,
+    "local_plane_radius_pixels": 32,
+    "local_plane_handle_exclusion_radius_pixels": 8,
+    "local_plane_depth_band_m": 0.06,
+    "local_plane_depth_edge_m": 0.02,
+    "local_plane_ransac_seed": 0,
+    "local_plane_ransac_iterations": 128,
+    "local_plane_inlier_tolerance_m": 0.003,
+    "local_plane_minimum_inliers": 72,
+    "local_plane_minimum_inlier_fraction": 0.6,
+    "local_plane_minimum_minor_extent_m": 0.02,
+    "local_plane_maximum_rms_m": 0.003,
+    "local_plane_maximum_seed_deviation_m": 0.003,
+    "local_plane_ambiguity_fraction": 0.2,
+    "local_plane_ambiguity_angle_degrees": 10.0,
+    "minimum_drawer_view_normal_cosine": 0.15,
+    "drawer_line_tolerance_m": 0.01
+  },
+  "evaluation": {
+    "axis_tolerance_degrees": 5.0,
+    "minimum_support_purity_diagnostic": 0.9
+  },
+  "requested_extension_m": null,
+  "cases": [
+    {
+      "id": "drawer_geometry_camera_left",
+      "example_id": "drawer_geometry_camera_left",
+      "condition": "two_point_rgb",
+      "task_type": "open_middle_drawer"
+    },
+    {
+      "id": "drawer_geometry_camera_right",
+      "example_id": "drawer_geometry_camera_right",
+      "condition": "two_point_rgb",
+      "task_type": "open_middle_drawer"
+    },
+    {
+      "id": "drawer_geometry_yaw_plus20_open",
+      "example_id": "drawer_geometry_yaw_plus20_open",
+      "condition": "two_point_rgb",
+      "task_type": "open_middle_drawer"
+    },
+    {
+      "id": "drawer_geometry_yaw_minus20_open",
+      "example_id": "drawer_geometry_yaw_minus20_open",
+      "condition": "two_point_rgb",
+      "task_type": "open_middle_drawer"
+    }
+  ],
+  "reference_inputs_sent": false,
+  "provided_inventory": false,
+  "robot_actions": 0,
+  "scope": "Predetermined simulation camera and cabinet-state interventions; not official benchmark initial states or planner execution"
+}

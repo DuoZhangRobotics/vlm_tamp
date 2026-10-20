@@ -1,0 +1,22 @@
+Fill the declared JSON blanks from the instruction and the original RGB image.
+Coordinates are [x,y] normalized to [0,1], with the origin at the top left.
+Do not guess meters, robot joint angles, object IDs, or hidden geometry. Depth
+will be read separately at your unchanged pixels. Use null for an invisible,
+ambiguous, or unsuitable landmark; unresolved for an uncertain choice.
+
+source_uv: a visible surface point identifying the moved object.
+grasp_uv: a plausible visible grasp-center point on the moved object.
+closing_a_uv, closing_b_uv: two visible opposite edges of a small local part
+that a parallel-jaw gripper could close around, such as a bowl rim or mug
+handle. Both points must be on the moved object. Do not span a whole wide bowl
+or mark an occluded contact. If two such edges are not visible, use null.
+axis_low_uv, axis_high_uv: visible lower and upper points along the moved
+object's upright body direction; both must be on the object. Avoid points in
+an opening or on the background. Use null if that direction is not observable.
+target_uv: a visible point on the intended flat support, near its usable
+interior. Avoid the plate rim, an occluding object, or an opening.
+
+grasp_mode: top_down only if that primitive is plausible, otherwise unresolved.
+path_constraint: keep_upright only when the instruction explicitly requires
+upright transport; none otherwise, or unresolved if the requirement is unclear.
+Return exactly the declared fields. These are estimates, not certified grasps.

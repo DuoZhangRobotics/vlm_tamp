@@ -1,0 +1,14 @@
+{
+  "provider": "mock",
+  "model": "deterministic-language-baseline-v1",
+  "prompt": "configs/prompts/direct_v1.txt",
+  "conditions": ["language", "rgb", "candidates", "geometry"],
+  "seed": 0,
+  "timeout_seconds": 60,
+  "max_retries": 2,
+  "max_output_tokens": 3000,
+  "max_requests": 100,
+  "max_budget_usd": 0,
+  "pricing": {"input_per_million": 0, "output_per_million": 0},
+  "image_token_allowance": 4096
+}

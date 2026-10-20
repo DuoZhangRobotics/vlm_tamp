@@ -1,0 +1,1133 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Constraint reference review</title><style>body{font:16px system-ui;max-width:1200px;margin:auto;padding:24px;background:#f3f5fa;color:#18263a}article{padding:24px;background:white;margin:24px 0;border-radius:12px}.images{display:flex;gap:20px;flex-wrap:wrap}img{width:min(100%,460px)}pre{white-space:pre-wrap;overflow-wrap:anywhere}textarea{width:100%;min-height:420px;box-sizing:border-box;font:13px monospace}input,button{font:inherit}button{padding:10px 16px}.message{color:#315776}</style><body><h1>Constraint reference review</h1><p>Four-task pilot proposals with independent evidence. Drafts do not count as reviewed labels. Your name, explicit track coverage and confirmation are required to export a reviewed reference. This page works locally and sends no data.</p><article data-example="libero_goal-00-state000-seed0"><h2>open the middle drawer of the cabinet</h2><p>libero_goal-00-state000-seed0 · <strong>DRAFT — human review pending</strong></p><div class="images"><img src="evidence/libero_goal-00-state000-seed0-rgb.png" alt="Original observation"><img src="evidence/libero_goal-00-state000-seed0-references.png" alt="Measured object and part references"></div><p>Green: measured whole objects. Gold: verified visible drawer bodies, not interior volumes or handle affordances.</p><details><summary>Published goals and independent simulator evidence</summary><pre>{
+  &quot;example_id&quot;: &quot;libero_goal-00-state000-seed0&quot;,
+  &quot;instruction&quot;: &quot;open the middle drawer of the cabinet&quot;,
+  &quot;published_goal_expression&quot;: [
+    &quot;And&quot;,
+    [
+      &quot;Open&quot;,
+      &quot;wooden_cabinet_1_middle_region&quot;
+    ]
+  ],
+  &quot;published_goal_predicates&quot;: [
+    {
+      &quot;name&quot;: &quot;Open&quot;,
+      &quot;arguments&quot;: [
+        &quot;wooden_cabinet_1_middle_region&quot;
+      ],
+      &quot;normalized_name&quot;: &quot;open&quot;
+    }
+  ],
+  &quot;bddl_sha256&quot;: &quot;832ab48ec476807c767e8985666e295700f92d1f8daeae1c34eee1e75293769b&quot;,
+  &quot;initial_state_sha256&quot;: &quot;5a8f40221c0b59dfaa1061b36a49d4b10b0b47ffb82a1ac0b10080a2aa466ec4&quot;,
+  &quot;image_sha256&quot;: &quot;ce641ededd3df0d66e2984d0544daf89b405c6d13a4b5e3e328a3ca073ab151e&quot;,
+  &quot;libero_commit&quot;: &quot;8f1084e3132a39270c3a13ebe37270a43ece2a01&quot;,
+  &quot;simulator_facts&quot;: {
+    &quot;schema_version&quot;: &quot;1.0&quot;,
+    &quot;example_id&quot;: &quot;libero_goal-00-state000-seed0&quot;,
+    &quot;source&quot;: &quot;verified_official_simulator&quot;,
+    &quot;bddl_sha256&quot;: &quot;832ab48ec476807c767e8985666e295700f92d1f8daeae1c34eee1e75293769b&quot;,
+    &quot;initial_state_sha256&quot;: &quot;5a8f40221c0b59dfaa1061b36a49d4b10b0b47ffb82a1ac0b10080a2aa466ec4&quot;,
+    &quot;image_sha256&quot;: &quot;ce641ededd3df0d66e2984d0544daf89b405c6d13a4b5e3e328a3ca073ab151e&quot;,
+    &quot;libero_commit&quot;: &quot;8f1084e3132a39270c3a13ebe37270a43ece2a01&quot;,
+    &quot;verifier_sha256&quot;: &quot;6c00e6c0ca4876d3697f0855f56c2e16c05486818e8f9110d6c5f15eaf94ec88&quot;,
+    &quot;camera&quot;: &quot;agentview&quot;,
+    &quot;parts&quot;: [
+      {
+        &quot;entity_id&quot;: &quot;wooden_cabinet_1_top_region&quot;,
+        &quot;parent_id&quot;: &quot;wooden_cabinet_1&quot;,
+        &quot;body&quot;: &quot;wooden_cabinet_1_cabinet_top&quot;,
+        &quot;joint_id&quot;: &quot;wooden_cabinet_1_top_level&quot;,
+        &quot;joint_type&quot;: &quot;prismatic&quot;,
+        &quot;axis_local&quot;: [
+          0.0,
+          1.0,
+          0.0
+        ],
+        &quot;axis_world&quot;: [
+          -1.2246467991473532e-16,
+          -1.0,
+          0.0
+        ],
+        &quot;joint_position_world&quot;: [
+          0.03957236684465528,
+          -0.23401682871566554,
+          0.905
+        ],
+        &quot;axis_sign_invariant&quot;: true,
+        &quot;goal_related&quot;: false,
+        &quot;mask&quot;: &quot;derived/1bf7a6fbeed6/libero_goal-00-state000-seed0/mask-wooden_cabinet_1_top_region.png&quot;,
+        &quot;mask_sha256&quot;: &quot;8fdd9c33e39cb69899729770bc071081a9df949e0339f1f49d6b965fb2f70459&quot;,
+        &quot;visible_pixels&quot;: 621,
+        &quot;bbox&quot;: [
+          0.234375,
+          0.3125,
+          0.359375,
+          0.8046875
+        ],
+        &quot;geometric_scope&quot;: &quot;visible articulated body associated with the BDDL site, not the interior volume&quot;,
+        &quot;verification&quot;: &quot;site_joint_body_mask_and_state_crosscheck&quot;,
+        &quot;open_predicate_at_limits&quot;: [
+          true,
+          false
+        ]
+      },
+      {
+        &quot;entity_id&quot;: &quot;wooden_cabinet_1_middle_region&quot;,
+        &quot;parent_id&quot;: &quot;wooden_cabinet_1&quot;,
+        &quot;body&quot;: &quot;wooden_cabinet_1_cabinet_middle&quot;,
+        &quot;joint_id&quot;: &quot;wooden_cabinet_1_middle_level&quot;,
+        &quot;joint_type&quot;: &quot;prismatic&quot;,
+        &quot;axis_local&quot;: [
+          0.0,
+          1.0,
+          0.0
+        ],
+        &quot;axis_world&quot;: [
+          -1.2246467991473532e-16,
+          -1.0,
+          0.0
+        ],
+        &quot;joint_position_world&quot;: [
+          0.03957236684465528,
+          -0.23401682871566554,
+          0.905
+        ],
+        &quot;axis_sign_invariant&quot;: true,
+        &quot;goal_related&quot;: true,
+        &quot;mask&quot;: &quot;derived/1bf7a6fbeed6/libero_goal-00-state000-seed0/mask-wooden_cabinet_1_middle_region.png&quot;,
+        &quot;mask_sha256&quot;: &quot;067065582d403f4d1ca3bfb5f16e9e57c281268885addac50df8dcc68586048b&quot;,
+        &quot;visible_pixels&quot;: 442,
+        &quot;bbox&quot;: [
+          0.25,
+          0.46484375,
+          0.328125,
+          0.79296875
+        ],
+        &quot;geometric_scope&quot;: &quot;visible articulated body associated with the BDDL site, not the interior volume&quot;,
+        &quot;verification&quot;: &quot;site_joint_body_mask_and_state_crosscheck&quot;,
+        &quot;open_predicate_at_limits&quot;: [
+          true,
+          false
+        ]
+      },
+      {
+        &quot;entity_id&quot;: &quot;wooden_cabinet_1_bottom_region&quot;,
+        &quot;parent_id&quot;: &quot;wooden_cabinet_1&quot;,
+        &quot;body&quot;: &quot;wooden_cabinet_1_cabinet_bottom&quot;,
+        &quot;joint_id&quot;: &quot;wooden_cabinet_1_bottom_level&quot;,
+        &quot;joint_type&quot;: &quot;prismatic&quot;,
+        &quot;axis_local&quot;: [
+          0.0,
+          1.0,
+          0.0
+        ],
+        &quot;axis_world&quot;: [
+          -1.2246467991473532e-16,
+          -1.0,
+          0.0
+        ],
+        &quot;joint_position_world&quot;: [
+          0.03957236684465528,
+          -0.23401682871566554,
+          0.905
+        ],
+        &quot;axis_sign_invariant&quot;: true,
+        &quot;goal_related&quot;: false,
+        &quot;mask&quot;: &quot;derived/1bf7a6fbeed6/libero_goal-00-state000-seed0/mask-wooden_cabinet_1_bottom_region.png&quot;,
+        &quot;mask_sha256&quot;: &quot;9497a1ebc115027486c1b432793aa425d6bc8e848a8407d8328106c9310c71ea&quot;,
+        &quot;visible_pixels&quot;: 339,
+        &quot;bbox&quot;: [
+          0.265625,
+          0.2890625,
+          0.36328125,
+          0.80078125
+        ],
+        &quot;geometric_scope&quot;: &quot;visible articulated body associated with the BDDL site, not the interior volume&quot;,
+        &quot;verification&quot;: &quot;site_joint_body_mask_and_state_crosscheck&quot;,
+        &quot;open_predicate_at_limits&quot;: [
+          true,
+          false
+        ]
+      }
+    ],
+    &quot;excluded_labels&quot;: [
+      &quot;required task stages&quot;,
+      &quot;grasp strategy&quot;,
+      &quot;contact requirements&quot;,
+      &quot;path requirements&quot;
+    ]
+  },
+  &quot;proposal_status&quot;: &quot;unreviewed; excluded from Track B scoring&quot;
+}</pre></details><p>Check which actions are needed in this initial state, valid alternatives, contact strategy, part identity and coordinate frames. Edit or remove unsupported proposals. The JSON is editable. Leave completeness unchecked unless precision can be judged.</p><textarea aria-label="Editable draft reference">{
+  &quot;schema_version&quot;: &quot;1.0&quot;,
+  &quot;example_id&quot;: &quot;libero_goal-00-state000-seed0&quot;,
+  &quot;status&quot;: &quot;draft&quot;,
+  &quot;provenance&quot;: [
+    {
+      &quot;source&quot;: &quot;official_benchmark&quot;,
+      &quot;evidence&quot;: &quot;Published final predicates and instruction; BDDL SHA256 832ab48ec476807c767e8985666e295700f92d1f8daeae1c34eee1e75293769b&quot;,
+      &quot;reviewer&quot;: null
+    },
+    {
+      &quot;source&quot;: &quot;derived_rule&quot;,
+      &quot;evidence&quot;: &quot;Unreviewed conditional stage/contact proposals. Neither published goals nor joint kinematics prove required manipulation strategies.&quot;,
+      &quot;reviewer&quot;: null
+    },
+    {
+      &quot;source&quot;: &quot;simulator&quot;,
+      &quot;evidence&quot;: &quot;Separately verified site/joint/body/mask/state facts. Known axis parameters come from that evidence; task necessity remains unreviewed.&quot;,
+      &quot;reviewer&quot;: null
+    }
+  ],
+  &quot;relevant_entities&quot;: [
+    &quot;wooden_cabinet_1_middle_region&quot;
+  ],
+  &quot;manipulable_parts&quot;: null,
+  &quot;alternatives&quot;: [
+    {
+      &quot;id&quot;: &quot;conditional_proposal_for_review&quot;,
+      &quot;stages&quot;: [
+        {
+          &quot;id&quot;: &quot;engage&quot;,
+          &quot;action&quot;: &quot;establish_contact&quot;,
+          &quot;entities&quot;: [
+            &quot;wooden_cabinet_1_middle_region&quot;
+          ],
+          &quot;subgoals&quot;: [],
+          &quot;requirement&quot;: &quot;conditional&quot;,
+          &quot;condition&quot;: &quot;if opening is performed through robot contact&quot;,
+          &quot;evidence&quot;: &quot;planning_hypothesis&quot;
+        },
+        {
+          &quot;id&quot;: &quot;open&quot;,
+          &quot;action&quot;: &quot;open&quot;,
+          &quot;entities&quot;: [
+            &quot;wooden_cabinet_1_middle_region&quot;
+          ],
+          &quot;subgoals&quot;: [],
+          &quot;requirement&quot;: &quot;conditional&quot;,
+          &quot;condition&quot;: &quot;if the requested opening/access state is not already satisfied&quot;,
+          &quot;evidence&quot;: &quot;instruction&quot;
+        }
+      ],
+      &quot;dependencies&quot;: [
+        {
+          &quot;before&quot;: &quot;engage&quot;,
+          &quot;after&quot;: &quot;open&quot;,
+          &quot;requirement&quot;: &quot;conditional&quot;,
+          &quot;condition&quot;: &quot;if contact-based actuation is selected&quot;,
+          &quot;evidence&quot;: &quot;planning_hypothesis&quot;
+        }
+      ],
+      &quot;constraints&quot;: [
+        {
+          &quot;id&quot;: &quot;published_goal_0&quot;,
+          &quot;category&quot;: &quot;goal&quot;,
+          &quot;type&quot;: &quot;open&quot;,
+          &quot;joint_type&quot;: null,
+          &quot;articulated_part&quot;: null,
+          &quot;entities&quot;: [
+            &quot;wooden_cabinet_1_middle_region&quot;
+          ],
+          &quot;stages&quot;: [],
+          &quot;scope&quot;: &quot;goal&quot;,
+          &quot;requirement&quot;: &quot;required&quot;,
+          &quot;condition&quot;: null,
+          &quot;parameters&quot;: [],
+          &quot;frame_assumption&quot;: null,
+          &quot;evidence&quot;: &quot;instruction&quot;,
+          &quot;verified&quot;: false
+        },
+        {
+          &quot;id&quot;: &quot;joint_motion&quot;,
+          &quot;category&quot;: &quot;articulation&quot;,
+          &quot;type&quot;: &quot;follow_joint&quot;,
+          &quot;joint_type&quot;: &quot;prismatic&quot;,
+          &quot;articulated_part&quot;: &quot;wooden_cabinet_1_middle_region&quot;,
+          &quot;entities&quot;: [
+            &quot;wooden_cabinet_1_middle_region&quot;
+          ],
+          &quot;stages&quot;: [
+            &quot;open&quot;
+          ],
+          &quot;scope&quot;: &quot;path&quot;,
+          &quot;requirement&quot;: &quot;conditional&quot;,
+          &quot;condition&quot;: &quot;if this verified articulated body is actuated during opening&quot;,
+          &quot;parameters&quot;: [
+            {
+              &quot;name&quot;: &quot;axis&quot;,
+              &quot;value&quot;: [
+                -1.2246467991473532e-16,
+                -1.0,
+                0.0
+              ],
+              &quot;status&quot;: &quot;known&quot;,
+              &quot;frame&quot;: &quot;world&quot;,
+              &quot;units&quot;: &quot;unit_vector&quot;,
+              &quot;evidence&quot;: &quot;oracle_geometry&quot;
+            },
+            {
+              &quot;name&quot;: &quot;axis_point&quot;,
+              &quot;value&quot;: [
+                0.03957236684465528,
+                -0.23401682871566554,
+                0.905
+              ],
+              &quot;status&quot;: &quot;known&quot;,
+              &quot;frame&quot;: &quot;world&quot;,
+              &quot;units&quot;: &quot;m&quot;,
+              &quot;evidence&quot;: &quot;oracle_geometry&quot;
+            }
+          ],
+          &quot;frame_assumption&quot;: null,
+          &quot;evidence&quot;: &quot;planning_hypothesis&quot;,
+          &quot;verified&quot;: false
+        }
+      ]
+    }
+  ],
+  &quot;coverage&quot;: {
+    &quot;stages&quot;: false,
+    &quot;dependencies&quot;: false,
+    &quot;constraints&quot;: false,
+    &quot;stages_complete&quot;: false,
+    &quot;dependencies_complete&quot;: false,
+    &quot;constraints_complete&quot;: false,
+    &quot;constraint_categories&quot;: []
+  },
+  &quot;axis_sign_invariant&quot;: true,
+  &quot;gaps&quot;: [
+    &quot;Human expert must confirm relevant entities, manipulable parts and appropriate stage granularity.&quot;,
+    &quot;Review conditional assumptions against the observed initial state; remove unsupported proposals or add valid alternatives.&quot;,
+    &quot;No task-specific grasp/contact/orientation/path requirement is established by final BDDL goals alone.&quot;,
+    &quot;Kinematic facts do not establish a required task plan. All proposed constraints remain unverified.&quot;,
+    &quot;Coverage is disabled until human review; completeness must be assessed independently.&quot;
+  ]
+}</textarea><p><label>Human reviewer name <input class="reviewer" type="text"></label></p><p><label><input type="checkbox" class="review-stages">Reviewed stages</label> <label><input type="checkbox" class="complete-stages">Complete stages coverage, including alternatives</label><br><label><input type="checkbox" class="review-dependencies">Reviewed dependencies</label> <label><input type="checkbox" class="complete-dependencies">Complete dependencies coverage, including alternatives</label><br><label><input type="checkbox" class="review-constraints">Reviewed constraints</label> <label><input type="checkbox" class="complete-constraints">Complete constraints coverage, including alternatives</label><br></p><p><label><input type="checkbox" class="attest">I checked the edited reference and its evidence.</label></p><button onclick="exportReview(this)">Export reviewed reference</button><p class="message" role="status"></p></article>
+<article data-example="libero_goal-01-state000-seed0"><h2>put the bowl on the stove</h2><p>libero_goal-01-state000-seed0 · <strong>DRAFT — human review pending</strong></p><div class="images"><img src="evidence/libero_goal-01-state000-seed0-rgb.png" alt="Original observation"><img src="evidence/libero_goal-01-state000-seed0-references.png" alt="Measured object and part references"></div><p>Green: measured whole objects. Gold: verified visible drawer bodies, not interior volumes or handle affordances.</p><details><summary>Published goals and independent simulator evidence</summary><pre>{
+  &quot;example_id&quot;: &quot;libero_goal-01-state000-seed0&quot;,
+  &quot;instruction&quot;: &quot;put the bowl on the stove&quot;,
+  &quot;published_goal_expression&quot;: [
+    &quot;And&quot;,
+    [
+      &quot;On&quot;,
+      &quot;akita_black_bowl_1&quot;,
+      &quot;flat_stove_1_cook_region&quot;
+    ]
+  ],
+  &quot;published_goal_predicates&quot;: [
+    {
+      &quot;name&quot;: &quot;On&quot;,
+      &quot;arguments&quot;: [
+        &quot;akita_black_bowl_1&quot;,
+        &quot;flat_stove_1_cook_region&quot;
+      ],
+      &quot;normalized_name&quot;: &quot;on&quot;
+    }
+  ],
+  &quot;bddl_sha256&quot;: &quot;c6812d6c988be830412aa6fc4801af04d60f8c4565d2625763b6a0f2b843a87f&quot;,
+  &quot;initial_state_sha256&quot;: &quot;5b071f3bb26bf0ce3b866621d8c9037d793aae5d25f9ae686a1d9048c4e56b88&quot;,
+  &quot;image_sha256&quot;: &quot;613ed0fa3402cb9c778eb0f74ccc33ce9591c1e6cf37d763cf574826e1441729&quot;,
+  &quot;libero_commit&quot;: &quot;8f1084e3132a39270c3a13ebe37270a43ece2a01&quot;,
+  &quot;simulator_facts&quot;: null,
+  &quot;proposal_status&quot;: &quot;unreviewed; excluded from Track B scoring&quot;
+}</pre></details><p>Check which actions are needed in this initial state, valid alternatives, contact strategy, part identity and coordinate frames. Edit or remove unsupported proposals. The JSON is editable. Leave completeness unchecked unless precision can be judged.</p><textarea aria-label="Editable draft reference">{
+  &quot;schema_version&quot;: &quot;1.0&quot;,
+  &quot;example_id&quot;: &quot;libero_goal-01-state000-seed0&quot;,
+  &quot;status&quot;: &quot;draft&quot;,
+  &quot;provenance&quot;: [
+    {
+      &quot;source&quot;: &quot;official_benchmark&quot;,
+      &quot;evidence&quot;: &quot;Published final predicates and instruction; BDDL SHA256 c6812d6c988be830412aa6fc4801af04d60f8c4565d2625763b6a0f2b843a87f&quot;,
+      &quot;reviewer&quot;: null
+    },
+    {
+      &quot;source&quot;: &quot;derived_rule&quot;,
+      &quot;evidence&quot;: &quot;Unreviewed conditional stage/contact proposals. Neither published goals nor joint kinematics prove required manipulation strategies.&quot;,
+      &quot;reviewer&quot;: null
+    }
+  ],
+  &quot;relevant_entities&quot;: [
+    &quot;akita_black_bowl_1&quot;,
+    &quot;flat_stove_1_cook_region&quot;
+  ],
+  &quot;manipulable_parts&quot;: null,
+  &quot;alternatives&quot;: [
+    {
+      &quot;id&quot;: &quot;conditional_proposal_for_review&quot;,
+      &quot;stages&quot;: [
+        {
+          &quot;id&quot;: &quot;grasp&quot;,
+          &quot;action&quot;: &quot;grasp&quot;,
+          &quot;entities&quot;: [
+            &quot;akita_black_bowl_1&quot;
+          ],
+          &quot;subgoals&quot;: [],
+          &quot;requirement&quot;: &quot;conditional&quot;,
+          &quot;condition&quot;: &quot;if grasp-based transport is selected and the object is not already held&quot;,
+          &quot;evidence&quot;: &quot;planning_hypothesis&quot;
+        },
+        {
+          &quot;id&quot;: &quot;transport&quot;,
+          &quot;action&quot;: &quot;transport&quot;,
+          &quot;entities&quot;: [
+            &quot;akita_black_bowl_1&quot;
+          ],
+          &quot;subgoals&quot;: [],
+          &quot;requirement&quot;: &quot;conditional&quot;,
+          &quot;condition&quot;: &quot;if relocation is required&quot;,
+          &quot;evidence&quot;: &quot;planning_hypothesis&quot;
+        },
+        {
+          &quot;id&quot;: &quot;place&quot;,
+          &quot;action&quot;: &quot;place&quot;,
+          &quot;entities&quot;: [
+            &quot;akita_black_bowl_1&quot;,
+            &quot;flat_stove_1_cook_region&quot;
+          ],
+          &quot;subgoals&quot;: [],
+          &quot;requirement&quot;: &quot;conditional&quot;,
+          &quot;condition&quot;: &quot;if the final relation is not already satisfied&quot;,
+          &quot;evidence&quot;: &quot;instruction&quot;
+        },
+        {
+          &quot;id&quot;: &quot;release&quot;,
+          &quot;action&quot;: &quot;release&quot;,
+          &quot;entities&quot;: [
+            &quot;akita_black_bowl_1&quot;
+          ],
+          &quot;subgoals&quot;: [],
+          &quot;requirement&quot;: &quot;conditional&quot;,
+          &quot;condition&quot;: &quot;if a held object must be left at the destination&quot;,
+          &quot;evidence&quot;: &quot;planning_hypothesis&quot;
+        }
+      ],
+      &quot;dependencies&quot;: [
+        {
+          &quot;before&quot;: &quot;grasp&quot;,
+          &quot;after&quot;: &quot;transport&quot;,
+          &quot;requirement&quot;: &quot;conditional&quot;,
+          &quot;condition&quot;: &quot;for the proposed grasp-based placement sequence&quot;,
+          &quot;evidence&quot;: &quot;planning_hypothesis&quot;
+        },
+        {
+          &quot;before&quot;: &quot;transport&quot;,
+          &quot;after&quot;: &quot;place&quot;,
+          &quot;requirement&quot;: &quot;conditional&quot;,
+          &quot;condition&quot;: &quot;for the proposed grasp-based placement sequence&quot;,
+          &quot;evidence&quot;: &quot;planning_hypothesis&quot;
+        },
+        {
+          &quot;before&quot;: &quot;place&quot;,
+          &quot;after&quot;: &quot;release&quot;,
+          &quot;requirement&quot;: &quot;conditional&quot;,
+          &quot;condition&quot;: &quot;for the proposed grasp-based placement sequence&quot;,
+          &quot;evidence&quot;: &quot;planning_hypothesis&quot;
+        }
+      ],
+      &quot;constraints&quot;: [
+        {
+          &quot;id&quot;: &quot;grasp_transport&quot;,
+          &quot;category&quot;: &quot;contact&quot;,
+          &quot;type&quot;: &quot;maintain_grasp&quot;,
+          &quot;joint_type&quot;: null,
+          &quot;articulated_part&quot;: null,
+          &quot;entities&quot;: [
+            &quot;akita_black_bowl_1&quot;
+          ],
+          &quot;stages&quot;: [
+            &quot;transport&quot;
+          ],
+          &quot;scope&quot;: &quot;path&quot;,
+          &quot;requirement&quot;: &quot;conditional&quot;,
+          &quot;condition&quot;: &quot;if transport uses a maintained grasp&quot;,
+          &quot;parameters&quot;: [
+            {
+              &quot;name&quot;: &quot;grasp_transform&quot;,
+              &quot;value&quot;: null,
+              &quot;status&quot;: &quot;unresolved&quot;,
+              &quot;frame&quot;: null,
+              &quot;units&quot;: null,
+              &quot;evidence&quot;: &quot;planning_hypothesis&quot;
+            }
+          ],
+          &quot;frame_assumption&quot;: null,
+          &quot;evidence&quot;: &quot;planning_hypothesis&quot;,
+          &quot;verified&quot;: false
+        },
+        {
+          &quot;id&quot;: &quot;published_goal_0&quot;,
+          &quot;category&quot;: &quot;goal&quot;,
+          &quot;type&quot;: &quot;on&quot;,
+          &quot;joint_type&quot;: null,
+          &quot;articulated_part&quot;: null,
+          &quot;entities&quot;: [
+            &quot;akita_black_bowl_1&quot;,
+            &quot;flat_stove_1_cook_region&quot;
+          ],
+          &quot;stages&quot;: [],
+          &quot;scope&quot;: &quot;goal&quot;,
+          &quot;requirement&quot;: &quot;required&quot;,
+          &quot;condition&quot;: null,
+          &quot;parameters&quot;: [],
+          &quot;frame_assumption&quot;: null,
+          &quot;evidence&quot;: &quot;instruction&quot;,
+          &quot;verified&quot;: false
+        }
+      ]
+    }
+  ],
+  &quot;coverage&quot;: {
+    &quot;stages&quot;: false,
+    &quot;dependencies&quot;: false,
+    &quot;constraints&quot;: false,
+    &quot;stages_complete&quot;: false,
+    &quot;dependencies_complete&quot;: false,
+    &quot;constraints_complete&quot;: false,
+    &quot;constraint_categories&quot;: []
+  },
+  &quot;axis_sign_invariant&quot;: true,
+  &quot;gaps&quot;: [
+    &quot;Human expert must confirm relevant entities, manipulable parts and appropriate stage granularity.&quot;,
+    &quot;Review conditional assumptions against the observed initial state; remove unsupported proposals or add valid alternatives.&quot;,
+    &quot;No task-specific grasp/contact/orientation/path requirement is established by final BDDL goals alone.&quot;,
+    &quot;Kinematic facts do not establish a required task plan. All proposed constraints remain unverified.&quot;,
+    &quot;Coverage is disabled until human review; completeness must be assessed independently.&quot;
+  ]
+}</textarea><p><label>Human reviewer name <input class="reviewer" type="text"></label></p><p><label><input type="checkbox" class="review-stages">Reviewed stages</label> <label><input type="checkbox" class="complete-stages">Complete stages coverage, including alternatives</label><br><label><input type="checkbox" class="review-dependencies">Reviewed dependencies</label> <label><input type="checkbox" class="complete-dependencies">Complete dependencies coverage, including alternatives</label><br><label><input type="checkbox" class="review-constraints">Reviewed constraints</label> <label><input type="checkbox" class="complete-constraints">Complete constraints coverage, including alternatives</label><br></p><p><label><input type="checkbox" class="attest">I checked the edited reference and its evidence.</label></p><button onclick="exportReview(this)">Export reviewed reference</button><p class="message" role="status"></p></article>
+<article data-example="libero_goal-03-state000-seed0"><h2>open the top drawer and put the bowl inside</h2><p>libero_goal-03-state000-seed0 · <strong>DRAFT — human review pending</strong></p><div class="images"><img src="evidence/libero_goal-03-state000-seed0-rgb.png" alt="Original observation"><img src="evidence/libero_goal-03-state000-seed0-references.png" alt="Measured object and part references"></div><p>Green: measured whole objects. Gold: verified visible drawer bodies, not interior volumes or handle affordances.</p><details><summary>Published goals and independent simulator evidence</summary><pre>{
+  &quot;example_id&quot;: &quot;libero_goal-03-state000-seed0&quot;,
+  &quot;instruction&quot;: &quot;open the top drawer and put the bowl inside&quot;,
+  &quot;published_goal_expression&quot;: [
+    &quot;And&quot;,
+    [
+      &quot;In&quot;,
+      &quot;akita_black_bowl_1&quot;,
+      &quot;wooden_cabinet_1_top_region&quot;
+    ]
+  ],
+  &quot;published_goal_predicates&quot;: [
+    {
+      &quot;name&quot;: &quot;In&quot;,
+      &quot;arguments&quot;: [
+        &quot;akita_black_bowl_1&quot;,
+        &quot;wooden_cabinet_1_top_region&quot;
+      ],
+      &quot;normalized_name&quot;: &quot;in&quot;
+    }
+  ],
+  &quot;bddl_sha256&quot;: &quot;3056e4dc72ee590432cfb18c610fd077a572c8b8f256e45328031005dd0b6757&quot;,
+  &quot;initial_state_sha256&quot;: &quot;cbedd58789f8211e0c0435637d9c71750d5aa2ae3216b354ec03b6630c8caa78&quot;,
+  &quot;image_sha256&quot;: &quot;424661aba24ea24235a0b4b80691a448e625db5b681e8bc757de5170637dd5f4&quot;,
+  &quot;libero_commit&quot;: &quot;8f1084e3132a39270c3a13ebe37270a43ece2a01&quot;,
+  &quot;simulator_facts&quot;: {
+    &quot;schema_version&quot;: &quot;1.0&quot;,
+    &quot;example_id&quot;: &quot;libero_goal-03-state000-seed0&quot;,
+    &quot;source&quot;: &quot;verified_official_simulator&quot;,
+    &quot;bddl_sha256&quot;: &quot;3056e4dc72ee590432cfb18c610fd077a572c8b8f256e45328031005dd0b6757&quot;,
+    &quot;initial_state_sha256&quot;: &quot;cbedd58789f8211e0c0435637d9c71750d5aa2ae3216b354ec03b6630c8caa78&quot;,
+    &quot;image_sha256&quot;: &quot;424661aba24ea24235a0b4b80691a448e625db5b681e8bc757de5170637dd5f4&quot;,
+    &quot;libero_commit&quot;: &quot;8f1084e3132a39270c3a13ebe37270a43ece2a01&quot;,
+    &quot;verifier_sha256&quot;: &quot;6c00e6c0ca4876d3697f0855f56c2e16c05486818e8f9110d6c5f15eaf94ec88&quot;,
+    &quot;camera&quot;: &quot;agentview&quot;,
+    &quot;parts&quot;: [
+      {
+        &quot;entity_id&quot;: &quot;wooden_cabinet_1_top_region&quot;,
+        &quot;parent_id&quot;: &quot;wooden_cabinet_1&quot;,
+        &quot;body&quot;: &quot;wooden_cabinet_1_cabinet_top&quot;,
+        &quot;joint_id&quot;: &quot;wooden_cabinet_1_top_level&quot;,
+        &quot;joint_type&quot;: &quot;prismatic&quot;,
+        &quot;axis_local&quot;: [
+          0.0,
+          1.0,
+          0.0
+        ],
+        &quot;axis_world&quot;: [
+          -1.2246467991473532e-16,
+          -1.0,
+          0.0
+        ],
+        &quot;joint_position_world&quot;: [
+          0.03957236684465528,
+          -0.23401682871566554,
+          0.905
+        ],
+        &quot;axis_sign_invariant&quot;: true,
+        &quot;goal_related&quot;: true,
+        &quot;mask&quot;: &quot;derived/1bf7a6fbeed6/libero_goal-03-state000-seed0/mask-wooden_cabinet_1_top_region.png&quot;,
+        &quot;mask_sha256&quot;: &quot;8fdd9c33e39cb69899729770bc071081a9df949e0339f1f49d6b965fb2f70459&quot;,
+        &quot;visible_pixels&quot;: 621,
+        &quot;bbox&quot;: [
+          0.234375,
+          0.3125,
+          0.359375,
+          0.8046875
+        ],
+        &quot;geometric_scope&quot;: &quot;visible articulated body associated with the BDDL site, not the interior volume&quot;,
+        &quot;verification&quot;: &quot;site_joint_body_mask_and_state_crosscheck&quot;,
+        &quot;open_predicate_at_limits&quot;: [
+          true,
+          false
+        ]
+      },
+      {
+        &quot;entity_id&quot;: &quot;wooden_cabinet_1_middle_region&quot;,
+        &quot;parent_id&quot;: &quot;wooden_cabinet_1&quot;,
+        &quot;body&quot;: &quot;wooden_cabinet_1_cabinet_middle&quot;,
+        &quot;joint_id&quot;: &quot;wooden_cabinet_1_middle_level&quot;,
+        &quot;joint_type&quot;: &quot;prismatic&quot;,
+        &quot;axis_local&quot;: [
+          0.0,
+          1.0,
+          0.0
+        ],
+        &quot;axis_world&quot;: [
+          -1.2246467991473532e-16,
+          -1.0,
+          0.0
+        ],
+        &quot;joint_position_world&quot;: [
+          0.03957236684465528,
+          -0.23401682871566554,
+          0.905
+        ],
+        &quot;axis_sign_invariant&quot;: true,
+        &quot;goal_related&quot;: false,
+        &quot;mask&quot;: &quot;derived/1bf7a6fbeed6/libero_goal-03-state000-seed0/mask-wooden_cabinet_1_middle_region.png&quot;,
+        &quot;mask_sha256&quot;: &quot;067065582d403f4d1ca3bfb5f16e9e57c281268885addac50df8dcc68586048b&quot;,
+        &quot;visible_pixels&quot;: 442,
+        &quot;bbox&quot;: [
+          0.25,
+          0.46484375,
+          0.328125,
+          0.79296875
+        ],
+        &quot;geometric_scope&quot;: &quot;visible articulated body associated with the BDDL site, not the interior volume&quot;,
+        &quot;verification&quot;: &quot;site_joint_body_mask_and_state_crosscheck&quot;,
+        &quot;open_predicate_at_limits&quot;: [
+          true,
+          false
+        ]
+      },
+      {
+        &quot;entity_id&quot;: &quot;wooden_cabinet_1_bottom_region&quot;,
+        &quot;parent_id&quot;: &quot;wooden_cabinet_1&quot;,
+        &quot;body&quot;: &quot;wooden_cabinet_1_cabinet_bottom&quot;,
+        &quot;joint_id&quot;: &quot;wooden_cabinet_1_bottom_level&quot;,
+        &quot;joint_type&quot;: &quot;prismatic&quot;,
+        &quot;axis_local&quot;: [
+          0.0,
+          1.0,
+          0.0
+        ],
+        &quot;axis_world&quot;: [
+          -1.2246467991473532e-16,
+          -1.0,
+          0.0
+        ],
+        &quot;joint_position_world&quot;: [
+          0.03957236684465528,
+          -0.23401682871566554,
+          0.905
+        ],
+        &quot;axis_sign_invariant&quot;: true,
+        &quot;goal_related&quot;: false,
+        &quot;mask&quot;: &quot;derived/1bf7a6fbeed6/libero_goal-03-state000-seed0/mask-wooden_cabinet_1_bottom_region.png&quot;,
+        &quot;mask_sha256&quot;: &quot;9497a1ebc115027486c1b432793aa425d6bc8e848a8407d8328106c9310c71ea&quot;,
+        &quot;visible_pixels&quot;: 339,
+        &quot;bbox&quot;: [
+          0.265625,
+          0.2890625,
+          0.36328125,
+          0.80078125
+        ],
+        &quot;geometric_scope&quot;: &quot;visible articulated body associated with the BDDL site, not the interior volume&quot;,
+        &quot;verification&quot;: &quot;site_joint_body_mask_and_state_crosscheck&quot;,
+        &quot;open_predicate_at_limits&quot;: [
+          true,
+          false
+        ]
+      }
+    ],
+    &quot;excluded_labels&quot;: [
+      &quot;required task stages&quot;,
+      &quot;grasp strategy&quot;,
+      &quot;contact requirements&quot;,
+      &quot;path requirements&quot;
+    ]
+  },
+  &quot;proposal_status&quot;: &quot;unreviewed; excluded from Track B scoring&quot;
+}</pre></details><p>Check which actions are needed in this initial state, valid alternatives, contact strategy, part identity and coordinate frames. Edit or remove unsupported proposals. The JSON is editable. Leave completeness unchecked unless precision can be judged.</p><textarea aria-label="Editable draft reference">{
+  &quot;schema_version&quot;: &quot;1.0&quot;,
+  &quot;example_id&quot;: &quot;libero_goal-03-state000-seed0&quot;,
+  &quot;status&quot;: &quot;draft&quot;,
+  &quot;provenance&quot;: [
+    {
+      &quot;source&quot;: &quot;official_benchmark&quot;,
+      &quot;evidence&quot;: &quot;Published final predicates and instruction; BDDL SHA256 3056e4dc72ee590432cfb18c610fd077a572c8b8f256e45328031005dd0b6757&quot;,
+      &quot;reviewer&quot;: null
+    },
+    {
+      &quot;source&quot;: &quot;derived_rule&quot;,
+      &quot;evidence&quot;: &quot;Unreviewed conditional stage/contact proposals. Neither published goals nor joint kinematics prove required manipulation strategies.&quot;,
+      &quot;reviewer&quot;: null
+    },
+    {
+      &quot;source&quot;: &quot;simulator&quot;,
+      &quot;evidence&quot;: &quot;Separately verified site/joint/body/mask/state facts. Known axis parameters come from that evidence; task necessity remains unreviewed.&quot;,
+      &quot;reviewer&quot;: null
+    }
+  ],
+  &quot;relevant_entities&quot;: [
+    &quot;akita_black_bowl_1&quot;,
+    &quot;wooden_cabinet_1_top_region&quot;
+  ],
+  &quot;manipulable_parts&quot;: null,
+  &quot;alternatives&quot;: [
+    {
+      &quot;id&quot;: &quot;conditional_proposal_for_review&quot;,
+      &quot;stages&quot;: [
+        {
+          &quot;id&quot;: &quot;engage&quot;,
+          &quot;action&quot;: &quot;establish_contact&quot;,
+          &quot;entities&quot;: [
+            &quot;wooden_cabinet_1_top_region&quot;
+          ],
+          &quot;subgoals&quot;: [],
+          &quot;requirement&quot;: &quot;conditional&quot;,
+          &quot;condition&quot;: &quot;if opening is performed through robot contact&quot;,
+          &quot;evidence&quot;: &quot;planning_hypothesis&quot;
+        },
+        {
+          &quot;id&quot;: &quot;open&quot;,
+          &quot;action&quot;: &quot;open&quot;,
+          &quot;entities&quot;: [
+            &quot;wooden_cabinet_1_top_region&quot;
+          ],
+          &quot;subgoals&quot;: [],
+          &quot;requirement&quot;: &quot;conditional&quot;,
+          &quot;condition&quot;: &quot;if the requested opening/access state is not already satisfied&quot;,
+          &quot;evidence&quot;: &quot;instruction&quot;
+        },
+        {
+          &quot;id&quot;: &quot;grasp&quot;,
+          &quot;action&quot;: &quot;grasp&quot;,
+          &quot;entities&quot;: [
+            &quot;akita_black_bowl_1&quot;
+          ],
+          &quot;subgoals&quot;: [],
+          &quot;requirement&quot;: &quot;conditional&quot;,
+          &quot;condition&quot;: &quot;if grasp-based transport is selected and the object is not already held&quot;,
+          &quot;evidence&quot;: &quot;planning_hypothesis&quot;
+        },
+        {
+          &quot;id&quot;: &quot;transport&quot;,
+          &quot;action&quot;: &quot;transport&quot;,
+          &quot;entities&quot;: [
+            &quot;akita_black_bowl_1&quot;
+          ],
+          &quot;subgoals&quot;: [],
+          &quot;requirement&quot;: &quot;conditional&quot;,
+          &quot;condition&quot;: &quot;if relocation is required&quot;,
+          &quot;evidence&quot;: &quot;planning_hypothesis&quot;
+        },
+        {
+          &quot;id&quot;: &quot;place&quot;,
+          &quot;action&quot;: &quot;place&quot;,
+          &quot;entities&quot;: [
+            &quot;akita_black_bowl_1&quot;,
+            &quot;wooden_cabinet_1_top_region&quot;
+          ],
+          &quot;subgoals&quot;: [],
+          &quot;requirement&quot;: &quot;conditional&quot;,
+          &quot;condition&quot;: &quot;if the final relation is not already satisfied&quot;,
+          &quot;evidence&quot;: &quot;instruction&quot;
+        },
+        {
+          &quot;id&quot;: &quot;release&quot;,
+          &quot;action&quot;: &quot;release&quot;,
+          &quot;entities&quot;: [
+            &quot;akita_black_bowl_1&quot;
+          ],
+          &quot;subgoals&quot;: [],
+          &quot;requirement&quot;: &quot;conditional&quot;,
+          &quot;condition&quot;: &quot;if a held object must be left at the destination&quot;,
+          &quot;evidence&quot;: &quot;planning_hypothesis&quot;
+        }
+      ],
+      &quot;dependencies&quot;: [
+        {
+          &quot;before&quot;: &quot;engage&quot;,
+          &quot;after&quot;: &quot;open&quot;,
+          &quot;requirement&quot;: &quot;conditional&quot;,
+          &quot;condition&quot;: &quot;if contact-based actuation is selected&quot;,
+          &quot;evidence&quot;: &quot;planning_hypothesis&quot;
+        },
+        {
+          &quot;before&quot;: &quot;grasp&quot;,
+          &quot;after&quot;: &quot;transport&quot;,
+          &quot;requirement&quot;: &quot;conditional&quot;,
+          &quot;condition&quot;: &quot;for the proposed grasp-based placement sequence&quot;,
+          &quot;evidence&quot;: &quot;planning_hypothesis&quot;
+        },
+        {
+          &quot;before&quot;: &quot;transport&quot;,
+          &quot;after&quot;: &quot;place&quot;,
+          &quot;requirement&quot;: &quot;conditional&quot;,
+          &quot;condition&quot;: &quot;for the proposed grasp-based placement sequence&quot;,
+          &quot;evidence&quot;: &quot;planning_hypothesis&quot;
+        },
+        {
+          &quot;before&quot;: &quot;place&quot;,
+          &quot;after&quot;: &quot;release&quot;,
+          &quot;requirement&quot;: &quot;conditional&quot;,
+          &quot;condition&quot;: &quot;for the proposed grasp-based placement sequence&quot;,
+          &quot;evidence&quot;: &quot;planning_hypothesis&quot;
+        },
+        {
+          &quot;before&quot;: &quot;open&quot;,
+          &quot;after&quot;: &quot;place&quot;,
+          &quot;requirement&quot;: &quot;conditional&quot;,
+          &quot;condition&quot;: &quot;if closed access blocks placement&quot;,
+          &quot;evidence&quot;: &quot;planning_hypothesis&quot;
+        }
+      ],
+      &quot;constraints&quot;: [
+        {
+          &quot;id&quot;: &quot;grasp_transport&quot;,
+          &quot;category&quot;: &quot;contact&quot;,
+          &quot;type&quot;: &quot;maintain_grasp&quot;,
+          &quot;joint_type&quot;: null,
+          &quot;articulated_part&quot;: null,
+          &quot;entities&quot;: [
+            &quot;akita_black_bowl_1&quot;
+          ],
+          &quot;stages&quot;: [
+            &quot;transport&quot;
+          ],
+          &quot;scope&quot;: &quot;path&quot;,
+          &quot;requirement&quot;: &quot;conditional&quot;,
+          &quot;condition&quot;: &quot;if transport uses a maintained grasp&quot;,
+          &quot;parameters&quot;: [
+            {
+              &quot;name&quot;: &quot;grasp_transform&quot;,
+              &quot;value&quot;: null,
+              &quot;status&quot;: &quot;unresolved&quot;,
+              &quot;frame&quot;: null,
+              &quot;units&quot;: null,
+              &quot;evidence&quot;: &quot;planning_hypothesis&quot;
+            }
+          ],
+          &quot;frame_assumption&quot;: null,
+          &quot;evidence&quot;: &quot;planning_hypothesis&quot;,
+          &quot;verified&quot;: false
+        },
+        {
+          &quot;id&quot;: &quot;published_goal_0&quot;,
+          &quot;category&quot;: &quot;goal&quot;,
+          &quot;type&quot;: &quot;in&quot;,
+          &quot;joint_type&quot;: null,
+          &quot;articulated_part&quot;: null,
+          &quot;entities&quot;: [
+            &quot;akita_black_bowl_1&quot;,
+            &quot;wooden_cabinet_1_top_region&quot;
+          ],
+          &quot;stages&quot;: [],
+          &quot;scope&quot;: &quot;goal&quot;,
+          &quot;requirement&quot;: &quot;required&quot;,
+          &quot;condition&quot;: null,
+          &quot;parameters&quot;: [],
+          &quot;frame_assumption&quot;: null,
+          &quot;evidence&quot;: &quot;instruction&quot;,
+          &quot;verified&quot;: false
+        },
+        {
+          &quot;id&quot;: &quot;joint_motion&quot;,
+          &quot;category&quot;: &quot;articulation&quot;,
+          &quot;type&quot;: &quot;follow_joint&quot;,
+          &quot;joint_type&quot;: &quot;prismatic&quot;,
+          &quot;articulated_part&quot;: &quot;wooden_cabinet_1_top_region&quot;,
+          &quot;entities&quot;: [
+            &quot;wooden_cabinet_1_top_region&quot;
+          ],
+          &quot;stages&quot;: [
+            &quot;open&quot;
+          ],
+          &quot;scope&quot;: &quot;path&quot;,
+          &quot;requirement&quot;: &quot;conditional&quot;,
+          &quot;condition&quot;: &quot;if this verified articulated body is actuated during opening&quot;,
+          &quot;parameters&quot;: [
+            {
+              &quot;name&quot;: &quot;axis&quot;,
+              &quot;value&quot;: [
+                -1.2246467991473532e-16,
+                -1.0,
+                0.0
+              ],
+              &quot;status&quot;: &quot;known&quot;,
+              &quot;frame&quot;: &quot;world&quot;,
+              &quot;units&quot;: &quot;unit_vector&quot;,
+              &quot;evidence&quot;: &quot;oracle_geometry&quot;
+            },
+            {
+              &quot;name&quot;: &quot;axis_point&quot;,
+              &quot;value&quot;: [
+                0.03957236684465528,
+                -0.23401682871566554,
+                0.905
+              ],
+              &quot;status&quot;: &quot;known&quot;,
+              &quot;frame&quot;: &quot;world&quot;,
+              &quot;units&quot;: &quot;m&quot;,
+              &quot;evidence&quot;: &quot;oracle_geometry&quot;
+            }
+          ],
+          &quot;frame_assumption&quot;: null,
+          &quot;evidence&quot;: &quot;planning_hypothesis&quot;,
+          &quot;verified&quot;: false
+        }
+      ]
+    }
+  ],
+  &quot;coverage&quot;: {
+    &quot;stages&quot;: false,
+    &quot;dependencies&quot;: false,
+    &quot;constraints&quot;: false,
+    &quot;stages_complete&quot;: false,
+    &quot;dependencies_complete&quot;: false,
+    &quot;constraints_complete&quot;: false,
+    &quot;constraint_categories&quot;: []
+  },
+  &quot;axis_sign_invariant&quot;: true,
+  &quot;gaps&quot;: [
+    &quot;Human expert must confirm relevant entities, manipulable parts and appropriate stage granularity.&quot;,
+    &quot;Review conditional assumptions against the observed initial state; remove unsupported proposals or add valid alternatives.&quot;,
+    &quot;No task-specific grasp/contact/orientation/path requirement is established by final BDDL goals alone.&quot;,
+    &quot;Kinematic facts do not establish a required task plan. All proposed constraints remain unverified.&quot;,
+    &quot;Coverage is disabled until human review; completeness must be assessed independently.&quot;
+  ]
+}</textarea><p><label>Human reviewer name <input class="reviewer" type="text"></label></p><p><label><input type="checkbox" class="review-stages">Reviewed stages</label> <label><input type="checkbox" class="complete-stages">Complete stages coverage, including alternatives</label><br><label><input type="checkbox" class="review-dependencies">Reviewed dependencies</label> <label><input type="checkbox" class="complete-dependencies">Complete dependencies coverage, including alternatives</label><br><label><input type="checkbox" class="review-constraints">Reviewed constraints</label> <label><input type="checkbox" class="complete-constraints">Complete constraints coverage, including alternatives</label><br></p><p><label><input type="checkbox" class="attest">I checked the edited reference and its evidence.</label></p><button onclick="exportReview(this)">Export reviewed reference</button><p class="message" role="status"></p></article>
+<article data-example="libero_spatial-00-state000-seed0"><h2>pick up the black bowl between the plate and the ramekin and place it on the plate</h2><p>libero_spatial-00-state000-seed0 · <strong>DRAFT — human review pending</strong></p><div class="images"><img src="evidence/libero_spatial-00-state000-seed0-rgb.png" alt="Original observation"><img src="evidence/libero_spatial-00-state000-seed0-references.png" alt="Measured object and part references"></div><p>Green: measured whole objects. Gold: verified visible drawer bodies, not interior volumes or handle affordances.</p><details><summary>Published goals and independent simulator evidence</summary><pre>{
+  &quot;example_id&quot;: &quot;libero_spatial-00-state000-seed0&quot;,
+  &quot;instruction&quot;: &quot;pick up the black bowl between the plate and the ramekin and place it on the plate&quot;,
+  &quot;published_goal_expression&quot;: [
+    &quot;And&quot;,
+    [
+      &quot;On&quot;,
+      &quot;akita_black_bowl_1&quot;,
+      &quot;plate_1&quot;
+    ]
+  ],
+  &quot;published_goal_predicates&quot;: [
+    {
+      &quot;name&quot;: &quot;On&quot;,
+      &quot;arguments&quot;: [
+        &quot;akita_black_bowl_1&quot;,
+        &quot;plate_1&quot;
+      ],
+      &quot;normalized_name&quot;: &quot;on&quot;
+    }
+  ],
+  &quot;bddl_sha256&quot;: &quot;9b59eb1287802868ad9bc78d58e6d36d4ba31134e679cfdbdf4b0feb660c959b&quot;,
+  &quot;initial_state_sha256&quot;: &quot;4e3eaf7a315bc3bafb6db4837c8eef0e5f8aea717782a2a3ea33139392d966ed&quot;,
+  &quot;image_sha256&quot;: &quot;7b20b9036ebb02d6e328903a60c6ac4a7b42d20f162b5dec8b8adbd9b0140163&quot;,
+  &quot;libero_commit&quot;: &quot;8f1084e3132a39270c3a13ebe37270a43ece2a01&quot;,
+  &quot;simulator_facts&quot;: null,
+  &quot;proposal_status&quot;: &quot;unreviewed; excluded from Track B scoring&quot;
+}</pre></details><p>Check which actions are needed in this initial state, valid alternatives, contact strategy, part identity and coordinate frames. Edit or remove unsupported proposals. The JSON is editable. Leave completeness unchecked unless precision can be judged.</p><textarea aria-label="Editable draft reference">{
+  &quot;schema_version&quot;: &quot;1.0&quot;,
+  &quot;example_id&quot;: &quot;libero_spatial-00-state000-seed0&quot;,
+  &quot;status&quot;: &quot;draft&quot;,
+  &quot;provenance&quot;: [
+    {
+      &quot;source&quot;: &quot;official_benchmark&quot;,
+      &quot;evidence&quot;: &quot;Published final predicates and instruction; BDDL SHA256 9b59eb1287802868ad9bc78d58e6d36d4ba31134e679cfdbdf4b0feb660c959b&quot;,
+      &quot;reviewer&quot;: null
+    },
+    {
+      &quot;source&quot;: &quot;derived_rule&quot;,
+      &quot;evidence&quot;: &quot;Unreviewed conditional stage/contact proposals. Neither published goals nor joint kinematics prove required manipulation strategies.&quot;,
+      &quot;reviewer&quot;: null
+    }
+  ],
+  &quot;relevant_entities&quot;: [
+    &quot;akita_black_bowl_1&quot;,
+    &quot;plate_1&quot;
+  ],
+  &quot;manipulable_parts&quot;: null,
+  &quot;alternatives&quot;: [
+    {
+      &quot;id&quot;: &quot;conditional_proposal_for_review&quot;,
+      &quot;stages&quot;: [
+        {
+          &quot;id&quot;: &quot;grasp&quot;,
+          &quot;action&quot;: &quot;grasp&quot;,
+          &quot;entities&quot;: [
+            &quot;akita_black_bowl_1&quot;
+          ],
+          &quot;subgoals&quot;: [],
+          &quot;requirement&quot;: &quot;conditional&quot;,
+          &quot;condition&quot;: &quot;if grasp-based transport is selected and the object is not already held&quot;,
+          &quot;evidence&quot;: &quot;planning_hypothesis&quot;
+        },
+        {
+          &quot;id&quot;: &quot;transport&quot;,
+          &quot;action&quot;: &quot;transport&quot;,
+          &quot;entities&quot;: [
+            &quot;akita_black_bowl_1&quot;
+          ],
+          &quot;subgoals&quot;: [],
+          &quot;requirement&quot;: &quot;conditional&quot;,
+          &quot;condition&quot;: &quot;if relocation is required&quot;,
+          &quot;evidence&quot;: &quot;planning_hypothesis&quot;
+        },
+        {
+          &quot;id&quot;: &quot;place&quot;,
+          &quot;action&quot;: &quot;place&quot;,
+          &quot;entities&quot;: [
+            &quot;akita_black_bowl_1&quot;,
+            &quot;plate_1&quot;
+          ],
+          &quot;subgoals&quot;: [],
+          &quot;requirement&quot;: &quot;conditional&quot;,
+          &quot;condition&quot;: &quot;if the final relation is not already satisfied&quot;,
+          &quot;evidence&quot;: &quot;instruction&quot;
+        },
+        {
+          &quot;id&quot;: &quot;release&quot;,
+          &quot;action&quot;: &quot;release&quot;,
+          &quot;entities&quot;: [
+            &quot;akita_black_bowl_1&quot;
+          ],
+          &quot;subgoals&quot;: [],
+          &quot;requirement&quot;: &quot;conditional&quot;,
+          &quot;condition&quot;: &quot;if a held object must be left at the destination&quot;,
+          &quot;evidence&quot;: &quot;planning_hypothesis&quot;
+        }
+      ],
+      &quot;dependencies&quot;: [
+        {
+          &quot;before&quot;: &quot;grasp&quot;,
+          &quot;after&quot;: &quot;transport&quot;,
+          &quot;requirement&quot;: &quot;conditional&quot;,
+          &quot;condition&quot;: &quot;for the proposed grasp-based placement sequence&quot;,
+          &quot;evidence&quot;: &quot;planning_hypothesis&quot;
+        },
+        {
+          &quot;before&quot;: &quot;transport&quot;,
+          &quot;after&quot;: &quot;place&quot;,
+          &quot;requirement&quot;: &quot;conditional&quot;,
+          &quot;condition&quot;: &quot;for the proposed grasp-based placement sequence&quot;,
+          &quot;evidence&quot;: &quot;planning_hypothesis&quot;
+        },
+        {
+          &quot;before&quot;: &quot;place&quot;,
+          &quot;after&quot;: &quot;release&quot;,
+          &quot;requirement&quot;: &quot;conditional&quot;,
+          &quot;condition&quot;: &quot;for the proposed grasp-based placement sequence&quot;,
+          &quot;evidence&quot;: &quot;planning_hypothesis&quot;
+        }
+      ],
+      &quot;constraints&quot;: [
+        {
+          &quot;id&quot;: &quot;grasp_transport&quot;,
+          &quot;category&quot;: &quot;contact&quot;,
+          &quot;type&quot;: &quot;maintain_grasp&quot;,
+          &quot;joint_type&quot;: null,
+          &quot;articulated_part&quot;: null,
+          &quot;entities&quot;: [
+            &quot;akita_black_bowl_1&quot;
+          ],
+          &quot;stages&quot;: [
+            &quot;transport&quot;
+          ],
+          &quot;scope&quot;: &quot;path&quot;,
+          &quot;requirement&quot;: &quot;conditional&quot;,
+          &quot;condition&quot;: &quot;if transport uses a maintained grasp&quot;,
+          &quot;parameters&quot;: [
+            {
+              &quot;name&quot;: &quot;grasp_transform&quot;,
+              &quot;value&quot;: null,
+              &quot;status&quot;: &quot;unresolved&quot;,
+              &quot;frame&quot;: null,
+              &quot;units&quot;: null,
+              &quot;evidence&quot;: &quot;planning_hypothesis&quot;
+            }
+          ],
+          &quot;frame_assumption&quot;: null,
+          &quot;evidence&quot;: &quot;planning_hypothesis&quot;,
+          &quot;verified&quot;: false
+        },
+        {
+          &quot;id&quot;: &quot;published_goal_0&quot;,
+          &quot;category&quot;: &quot;goal&quot;,
+          &quot;type&quot;: &quot;on&quot;,
+          &quot;joint_type&quot;: null,
+          &quot;articulated_part&quot;: null,
+          &quot;entities&quot;: [
+            &quot;akita_black_bowl_1&quot;,
+            &quot;plate_1&quot;
+          ],
+          &quot;stages&quot;: [],
+          &quot;scope&quot;: &quot;goal&quot;,
+          &quot;requirement&quot;: &quot;required&quot;,
+          &quot;condition&quot;: null,
+          &quot;parameters&quot;: [],
+          &quot;frame_assumption&quot;: null,
+          &quot;evidence&quot;: &quot;instruction&quot;,
+          &quot;verified&quot;: false
+        }
+      ]
+    }
+  ],
+  &quot;coverage&quot;: {
+    &quot;stages&quot;: false,
+    &quot;dependencies&quot;: false,
+    &quot;constraints&quot;: false,
+    &quot;stages_complete&quot;: false,
+    &quot;dependencies_complete&quot;: false,
+    &quot;constraints_complete&quot;: false,
+    &quot;constraint_categories&quot;: []
+  },
+  &quot;axis_sign_invariant&quot;: true,
+  &quot;gaps&quot;: [
+    &quot;Human expert must confirm relevant entities, manipulable parts and appropriate stage granularity.&quot;,
+    &quot;Review conditional assumptions against the observed initial state; remove unsupported proposals or add valid alternatives.&quot;,
+    &quot;No task-specific grasp/contact/orientation/path requirement is established by final BDDL goals alone.&quot;,
+    &quot;Kinematic facts do not establish a required task plan. All proposed constraints remain unverified.&quot;,
+    &quot;Coverage is disabled until human review; completeness must be assessed independently.&quot;
+  ]
+}</textarea><p><label>Human reviewer name <input class="reviewer" type="text"></label></p><p><label><input type="checkbox" class="review-stages">Reviewed stages</label> <label><input type="checkbox" class="complete-stages">Complete stages coverage, including alternatives</label><br><label><input type="checkbox" class="review-dependencies">Reviewed dependencies</label> <label><input type="checkbox" class="complete-dependencies">Complete dependencies coverage, including alternatives</label><br><label><input type="checkbox" class="review-constraints">Reviewed constraints</label> <label><input type="checkbox" class="complete-constraints">Complete constraints coverage, including alternatives</label><br></p><p><label><input type="checkbox" class="attest">I checked the edited reference and its evidence.</label></p><button onclick="exportReview(this)">Export reviewed reference</button><p class="message" role="status"></p></article><script>
+function exportReview(button) {
+  const card = button.closest('article');
+  const message = card.querySelector('.message');
+  try {
+    const reviewer = card.querySelector('.reviewer').value.trim();
+    if (!reviewer) throw Error('Enter the name of the human reviewer.');
+    const annotation = JSON.parse(card.querySelector('textarea').value);
+    if (annotation.example_id !== card.dataset.example) throw Error('The example ID must match this observation.');
+    const tracks = ['stages','dependencies','constraints'];
+    let checked = 0;
+    for (const track of tracks) {
+      const reviewed = card.querySelector('.review-' + track).checked;
+      const complete = card.querySelector('.complete-' + track).checked;
+      if (complete && !reviewed) throw Error('A complete track must also be reviewed.');
+      annotation.coverage[track] = reviewed;
+      annotation.coverage[track + '_complete'] = complete;
+      checked += Number(reviewed);
+    }
+    if (!checked) throw Error('Review at least one track before exporting.');
+    if (!card.querySelector('.attest').checked) throw Error('Confirm that you checked the proposals and their evidence.');
+    annotation.status = 'reviewed';
+    for (const source of annotation.provenance) source.reviewer = reviewer;
+    annotation.provenance.push({source:'human', reviewer:reviewer, evidence:'Reviewed the edited reference against the observation and supplied evidence; track coverage is explicitly selected.'});
+    const blob = new Blob([JSON.stringify(annotation, null, 2) + '\n'], {type:'application/json'});
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = annotation.example_id + '.json';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 5000);
+    message.textContent = 'Reviewed reference downloaded. Validate it before using it for scoring. Repository drafts remain unchanged.';
+  } catch (error) { message.textContent = error.message; }
+}
+</script></body></html>

@@ -1,0 +1,136 @@
+{
+  "schema_version": "1.0",
+  "example_id": "libero_goal-00-state001-seed0",
+  "source": "verified_official_simulator",
+  "bddl_sha256": "832ab48ec476807c767e8985666e295700f92d1f8daeae1c34eee1e75293769b",
+  "initial_state_sha256": "7e37e0c67213d1237e09e0e5e381cd9bfd4b0bfc2013807549c0436c0e84e655",
+  "image_sha256": "8dbf2c5452d3766fa8f9c395f3e97d6d0c645bdb1e0eaa511702c399b65c47db",
+  "libero_commit": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+  "verifier_sha256": "6c00e6c0ca4876d3697f0855f56c2e16c05486818e8f9110d6c5f15eaf94ec88",
+  "camera": "agentview",
+  "parts": [
+    {
+      "entity_id": "wooden_cabinet_1_top_region",
+      "parent_id": "wooden_cabinet_1",
+      "body": "wooden_cabinet_1_cabinet_top",
+      "joint_id": "wooden_cabinet_1_top_level",
+      "joint_type": "prismatic",
+      "axis_local": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "axis_world": [
+        -1.2246467991473532e-16,
+        -1.0,
+        0.0
+      ],
+      "joint_position_world": [
+        0.03957236684465528,
+        -0.23401682871566554,
+        0.905
+      ],
+      "axis_sign_invariant": true,
+      "goal_related": false,
+      "mask": "derived/1bf7a6fbeed6/libero_goal-00-state001-seed0/mask-wooden_cabinet_1_top_region.png",
+      "mask_sha256": "8fdd9c33e39cb69899729770bc071081a9df949e0339f1f49d6b965fb2f70459",
+      "visible_pixels": 621,
+      "bbox": [
+        0.234375,
+        0.3125,
+        0.359375,
+        0.8046875
+      ],
+      "geometric_scope": "visible articulated body associated with the BDDL site, not the interior volume",
+      "verification": "site_joint_body_mask_and_state_crosscheck",
+      "open_predicate_at_limits": [
+        true,
+        false
+      ]
+    },
+    {
+      "entity_id": "wooden_cabinet_1_middle_region",
+      "parent_id": "wooden_cabinet_1",
+      "body": "wooden_cabinet_1_cabinet_middle",
+      "joint_id": "wooden_cabinet_1_middle_level",
+      "joint_type": "prismatic",
+      "axis_local": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "axis_world": [
+        -1.2246467991473532e-16,
+        -1.0,
+        0.0
+      ],
+      "joint_position_world": [
+        0.03957236684465528,
+        -0.23401682871566554,
+        0.905
+      ],
+      "axis_sign_invariant": true,
+      "goal_related": true,
+      "mask": "derived/1bf7a6fbeed6/libero_goal-00-state001-seed0/mask-wooden_cabinet_1_middle_region.png",
+      "mask_sha256": "067065582d403f4d1ca3bfb5f16e9e57c281268885addac50df8dcc68586048b",
+      "visible_pixels": 442,
+      "bbox": [
+        0.25,
+        0.46484375,
+        0.328125,
+        0.79296875
+      ],
+      "geometric_scope": "visible articulated body associated with the BDDL site, not the interior volume",
+      "verification": "site_joint_body_mask_and_state_crosscheck",
+      "open_predicate_at_limits": [
+        true,
+        false
+      ]
+    },
+    {
+      "entity_id": "wooden_cabinet_1_bottom_region",
+      "parent_id": "wooden_cabinet_1",
+      "body": "wooden_cabinet_1_cabinet_bottom",
+      "joint_id": "wooden_cabinet_1_bottom_level",
+      "joint_type": "prismatic",
+      "axis_local": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "axis_world": [
+        -1.2246467991473532e-16,
+        -1.0,
+        0.0
+      ],
+      "joint_position_world": [
+        0.03957236684465528,
+        -0.23401682871566554,
+        0.905
+      ],
+      "axis_sign_invariant": true,
+      "goal_related": false,
+      "mask": "derived/1bf7a6fbeed6/libero_goal-00-state001-seed0/mask-wooden_cabinet_1_bottom_region.png",
+      "mask_sha256": "9497a1ebc115027486c1b432793aa425d6bc8e848a8407d8328106c9310c71ea",
+      "visible_pixels": 339,
+      "bbox": [
+        0.265625,
+        0.2890625,
+        0.36328125,
+        0.80078125
+      ],
+      "geometric_scope": "visible articulated body associated with the BDDL site, not the interior volume",
+      "verification": "site_joint_body_mask_and_state_crosscheck",
+      "open_predicate_at_limits": [
+        true,
+        false
+      ]
+    }
+  ],
+  "excluded_labels": [
+    "required task stages",
+    "grasp strategy",
+    "contact requirements",
+    "path requirements"
+  ]
+}

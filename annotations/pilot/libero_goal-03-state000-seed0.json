@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0",
+  "example_id": "libero_goal-03-state000-seed0",
+  "status": "draft",
+  "provenance": [],
+  "relevant_entities": null,
+  "manipulable_parts": null,
+  "alternatives": [],
+  "coverage": {
+    "stages": false,
+    "dependencies": false,
+    "constraints": false,
+    "stages_complete": false,
+    "dependencies_complete": false,
+    "constraints_complete": false,
+    "constraint_categories": []
+  },
+  "axis_sign_invariant": true,
+  "gaps": [
+    "Expert review needed for relevant entities and manipulable parts.",
+    "BDDL final goals do not establish intermediate stages or path requirements.",
+    "Joint metadata supplies kinematics, not required task constraints."
+  ]
+}

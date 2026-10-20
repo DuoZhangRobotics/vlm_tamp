@@ -1,0 +1,7 @@
+Fill the final-goal form using only the instruction and RGB images. Return choices, not descriptions, coordinates, stages or constraints.
+
+Images are the original scene, a numbered scene, and numbered context crops. Each yellow dot is a selectable visible pixel; its number is the same in the scene and crop. Several numbers can lie on the same object. Background and robot regions are distractors. Choose a number whose dot is on the requested object's visible surface, not merely near it. Use the scene to distinguish left/right objects and the crops to inspect appearance.
+
+For each requested final state, fill state, object_choice, object_part, target_choice and target_part. Placement uses the moved object and destination owner. For drawers or hidden interiors, select their visible owner and the appropriate part. Single-object states use target_choice=0 and target_part=whole.
+
+Preserve every requested final goal, including multiple placements and a requested final closure. Temporary opening for access is not a final goal. A yellow-and-white mug is one multicolored mug. Inside a bowl means inside, not supported_on. Use choice 0 or unknown when the required referent or state cannot be identified. Never force a guess.

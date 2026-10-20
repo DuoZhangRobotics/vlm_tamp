@@ -1,0 +1,93 @@
+{
+  "source_config": "configs/drawer_models_high.json",
+  "source_trial": "results/drawer-models-high",
+  "dataset": "data/rgbd-drawer-frontview-pilot",
+  "frozen_protocol": "configs/frozen_drawer_plane_ablation.json",
+  "model": "gpt-6-luna",
+  "reasoning_effort": "high",
+  "source_selection": "cached_luna_high_only",
+  "api_calls": 0,
+  "geometry": {
+    "depth_patch_radius_pixels": 1,
+    "maximum_depth_jump_m": 0.03,
+    "maximum_depth_m": 5.0,
+    "plane_patch_radius_pixels": 7,
+    "plane_depth_band_m": 0.02,
+    "maximum_plane_rms_m": 0.003,
+    "maximum_support_tilt_degrees": 25.0,
+    "minimum_closing_span_m": 0.002,
+    "maximum_gripper_width_m": 0.08,
+    "finger_clearance_m": 0.004,
+    "pregrasp_distance_m": 0.08,
+    "minimum_object_axis_length_m": 0.01,
+    "placement_clearance_m": 0.01,
+    "point_tolerance_m": 0.01,
+    "upright_tolerance_degrees": 5.0,
+    "minimum_drawer_face_span_m": 0.02,
+    "minimum_drawer_triangle_sine": 0.08,
+    "minimum_drawer_view_normal_cosine": 0.15,
+    "drawer_line_tolerance_m": 0.01
+  },
+  "evaluation": {
+    "axis_tolerance_degrees": 5.0,
+    "minimum_support_purity_diagnostic": 0.9
+  },
+  "prior_usage_cost_usd": 0.152321,
+  "overall_budget_usd": 2.0,
+  "cases": [
+    {
+      "id": "luna_high_state000",
+      "source_case_id": "luna_high_state000",
+      "example_id": "libero_goal-00-state000-seed0",
+      "condition": "cached_local_depth",
+      "task_type": "open_middle_drawer"
+    },
+    {
+      "id": "luna_high_state010",
+      "source_case_id": "luna_high_state010",
+      "example_id": "libero_goal-00-state010-seed0",
+      "condition": "cached_local_depth",
+      "task_type": "open_middle_drawer"
+    },
+    {
+      "id": "luna_high_state020",
+      "source_case_id": "luna_high_state020",
+      "example_id": "libero_goal-00-state020-seed0",
+      "condition": "cached_local_depth",
+      "task_type": "open_middle_drawer"
+    },
+    {
+      "id": "luna_high_state030",
+      "source_case_id": "luna_high_state030",
+      "example_id": "libero_goal-00-state030-seed0",
+      "condition": "cached_local_depth",
+      "task_type": "open_middle_drawer"
+    }
+  ],
+  "comparison_policy": "Same cached semantic source/handle pixels; three-point geometry versus independent local-depth fit",
+  "provided_inventory": false,
+  "reference_masks_used_in_geometry": false,
+  "drawer_part_boundaries_inferred": false,
+  "local_plane": {
+    "depth_patch_radius_pixels": 1,
+    "minimum_depth_m": 0.1,
+    "maximum_depth_m": 5.0,
+    "maximum_depth_jump_m": 0.03,
+    "local_plane_radius_pixels": 32,
+    "local_plane_handle_exclusion_radius_pixels": 8,
+    "local_plane_depth_band_m": 0.06,
+    "local_plane_depth_edge_m": 0.02,
+    "local_plane_ransac_seed": 0,
+    "local_plane_ransac_iterations": 128,
+    "local_plane_inlier_tolerance_m": 0.003,
+    "local_plane_minimum_inliers": 72,
+    "local_plane_minimum_inlier_fraction": 0.6,
+    "local_plane_minimum_minor_extent_m": 0.02,
+    "local_plane_maximum_rms_m": 0.003,
+    "local_plane_maximum_seed_deviation_m": 0.003,
+    "local_plane_ambiguity_fraction": 0.2,
+    "local_plane_ambiguity_angle_degrees": 10.0,
+    "minimum_drawer_view_normal_cosine": 0.15,
+    "drawer_line_tolerance_m": 0.01
+  }
+}

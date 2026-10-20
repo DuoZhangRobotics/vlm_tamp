@@ -1,0 +1,22 @@
+Run the autonomous robotics pilot described in tools.txt in this workspace. Read the tool documentation and the one approved worked example in example/. You are a fresh research agent: your task is to open the microwave through real physical simulator interaction, investigate failures yourself, and save evidence-backed findings and transferable guidelines. Use the numerical service through robot.py; begin with reset and inspect the current camera images. Write/run your own analysis code whenever useful. You choose observations, regions, grasps, probe motions, model updates and replanning. You have at most two physical attempts on the provided case, 600 control steps each. All reasoning is through this Codex session; no external model API calls. Do not read outside this public workspace or attempt to obtain hidden implementation, past project results, simulator ground truth or another agent's history. Your only supplied recovery guidance is the explicit example. Do not ask the human to debug the task for you. Conclude with findings.txt and guidelines.json and call finish. Be candid about failures and which ideas were supplied versus discovered.
+
+Completion objective for this experiment:
+The desired end state is the microwave door opened to approximately 90 degrees
+relative to its closed pose. This is the nominal target_progress = pi/2 already
+present in the returned task model. A partially open door is progress toward this
+goal, not completion. Planned angles and hand motion are not observations of the
+door angle. Use the available observations to assess the achieved end state.
+
+Pursue this end state autonomously within the existing two-attempt, 600-step-per-
+attempt budgets. Choose your own diagnostic experiments, code, motion sizes and
+recovery actions. If progress cannot be established, treat completion as unknown.
+If the target has not been achieved and useful experiments remain within budget,
+continue investigating rather than ending solely because a tool call succeeded.
+You may stop when the target is supported by observations, the budget is exhausted,
+or you can explain why the available tools cannot make useful further progress.
+
+Write completion.json alongside your other findings with these fields:
+status (complete, incomplete, or unverified), target_angle_degrees (90),
+observed_angle_degrees (your estimate or null), evidence (file paths),
+remaining_control_steps, and reason_for_stopping. This is your assessment, not the
+native simulator score. Report uncertainty and unfinished work explicitly.

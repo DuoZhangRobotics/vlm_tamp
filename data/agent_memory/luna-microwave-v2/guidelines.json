@@ -1,0 +1,48 @@
+{
+  "source": "Agent-written guidelines from an earlier development case",
+  "use": "Treat these as conditional hypotheses. Case-specific values are observations, not mandatory settings. Evaluate them against current evidence.",
+  "guidelines": [
+    {
+      "id": "tracking_method",
+      "origin_reported_by_agent": "supplied_example",
+      "condition": "A door has moved after a robot trajectory, but actual panel motion is uncertain.",
+      "guideline": "Track material image landmarks, lift matches through RGB-D and calibration, fit upright rigid motion robustly, check inliers, spatial span, residuals, and pivot stability, then update geometry only when the fit is accepted. Hand or TCP motion alone is not evidence of door motion.",
+      "evidence_review": "Supplied method; not an independent discovery."
+    },
+    {
+      "id": "tracking_reference_timing",
+      "origin_reported_by_agent": "pilot_discovery",
+      "condition": "The initial approach and finger closure may change occlusion before the diagnostic pull.",
+      "guideline": "Establish the tracking reference after closing on the handle and immediately before the arc.",
+      "evidence_review": "Observed in a development case; timing of reference selection was not isolated in a controlled ablation."
+    },
+    {
+      "id": "accepted_fit_update",
+      "origin_reported_by_agent": "pilot_discovery",
+      "condition": "A multi-view RGB-D fit is accepted with broad point support and low residual.",
+      "guideline": "Apply the observed transform and sensor-derived hinge estimate before planning another arc.",
+      "evidence_review": "Applying measured updates was supplied in the example; quoted fit statistics were case evidence."
+    },
+    {
+      "id": "refined_planning_fallback",
+      "origin_reported_by_agent": "pilot_discovery",
+      "condition": "The unrefined planner exhausts its search after model refinement.",
+      "guideline": "Try the refined arc option at a modest angle. This is evidence for this case only, not a general planner guarantee.",
+      "evidence_review": "Planning outcomes are supported by the trace; this does not establish a general guarantee."
+    },
+    {
+      "id": "occluded_tracking",
+      "origin_reported_by_agent": "pilot_discovery",
+      "condition": "A substantial arc leaves too few tracked points because the arm covers the panel.",
+      "guideline": "Mark tracking as inconclusive and inspect a fresh camera view plus local RGB-D geometry. Do not label the planned arc as observed progress. A front view may leave enough of the panel measurable for an approximate plane or width estimate.",
+      "evidence_review": "Tracking failed and the agent used separate image and depth analysis; applicable evidence is limited to a single case."
+    },
+    {
+      "id": "edge_on_cross_check",
+      "origin_reported_by_agent": "pilot_discovery",
+      "condition": "A microwave door is close to edge-on in the front camera and part of its face is occluded.",
+      "guideline": "Use edge-on appearance and an RGB-D plane-normal fit as approximate cross-checks, and report uncertainty.",
+      "evidence_review": "Approximate plane and width analysis was performed; stated uncertainty was self-assigned, not calibrated."
+    }
+  ]
+}

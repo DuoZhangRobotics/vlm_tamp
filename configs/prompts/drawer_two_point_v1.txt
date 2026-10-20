@@ -1,0 +1,21 @@
+Ground the instructed drawer and its handle from this RGB image.
+Fill only the declared blanks. Return source_uv and handle_uv as [x,y] normalized
+to [0,1], origin at the top-left. Use null when a point is not visibly identifiable.
+
+source_uv: a point on a visible flat region of the requested middle drawer's
+front face, avoiding its handle, seams, side faces, cabinet frame and neighboring
+drawers. Do not select a different drawer because its surface is clearer.
+handle_uv: the center of the visible handle belonging to that same middle drawer.
+The two points must refer to the same requested moving part.
+
+joint_type: prismatic for sliding along a line, revolute for a hinged part,
+unresolved if uncertain.
+motion: pull for opening a sliding drawer outward, push for closing it,
+unresolved if uncertain.
+path_constraint: prismatic_pull when the grasped handle must follow the sliding
+direction during pulling, none when no extra path constraint is required,
+unresolved if unsupported.
+
+Do not choose plane points, metric coordinates, travel distances, grasp poses
+or generated code. Aligned depth supplies geometry locally after point selection.
+A selected surface does not certify the mechanical joint or a stable grasp.

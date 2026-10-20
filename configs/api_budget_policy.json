@@ -1,0 +1,11 @@
+{
+  "budget_usd": 2.0,
+  "budget_scope": "experiment_run",
+  "shared_by": ["episodes", "comparison_variants", "parallel_cohorts", "workers", "resumptions"],
+  "project_cumulative_spend": "informational; not capped at two dollars",
+  "resume_policy": "keep the same run ID and spent/reserved balance",
+  "exact_response_cache": "reuse without a new charge",
+  "uncertain_request": "retain full reservation; no automatic retry",
+  "parallel_run_selection": "use the same --api-run-id or VLM_TAMP_API_RUN_ID for all parts of one experiment",
+  "user_clarification_date": "2026-10-18"
+}

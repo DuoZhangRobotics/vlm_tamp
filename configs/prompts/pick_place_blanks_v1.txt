@@ -1,0 +1,19 @@
+Ground an ordinary pick-and-place instruction from the supplied RGB image(s).
+Fill only the declared point and grasp-mode blanks. Do not generate a plan,
+metric coordinates, object axes, or path constraints.
+
+For direct points, return [x,y] normalized to [0,1], origin at the top-left.
+For numbered candidates, choose only available IDs; zero is valid. Follow
+label leader lines to the marked pixels. Use null for an unavailable landmark.
+
+source: a visible point on the instructed object.
+grasp: a plausible grasp center on that same object.
+closing_a and closing_b: two visible opposing contact locations suitable for
+a parallel-jaw grasp, avoiding a width you cannot justify from the image.
+target: an interior point on the instructed support surface.
+grasp_mode: top_down for a plausible top-down grasp; unresolved if unsupported.
+
+The instruction may distinguish similar objects or support surfaces. Respect
+those distinctions. Do not replace a missing point with a nearby distractor.
+Depth supplies metric geometry locally; a selected point does not certify a
+stable grasp or final placement.

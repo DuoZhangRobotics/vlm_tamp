@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.2",
+  "schema_sha256": "1f49681fec9e7e6322dcbd2e7c98eafe7ef43023e1ecb64841ccb3b251b05955",
+  "prompt_sha256": "a617ca46e7e1b91f72ca740db90bc4a3e249966fee2a76ecd275f7dd240db973",
+  "models": [
+    "gpt-5.4-mini-2026-03-17"
+  ],
+  "example_ids": [
+    "libero_goal-03-state001-seed0"
+  ],
+  "conditions": [
+    "candidates"
+  ],
+  "temperature": 0,
+  "image_detail": "high",
+  "max_output_tokens": 2000,
+  "physical_facts_sha256": "48bb39a5031039a3a9b95d398590af2884b10c0d98704763e9a7c8e8cfbe3a8a",
+  "verifier_sha256": "0ee5c7e3cc905de0e67dc7f360da37625b7b77ee892f4421476fac85cb7c5e2d",
+  "trial_runner_sha256": "a682f7341311cdc5443ddb5505818dbd659eea7881e0dbcff263428634c94668",
+  "maximum_api_attempts": 2,
+  "max_budget_usd": 0.08,
+  "previous_project_estimated_usage_usd": 0.34470985,
+  "maximum_cumulative_estimated_usage_usd": 0.42470985,
+  "feedback_policy": "Original model proposal plus scoped physical facts/checks only. Benchmark answer assessment occurs after both model passes and never enters feedback.",
+  "primary_checks": [
+    "schema/input identity validity",
+    "joint type and forward-kinematic motion",
+    "same-frame axis direction and signed joint-coordinate limits",
+    "reference-point In and contact-penetration checks",
+    "separate full collision-box site containment"
+  ],
+  "excluded_claims": [
+    "robot trajectory feasibility",
+    "dynamic grasp/contact stability",
+    "universal necessity of every stage",
+    "exact physical container-volume certification"
+  ]
+}

@@ -1,0 +1,233 @@
+{
+  "origin": "Prior acting agent, copied without new robotics strategies",
+  "source_guidelines_sha256": "6cd6853cbc66c172409bef113982d709549c71f715281b77b1f5c5321458f282",
+  "observed_successful_attempts": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13
+  ],
+  "observed_attempt_outcomes": [
+    {
+      "attempt": 1,
+      "task_success": true,
+      "final_task_success": true
+    },
+    {
+      "attempt": 2,
+      "task_success": true,
+      "final_task_success": true
+    },
+    {
+      "attempt": 3,
+      "task_success": true,
+      "final_task_success": true
+    },
+    {
+      "attempt": 4,
+      "task_success": true,
+      "final_task_success": true
+    },
+    {
+      "attempt": 5,
+      "task_success": true,
+      "final_task_success": true
+    },
+    {
+      "attempt": 6,
+      "task_success": true,
+      "final_task_success": true
+    },
+    {
+      "attempt": 7,
+      "task_success": true,
+      "final_task_success": true
+    },
+    {
+      "attempt": 8,
+      "task_success": true,
+      "final_task_success": true
+    },
+    {
+      "attempt": 9,
+      "task_success": true,
+      "final_task_success": true
+    },
+    {
+      "attempt": 10,
+      "task_success": true,
+      "final_task_success": true
+    },
+    {
+      "attempt": 11,
+      "task_success": true,
+      "final_task_success": true
+    },
+    {
+      "attempt": 12,
+      "task_success": true,
+      "final_task_success": true
+    },
+    {
+      "attempt": 13,
+      "task_success": true,
+      "final_task_success": true
+    },
+    {
+      "attempt": 14,
+      "task_success": false,
+      "final_task_success": false
+    },
+    {
+      "attempt": 15,
+      "task_success": false,
+      "final_task_success": false
+    }
+  ],
+  "agent_conclusion": "For the current microwave only: fresh-measure the handle/panel, plan grasp, approach with open fingers, physically close to observed contact, plan fresh relative refined arcs, inspect after each, and require task_success. The 8-step/no-tracking/20-degree candidate succeeded twice at 278 steps but failed to repeat on attempt15; its reliability remains uncertain.",
+  "agent_remaining_tradeoffs": "Fewer closure steps and fewer tracking calls reduced control/tool calls in some episodes, but small closure changes affect contact and omitted tracking leaves late articulation-model questions unresolved. Arc plans can become unavailable after visible motion. The 8-step candidate is efficient when successful but not guaranteed.",
+  "scope": "Repeated success in the same development scene; not transfer evidence.",
+  "representation": "Historical evidence links removed. Tested relative control choices retained. No historical image regions, world poses, trajectories or raw replies supplied.",
+  "method": {
+    "principles": [
+      {
+        "principle": "For an articulated door with a visible functional handle, fit current RGB-D geometry and make a fresh grasp plan, approach with open fingers, physically close, then use relative hinge arcs while checking each fresh view.",
+        "applicability": "Current visible rigid door, observable handle and cabinet-connected hinge, and planner support for a relative revolute arc. Must reobserve the geometry/contact in each scene; does not assume prior coordinates or pose transfer.",
+        "procedure": "Inspect multiple views and RGB-D; ground the handle/panel and compare the fitted direction with visible cabinet/handle layout. Plan grasp from current geometry; execute approach with open fingers; close and inspect jaw qpos/contact. Plan and execute one arc at a time, inspecting each resulting image. Official task_success supports benchmark completion; visible progress alone does not.",
+        "failure_modes": [
+          {
+            "symptom": "Grounding reports the handle is not on the opposite observed face despite visible apparent layout.",
+            "possible_causes": [
+              "camera/depth face assignment ambiguity",
+              "occlusion or box selection error"
+            ],
+            "distinguishing_evidence": "Compare current views, fit residuals and point cloud. In this scene the face diagnostic stayed false despite consistent visual arrangement; cause unresolved.",
+            "candidate_responses": [
+              {
+                "response": "Revise RGB regions/view and re-ground",
+                "status": "partly tried through fresh front-view fits; false diagnostic persisted"
+              },
+              {
+                "response": "Use only visible layout without recording conflict",
+                "status": "rejected; conflict must remain documented"
+              }
+            ]
+          },
+          {
+            "symptom": "Door moves visibly but next arc plan is blocked or search budget exhausts.",
+            "possible_causes": [
+              "current arm/contact configuration constraint",
+              "articulation geometry/model mismatch",
+              "planner search limit"
+            ],
+            "distinguishing_evidence": "Fresh image/contact and error type; current runs did not separate causes.",
+            "candidate_responses": [
+              {
+                "response": "Retry an identical request once for possible transient search exhaustion",
+                "status": "tried; often repeated failure"
+              },
+              {
+                "response": "Try a smaller relative increment after one failure",
+                "status": "tried; sometimes solved once, later blocked"
+              },
+              {
+                "response": "Re-ground moved panel and plan again",
+                "status": "tried once; remained blocked"
+              },
+              {
+                "response": "Start optical tracking before motion and apply only supported measured geometry update",
+                "status": "untested in late-stall cases"
+              }
+            ]
+          }
+        ],
+        "evidence": "Attempts1-13 each received official task_success=true, with later 20-degree/no-tracking versions successful in multiple resets. Attempts14-15 showed partial motion but task_success=false and late planner failures. Current-session observations and tool errors are cited in per-attempt findings; inherited successful-method.json was the starting procedure.",
+        "reobserve": "At every reset, inspect closed door, handle and cabinet relationship, fresh panel/handle depth, grasp qpos after closure, panel-to-cabinet movement and handle-to-gripper contact after each trajectory, plus returned success flag.",
+        "transfer_test": "Test on a fresh scene with a changed hinge side or handle placement and the same broad door mechanism. Falsified if the fitted geometry/direction fails to predict observed opening or if partial motion is misclassified as success.",
+        "attribution": "Inherited successful-method.json and tool documentation, refined with own current-scene observations."
+      },
+      {
+        "principle": "Treat closure duration as an observed contact decision, not a fixed instruction; a visibly underclosed gripper can fail to transmit force, while a successful setting still needs fresh-reset confirmation.",
+        "applicability": "Physical parallel-jaw closure on an observed rigid handle; requires accessible jaw-position feedback and post-close view. Exact step counts/qpos are specific to this development scene and not transfer instructions.",
+        "procedure": "Close physically after the approach and inspect qpos and visual finger/handle relationship. If obviously underclosed, avoid applying a pulling arc until contact is improved. After choosing a setting, judge it by observed object motion and official result, then repeat from reset to support reliability.",
+        "failure_modes": [
+          {
+            "symptom": "Jaws remain more open and panel does not receive reliable motion.",
+            "possible_causes": [
+              "insufficient closure",
+              "handle misalignment"
+            ],
+            "distinguishing_evidence": "Jaw qpos and visible engagement; attempt11's 5-step setting remained visibly underclosed and needed a 5-step recovery.",
+            "candidate_responses": [
+              {
+                "response": "Add a small closure increment and inspect qpos",
+                "status": "tried; 5+5 recovered contact and task later succeeded, but added a trajectory"
+              }
+            ]
+          },
+          {
+            "symptom": "A candidate closure moves panel initially but episode stalls before completion.",
+            "possible_causes": [
+              "contact sufficient only for initial force transfer",
+              "later planner/pose limit"
+            ],
+            "distinguishing_evidence": "Attempts14-15 showed visible panel motion with 7- and 8-step qpos, but later plans failed; cause unresolved.",
+            "candidate_responses": [
+              {
+                "response": "Repeat supported closure on a fresh reset and track motion/contact",
+                "status": "8-step repeated twice successfully, then one incomplete repeat; 7-step never completed"
+              }
+            ]
+          }
+        ],
+        "evidence": "5-step attempt11 underclosed; 10-step attempts9/10 succeeded; 8-step attempts12/13 succeeded at 278 steps and attempt15 matched qpos but stalled. 7-step attempt14 showed visible motion but no success. Therefore no universal minimum closure is established.",
+        "reobserve": "Fresh handle diameter/orientation, jaw qpos before/after closure, finger placement, and whether the handle/panel moves with the gripper.",
+        "transfer_test": "Change handle diameter/material or grasp height and compare qpos plus observed force transmission. Falsified if the prescribed contact observation does not predict coupled motion.",
+        "attribution": "Own finding from current session; gripper/observation tool behavior inherited from tools.txt."
+      },
+      {
+        "principle": "A method is repeatable only when fresh-reset episodes reach the official success signal; record visible progress, planner failures and success as separate evidence.",
+        "applicability": "Resettable simulator interaction with per-execution task_success and fresh camera observations.",
+        "procedure": "For each reset, state the hypothesis before motion; save plan; record fresh geometry; inspect after each trajectory; preserve exact failure messages and qpos; finish incomplete/uncertain when no feasible action remains. Compare repeated episodes and avoid promoting a partial success.",
+        "failure_modes": [
+          {
+            "symptom": "Same method succeeds in two trials but stalls in a later fresh reset.",
+            "possible_causes": [
+              "stochastic or state-dependent planner route",
+              "small execution/configuration variation",
+              "contact or geometry sensitivity"
+            ],
+            "distinguishing_evidence": "Compare fresh measured qpos, command counts, images and plan errors. Attempts12/13 succeeded; attempt15 matched closure qpos but stalled later.",
+            "candidate_responses": [
+              {
+                "response": "Preserve successful procedure and test on next reset",
+                "status": "tried; later reset exposed limitation"
+              }
+            ]
+          }
+        ],
+        "evidence": "Thirteen official successes and two incomplete episodes. Attempts12/13 were repeated successes; attempts14/15 provide direct counterexamples to stronger reliability claims. No transfer test occurred.",
+        "reobserve": "Reset scene state, target geometry, contact state, per-trajectory views and official success booleans.",
+        "transfer_test": "Repeat on a different resettable articulated-object scene and then a different mechanism. Falsified if a claimed general method lacks fresh observable support or counts partial motion as success.",
+        "attribution": "Own session record plus supplied simulator success protocol."
+      }
+    ]
+  },
+  "audit_caveats": {
+    "changed_initial_grounding_attempts": [
+      14,
+      15
+    ],
+    "closure_only_causal_claim_not_supported_for_these_trials": true,
+    "source": "Deterministic comparison of recorded agent tool inputs; no new action strategy supplied."
+  }
+}

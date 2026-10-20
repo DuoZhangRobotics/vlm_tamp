@@ -1,0 +1,145 @@
+{
+  "model": "gpt-6-luna",
+  "reasoning_effort": "none",
+  "image_detail": "high",
+  "service_tier": "default",
+  "max_output_tokens": 1000,
+  "timeout_seconds": 180,
+  "max_retries": 0,
+  "image_token_allowance": 8192,
+  "capture_usage_details": true,
+  "pricing": {
+    "input_per_million": 0.1,
+    "cached_input_per_million": 0.01,
+    "cache_write_per_million": 0.125,
+    "output_per_million": 0.5
+  },
+  "pricing_source": "https://developers.openai.com/api/docs/models/gpt-6-luna",
+  "pricing_checked": "2026-10-13",
+  "segmentation": {
+    "points_per_side": 16,
+    "pred_iou_thresh": 0.75,
+    "stability_score_thresh": 0.88,
+    "minimum_area": 90,
+    "maximum_area_fraction": 0.4,
+    "duplicate_iou": 0.98,
+    "maximum_regions": 32
+  },
+  "proposal": {
+    "candidates_per_region": 8,
+    "max_regions": 32,
+    "min_region_pixels": 12,
+    "min_separation_m": 0.003,
+    "bounds_min": [
+      -1.5,
+      -1.5,
+      0.0
+    ],
+    "bounds_max": [
+      1.5,
+      1.5,
+      2.0
+    ],
+    "minimum_depth_m": 0.1,
+    "maximum_depth_m": 5.0
+  },
+  "dataset": "data/rgbd-drawer-frontview-pilot",
+  "candidate_dataset": "data/rgbd-drawer-frontview-candidates",
+  "frozen_protocol": "configs/frozen_task_grounding_frontview.json",
+  "prompt": "configs/prompts/drawer_blanks_v1.txt",
+  "parent_config": "configs/rgbd_dino_luna_comparison.json",
+  "pick_place_source_trial": "results/rgbd-dino-luna-comparison",
+  "pick_place_source_summary": "results/rgbd-dino-luna-report/summary.json",
+  "overall_budget_usd": 2.0,
+  "prior_usage_cost_usd": 0.00745325,
+  "max_budget_usd": 1.99254675,
+  "max_requests": 8,
+  "conditions": [
+    "direct_rgb",
+    "dinov3_candidates"
+  ],
+  "task_type": "open_middle_drawer",
+  "requested_extension_m": null,
+  "evaluation": {
+    "axis_tolerance_degrees": 5.0,
+    "handle_surface_tolerance_m": 0.01
+  },
+  "cases": [
+    {
+      "id": "direct_rgb_state000",
+      "example_id": "libero_goal-00-state000-seed0",
+      "condition": "direct_rgb",
+      "task_type": "open_middle_drawer"
+    },
+    {
+      "id": "direct_rgb_state010",
+      "example_id": "libero_goal-00-state010-seed0",
+      "condition": "direct_rgb",
+      "task_type": "open_middle_drawer"
+    },
+    {
+      "id": "direct_rgb_state020",
+      "example_id": "libero_goal-00-state020-seed0",
+      "condition": "direct_rgb",
+      "task_type": "open_middle_drawer"
+    },
+    {
+      "id": "direct_rgb_state030",
+      "example_id": "libero_goal-00-state030-seed0",
+      "condition": "direct_rgb",
+      "task_type": "open_middle_drawer"
+    },
+    {
+      "id": "dinov3_candidates_state000",
+      "example_id": "libero_goal-00-state000-seed0",
+      "condition": "dinov3_candidates",
+      "task_type": "open_middle_drawer"
+    },
+    {
+      "id": "dinov3_candidates_state010",
+      "example_id": "libero_goal-00-state010-seed0",
+      "condition": "dinov3_candidates",
+      "task_type": "open_middle_drawer"
+    },
+    {
+      "id": "dinov3_candidates_state020",
+      "example_id": "libero_goal-00-state020-seed0",
+      "condition": "dinov3_candidates",
+      "task_type": "open_middle_drawer"
+    },
+    {
+      "id": "dinov3_candidates_state030",
+      "example_id": "libero_goal-00-state030-seed0",
+      "condition": "dinov3_candidates",
+      "task_type": "open_middle_drawer"
+    }
+  ],
+  "geometry": {
+    "depth_patch_radius_pixels": 1,
+    "maximum_depth_jump_m": 0.03,
+    "maximum_depth_m": 5.0,
+    "plane_patch_radius_pixels": 7,
+    "plane_depth_band_m": 0.02,
+    "maximum_plane_rms_m": 0.003,
+    "maximum_support_tilt_degrees": 25.0,
+    "minimum_closing_span_m": 0.002,
+    "maximum_gripper_width_m": 0.08,
+    "finger_clearance_m": 0.004,
+    "pregrasp_distance_m": 0.08,
+    "minimum_object_axis_length_m": 0.01,
+    "placement_clearance_m": 0.01,
+    "point_tolerance_m": 0.01,
+    "upright_tolerance_degrees": 5.0,
+    "minimum_drawer_face_span_m": 0.02,
+    "minimum_drawer_triangle_sine": 0.08,
+    "minimum_drawer_view_normal_cosine": 0.15,
+    "drawer_line_tolerance_m": 0.01
+  },
+  "depth_dataset": "data/rgbd-drawer-frontview-pilot",
+  "scope_parent_config": "configs/task_grounding_scope.json",
+  "prior_usage_trials": [
+    "results/rgbd-dino-luna-comparison",
+    "results/task-grounding-scope-luna"
+  ],
+  "view_revision_reason": "Oblique view produced zero resolved pull lines; fixed nominal frontal camera is a development intervention"
+}

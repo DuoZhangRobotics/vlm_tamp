@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "scope": "Microwave backend with abstract memory and agent-chosen observed completion conditions.",
+  "public_library": "data/agent_memory/luna-microwave-v2/library",
+  "library_manifest_sha256": "a5f763d80ed55d0a40e0b8ecd6930747d317e5f6260edf5c5a1cb5bcfe99c51a",
+  "prompt": "data/agent_memory/luna-microwave-v2/completion-v2-learning-principles-prompt.txt",
+  "prompt_sha256": "b9f8aaa28ae93a7d384fb752cdd819260e973c5ce52a6441223cd0e4622c6d97",
+  "common_guide": "data/agent_memory/luna-microwave-v2/guidelines.json",
+  "common_guide_sha256": "a6d4bf116252db4c5fb63b1cfa2c69901222b4cabf3740db7fdf394c05bbb8ef",
+  "protected_inputs": [
+    "data/agent_memory/luna-microwave-v1",
+    "results/state11-observed-contact-recovery-20261015/open_microwave-state011",
+    "data/agent_memory/luna-microwave-v2"
+  ],
+  "approved_example_public_backup": "data/agent_memory/luna-microwave-v1/library/episode-0001/evidence/workspace/example",
+  "completion_checks": true,
+  "abstract_experience": true,
+  "completion_protocol_version": 2
+}

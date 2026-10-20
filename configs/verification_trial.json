@@ -1,0 +1,30 @@
+{
+  "provider": "openai",
+  "model": "gpt-5.4-mini-2026-03-17",
+  "prompt": "configs/prompts/verification_trial_v1.txt",
+  "conditions": [
+    "candidates"
+  ],
+  "example_ids": [
+    "libero_goal-03-state001-seed0"
+  ],
+  "seed": 0,
+  "temperature": 0,
+  "image_detail": "high",
+  "reasoning_effort": "none",
+  "timeout_seconds": 60,
+  "max_retries": 0,
+  "max_output_tokens": 2000,
+  "max_requests": 2,
+  "max_budget_usd": 0.08,
+  "pricing": {
+    "input_per_million": 0.75,
+    "output_per_million": 4.5
+  },
+  "pricing_checked": "2026-10-11",
+  "pricing_source": "https://developers.openai.com/api/docs/models/gpt-5.4-mini",
+  "image_token_allowance": 4096,
+  "schema_version": "1.2",
+  "physical_facts": "results/drawer-physics/facts.json",
+  "frozen_protocol": "configs/frozen_verification_trial_protocol.json"
+}

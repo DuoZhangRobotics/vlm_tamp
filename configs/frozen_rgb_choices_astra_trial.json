@@ -1,0 +1,324 @@
+{
+  "config": {
+    "model": "gpt-6-astra",
+    "prompt": "configs/prompts/rgb_choices_v1.txt",
+    "conditions": [
+      "rgb_choices"
+    ],
+    "example_ids": [
+      "libero_goal-05-state000-seed0",
+      "libero_goal-06-state000-seed0",
+      "libero_goal-07-state000-seed0",
+      "libero_spatial-04-state000-seed0",
+      "libero_spatial-08-state000-seed0",
+      "libero_object-00-state000-seed0",
+      "libero_object-09-state000-seed0",
+      "libero_10-03-state000-seed0",
+      "libero_10-04-state000-seed0",
+      "libero_10-09-state000-seed0"
+    ],
+    "reasoning_effort": "medium",
+    "temperature": null,
+    "service_tier": "default",
+    "image_detail": "high",
+    "max_output_tokens": 4000,
+    "timeout_seconds": 180,
+    "max_requests": 10,
+    "max_retries": 0,
+    "max_budget_usd": 1.0,
+    "image_token_allowance": 4096,
+    "capture_usage_details": true,
+    "pricing": {
+      "input_per_million": 12.5,
+      "cache_write_per_million": 12.5,
+      "output_per_million": 50.0
+    },
+    "pricing_source": "https://developers.openai.com/api/docs/models/gpt-6-astra",
+    "pricing_checked": "2026-10-12",
+    "references": "configs/rgb_semantic_references_v1.json",
+    "frozen_protocol": "configs/frozen_rgb_choices_astra_trial.json",
+    "accounting_notes": "Conservatively charge every input token at the $12.50 cache-write ceiling; ordinary input is $10.00, cached reads $1.00. Output includes reasoning once."
+  },
+  "dataset_sha256": "b6ad176c389a5d6ffc7063d05e6eaac924319769f19cb09cce97b3febbc0c623",
+  "prompt_sha256": "f7d1b3a9b983ca8ce709a45b575c57de051004068a3d928ddc4c4b11e138e118",
+  "prompt_words": 185,
+  "references_sha256": "aefa9212ef2b8e60d30fcddc4f7e06b5e4744a9b5436ade5cc027ff0d04eab5d",
+  "region_settings": {
+    "spatial_radius": 6,
+    "color_radius": 18,
+    "lab_bin_width": 20,
+    "min_pixels": 18,
+    "max_area_fraction": 0.3,
+    "max_choices": 48
+  },
+  "requests": {
+    "libero_goal-05-state000-seed0": {
+      "payload_fields": [
+        "instruction",
+        "visual_choices"
+      ],
+      "payload_sha256": "1c889e1dee120bcd41164bdd7c2c0c2b9a309c961de9a251cd32347193a92bf5",
+      "source_image_sha256": "7a76a4d8f865adc8e8674f8590671296f1ddce13331618edf371cbd9a80f1f47",
+      "scene_image_sha256": "594058bae69853a78ecf17ffa40364ed7dbc53cb0e5d2799e734e4474b684deb",
+      "cards_image_sha256": "fb8e279008ac7e322e3c0113a2a852cd9e07977948277f1ee802a5f279a06df6",
+      "regions_sha256": "e29d78d6321acf25a74bcbf65739fd783e57e685c65b97e8fdb9aa494188437a",
+      "schema_sha256": "5771bbbf868c0002a5acda29f3c96286ebee4261f102b27330d5c2e118c61010",
+      "visual_choice_count": 48
+    },
+    "libero_goal-06-state000-seed0": {
+      "payload_fields": [
+        "instruction",
+        "visual_choices"
+      ],
+      "payload_sha256": "125d49e58f2c0e83c54177c7332db3fd38b9d111ec3834ba47e06ac91a43367e",
+      "source_image_sha256": "1668178640e7b9c09f4d5157173d5f9c84e59e895a02a2f1d55f3757ee6e39ed",
+      "scene_image_sha256": "031a7e6da28cd35471f5c266b1bea6e2a117caee7fdfa989db099b5a9a83f830",
+      "cards_image_sha256": "8d8747733526ad8a053ed389bb953191a0039dd60910924761f5c23bc878a1ca",
+      "regions_sha256": "d4d608b541f27c1ad9516f6477831ea69e0e90633b2bb5ee9124557b0adcded1",
+      "schema_sha256": "5771bbbf868c0002a5acda29f3c96286ebee4261f102b27330d5c2e118c61010",
+      "visual_choice_count": 48
+    },
+    "libero_goal-07-state000-seed0": {
+      "payload_fields": [
+        "instruction",
+        "visual_choices"
+      ],
+      "payload_sha256": "8b83a0cb4e9ae854e75df569976152d1b056913b1c3231f2ae1a7293fdeff416",
+      "source_image_sha256": "36815a2a674b45213779ef3f97dcd04ea2056f8f1ff057b3f19bc3873ca0298c",
+      "scene_image_sha256": "4bef6e3d94df54c40bbe6cd7e403a1c3e4de2da1bfb4a5e14f65415f00cc5c69",
+      "cards_image_sha256": "37c7f6b003fc1ed61f09f49db3b81e3e225c55368028d731a6fc2604b7fe2cc9",
+      "regions_sha256": "e5f77496f3a5c7866442cb257fa8f582674d15872132ff9a77432159e8bda2a9",
+      "schema_sha256": "5771bbbf868c0002a5acda29f3c96286ebee4261f102b27330d5c2e118c61010",
+      "visual_choice_count": 48
+    },
+    "libero_spatial-04-state000-seed0": {
+      "payload_fields": [
+        "instruction",
+        "visual_choices"
+      ],
+      "payload_sha256": "a5a3bce8da8f9913cddf3adc7400ca5bf8ec001f43190710d6895a1c5e996433",
+      "source_image_sha256": "faa399686e45097e1ecb9d762ab2931c4f57bb1147b73d77c59f47e64d916fd2",
+      "scene_image_sha256": "ea9a974bac084c18b1d5c1c8cef23204b3ba9d06418c7e330d92a00500ca1019",
+      "cards_image_sha256": "fcca0394ade8a0654a15b091ea9d0ff6b1b084bca7d5705e10d150c6d4c218ae",
+      "regions_sha256": "b8aa01917ef991897c242039698a57b31fc3edeccf790650caf4479c1dd2865c",
+      "schema_sha256": "5771bbbf868c0002a5acda29f3c96286ebee4261f102b27330d5c2e118c61010",
+      "visual_choice_count": 48
+    },
+    "libero_spatial-08-state000-seed0": {
+      "payload_fields": [
+        "instruction",
+        "visual_choices"
+      ],
+      "payload_sha256": "6302b72526fba7b82341f7e3bfd3064a6d44f212619cf9e95ce51e98c5d0a893",
+      "source_image_sha256": "63ae48cb4fc34dc8d9327f00aca989c97b412f2e3f4bba2cff54206a2453fa26",
+      "scene_image_sha256": "66911340ff47804bee0fbb957b68a52fe4fe547fadf543fe7f6f11af06ce9ac4",
+      "cards_image_sha256": "258e256241d921f0582f74c8fa540b834da7933d525702fefac63108cff8da54",
+      "regions_sha256": "b602f89ba4ac1e69fa9fbea76b3f365a7ab37f472052e7717c9aa3354b3a1756",
+      "schema_sha256": "5771bbbf868c0002a5acda29f3c96286ebee4261f102b27330d5c2e118c61010",
+      "visual_choice_count": 48
+    },
+    "libero_object-00-state000-seed0": {
+      "payload_fields": [
+        "instruction",
+        "visual_choices"
+      ],
+      "payload_sha256": "850d2b99b89f985a02817c8b15738b4a4046ee783b4097ffe1564ead14df9e14",
+      "source_image_sha256": "6ec3417a15cd89dd88ecbc03d4a2fcb928606784be4fff944118af90fc399364",
+      "scene_image_sha256": "7858ecdf06d5970aadeea0d7ed068ae683203c08f9f981c31a2be183d5f43305",
+      "cards_image_sha256": "5d202d95ecc230ffb2660fafe9922e7663e52bd98ca676383e82dee7bea82971",
+      "regions_sha256": "d749377aa04f3233f66d289a2aa2006c5de7fc79a2850b233012b5feeab9e79d",
+      "schema_sha256": "5771bbbf868c0002a5acda29f3c96286ebee4261f102b27330d5c2e118c61010",
+      "visual_choice_count": 48
+    },
+    "libero_object-09-state000-seed0": {
+      "payload_fields": [
+        "instruction",
+        "visual_choices"
+      ],
+      "payload_sha256": "9ba7ea029cecdab126ebe0449ad77bd8814289e63719c66888088cbd73393768",
+      "source_image_sha256": "a5f7ed0f2ec85c1b7b9cc4988d2ad43eefca882b6e2e9fb34f905f127c594ba9",
+      "scene_image_sha256": "7dbecd2bf28aa408b0f0b9c4216b3949eb1c0dc6d332f902f6ccf78a9e9e78b9",
+      "cards_image_sha256": "49efc11fb36b91ff12b2192987eb924cde0311f7b171bd6897193f277146659a",
+      "regions_sha256": "a46971c195d33e94736b7fddb330e6ef9c7c27884f47d72db08297f6e41a0658",
+      "schema_sha256": "5771bbbf868c0002a5acda29f3c96286ebee4261f102b27330d5c2e118c61010",
+      "visual_choice_count": 48
+    },
+    "libero_10-03-state000-seed0": {
+      "payload_fields": [
+        "instruction",
+        "visual_choices"
+      ],
+      "payload_sha256": "56ff9f636b565aecebfa459c9190967e79df62c2d263bc874aa7c075de10bb14",
+      "source_image_sha256": "5b68588f83605d5ec18f1e4e2ee2f1d1b6bb8cbde6439c08c31d0c63695c9426",
+      "scene_image_sha256": "c32912ba57fb7920cf0bc147ee8f49214f7c2adb53b73835021eaf25fad756e5",
+      "cards_image_sha256": "6f4fa64d27dee239fde00373cde9dd43e15964cc1528c72b80b517356d031133",
+      "regions_sha256": "383f5c1c95ed7ba7b434fae15360df2b79e6ee461d7858335dfb5ba0e40bcd0a",
+      "schema_sha256": "5771bbbf868c0002a5acda29f3c96286ebee4261f102b27330d5c2e118c61010",
+      "visual_choice_count": 48
+    },
+    "libero_10-04-state000-seed0": {
+      "payload_fields": [
+        "instruction",
+        "visual_choices"
+      ],
+      "payload_sha256": "02fb65444a40616e39001a6088acb3c136455d562511604bb6d5e694c3048698",
+      "source_image_sha256": "f9f31bcb8d025da38cffbf45ab8fbdeef96d6c0e57626802eff82aa1b1d49eae",
+      "scene_image_sha256": "d6c31f0a4a0d3f72435e89e0dca7f2b50bf48d88d6418dfd2dada02349602dd8",
+      "cards_image_sha256": "77a93a316d734b33850a310d0933e32d98b717a370d7d1dc82d0d4c65993b5a7",
+      "regions_sha256": "b48fee53fe4effa545c65889dcb93f5ccb0f2df961e2ed13f52c41c00d89ec05",
+      "schema_sha256": "5771bbbf868c0002a5acda29f3c96286ebee4261f102b27330d5c2e118c61010",
+      "visual_choice_count": 48
+    },
+    "libero_10-09-state000-seed0": {
+      "payload_fields": [
+        "instruction",
+        "visual_choices"
+      ],
+      "payload_sha256": "daec89d108699653788c0ab3c07ca52dbd90860766d19c82e7881c32e0489429",
+      "source_image_sha256": "6a490d9d3603c4d1dd9217991dbb117ef88b6840666885f29721fe46941d9bd9",
+      "scene_image_sha256": "0b0aa4b3734313570f039f4adbb4518ff1a2cdb3974e8b703929b0daca5585ce",
+      "cards_image_sha256": "2db6a18ae1e6611bafda40f2ded4a88a5277e0644a36c08c46af735fa639428f",
+      "regions_sha256": "c0519c98a00367eaba47c2701e109f3e83086104aa81c81b6e5bd7e99a4837d9",
+      "schema_sha256": "5771bbbf868c0002a5acda29f3c96286ebee4261f102b27330d5c2e118c61010",
+      "visual_choice_count": 48
+    }
+  },
+  "implementation_hashes": {
+    "rgb_choices.py": {
+      "path": "src/vlm_tamp/rgb_choices.py",
+      "sha256": "0808d32f75397583f8c509583553d8f3a94ed65c888acb1afdf591332919ee29"
+    },
+    "rgb_choice_trial.py": {
+      "path": "src/vlm_tamp/rgb_choice_trial.py",
+      "sha256": "20627634cdc730e7ce646c6a87da50d19abf123fbc275c1a8f8cfa576da3b8dc"
+    },
+    "rgb_evaluation.py": {
+      "path": "src/vlm_tamp/rgb_evaluation.py",
+      "sha256": "11060957db0d2637307bb0c2cf6baa5d746dd200833b2a146a42a3aec5c0772d"
+    },
+    "rgb_grounding.py": {
+      "path": "src/vlm_tamp/rgb_grounding.py",
+      "sha256": "17c80de7963e34cd53f38ea0dbd6bed01196daa71994b2a31b08b9f5fcddb17f"
+    },
+    "dataset.py": {
+      "path": "src/vlm_tamp/dataset.py",
+      "sha256": "1768552392a2210324e65a4595ea11032fa887721a78912c629238d2d0011526"
+    },
+    "experiment.py": {
+      "path": "src/vlm_tamp/experiment.py",
+      "sha256": "667c7c341342b06e671adde915e163e35bbaf6021b29eb57d85b21cd1ab9c657"
+    },
+    "providers.py": {
+      "path": "src/vlm_tamp/providers.py",
+      "sha256": "d80147c36ad26be5a692eaccc3fd6a98ce6f65366a886b355b6568c803034dca"
+    },
+    "grounding.py": {
+      "path": "src/vlm_tamp/grounding.py",
+      "sha256": "421fe50a0309fa0db4973e92274f6d1495257c558d09082cf863d2549237b06f"
+    }
+  },
+  "runtime_versions": {
+    "opencv": "4.6.0",
+    "numpy": "1.22.4",
+    "scipy": "1.10.1",
+    "Pillow": "11.3.0"
+  },
+  "baseline": "results/rgb-choice-mini: same RGB choices, prompt, schema, reasoning effort, evaluator and references",
+  "comparison_scope": "Same ten inspected development tasks, RGB choices, prompt, schema, medium reasoning and evaluator. Astra output bound is 4000 versus Mini 8000. Not held-out accuracy or robot execution.",
+  "choices_source": "RGB bytes only; no language-conditioned proposal ranking, simulator inventory, masks, categories, poses or answers",
+  "metric": "Unchanged rgb-semantic-1.0 final-goal evaluation; full constraints and execution untested",
+  "baseline_manifest_sha256": "610652d7a51a099035d5f15178e1cf9972eb70fa63d0f1d2e450f4e92bf3fd43",
+  "prior_api_attempts": 194,
+  "prior_estimated_usage_usd": 3.0156871,
+  "legacy_evaluator_sha256": "bd773b6e6450a1df06557c59b15944a8a3977acafccd510715f0d74cdbaf1edb",
+  "baseline_protocol_sha256": "4e888b34fb8f6241b2ef3e7d5e91c3fc17fe31edb3eb1ec9db8fcf85c37c473e",
+  "baseline_artifact": "results/rgb-choice-mini",
+  "public_request_comparison": [
+    {
+      "example_id": "libero_goal-05-state000-seed0",
+      "input_images_prompt_schema_equal": true,
+      "changed_inference_arguments": [
+        "max_output_tokens",
+        "model"
+      ]
+    },
+    {
+      "example_id": "libero_goal-06-state000-seed0",
+      "input_images_prompt_schema_equal": true,
+      "changed_inference_arguments": [
+        "max_output_tokens",
+        "model"
+      ]
+    },
+    {
+      "example_id": "libero_goal-07-state000-seed0",
+      "input_images_prompt_schema_equal": true,
+      "changed_inference_arguments": [
+        "max_output_tokens",
+        "model"
+      ]
+    },
+    {
+      "example_id": "libero_spatial-04-state000-seed0",
+      "input_images_prompt_schema_equal": true,
+      "changed_inference_arguments": [
+        "max_output_tokens",
+        "model"
+      ]
+    },
+    {
+      "example_id": "libero_spatial-08-state000-seed0",
+      "input_images_prompt_schema_equal": true,
+      "changed_inference_arguments": [
+        "max_output_tokens",
+        "model"
+      ]
+    },
+    {
+      "example_id": "libero_object-00-state000-seed0",
+      "input_images_prompt_schema_equal": true,
+      "changed_inference_arguments": [
+        "max_output_tokens",
+        "model"
+      ]
+    },
+    {
+      "example_id": "libero_object-09-state000-seed0",
+      "input_images_prompt_schema_equal": true,
+      "changed_inference_arguments": [
+        "max_output_tokens",
+        "model"
+      ]
+    },
+    {
+      "example_id": "libero_10-03-state000-seed0",
+      "input_images_prompt_schema_equal": true,
+      "changed_inference_arguments": [
+        "max_output_tokens",
+        "model"
+      ]
+    },
+    {
+      "example_id": "libero_10-04-state000-seed0",
+      "input_images_prompt_schema_equal": true,
+      "changed_inference_arguments": [
+        "max_output_tokens",
+        "model"
+      ]
+    },
+    {
+      "example_id": "libero_10-09-state000-seed0",
+      "input_images_prompt_schema_equal": true,
+      "changed_inference_arguments": [
+        "max_output_tokens",
+        "model"
+      ]
+    }
+  ],
+  "inference_bound_difference": {
+    "mini_max_output_tokens": 8000,
+    "astra_max_output_tokens": 4000,
+    "reason": "Bound cost for the short form; any truncation remains a failed trial output"
+  },
+  "accounting_note": "Conservatively charge every input token at the $12.50 cache-write ceiling; ordinary input is $10.00, cached reads $1.00. Output includes reasoning once."
+}

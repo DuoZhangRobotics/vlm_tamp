@@ -1,0 +1,13 @@
+{
+  "status": "draft_human_review_pending",
+  "examples": [
+    "libero_goal-00-state000-seed0",
+    "libero_goal-01-state000-seed0",
+    "libero_goal-03-state000-seed0",
+    "libero_spatial-00-state000-seed0"
+  ],
+  "dataset_sha256": "978e9b89559dfd4a3e7677a4202b96a6d236edf288a98926ffaf4e234d9adbc7",
+  "generator_sha256": "3f9e6607175d5528007923454ae25ce1978ca3a09f61318004185d7c193cf800",
+  "reviewed_annotations": 0,
+  "scope": "published final goals and separately verified kinematics are evidence; stage/contact/path content is conditional, unreviewed proposal"
+}

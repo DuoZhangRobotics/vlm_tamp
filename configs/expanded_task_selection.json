@@ -1,0 +1,16 @@
+{
+  "collection_seed": 0,
+  "state_index": 0,
+  "image_size": 256,
+  "suites": {
+    "libero_goal": [5, 6, 7],
+    "libero_spatial": [4, 8],
+    "libero_object": [0, 9],
+    "libero_10": [3, 4, 9]
+  },
+  "selection_rule": "Ten previously unqueried task groups, selected from official instructions before inference to cover pushing, containment, activation, drawer retrieval, spatial bowl selection, packaged objects, multiple mug assignments, and insertion followed by closing.",
+  "conditions": ["rgb", "candidates"],
+  "max_requests": 20,
+  "max_budget_usd": 0.14,
+  "maximum_cumulative_estimated_usage_usd": 0.5
+}

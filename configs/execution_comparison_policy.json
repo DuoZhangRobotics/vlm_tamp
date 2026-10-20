@@ -1,0 +1,49 @@
+{
+  "version": "success-preserving-comparison-1",
+  "accepted_reference": {
+    "name": "Original successful task-family pipeline",
+    "evidence": "results/success-first-report/evaluation.json",
+    "observed_successes": 35,
+    "planned_episodes": 35,
+    "states": [1, 11, 21, 31, 41],
+    "frozen_runs": [
+      "results/reliability-mechanisms-frozen-20261016",
+      "results/reliability-bowls-final-20261016",
+      "results/success-serial-open-20261016",
+      "results/success-serial-close-20261016"
+    ],
+    "scope": "Preserved task-family snapshots and configurations; observed regression result, not a universal success guarantee"
+  },
+  "candidate": {
+    "name": "Shared contact selection and reference correction",
+    "evidence": "results/shared-contact-feedback-report/evaluation.json",
+    "status": "experimental_not_promoted",
+    "replaces_accepted_reference": false,
+    "controller_ablation_is_original_pipeline_baseline": false,
+    "bundled_changes": ["contact selection", "numerical geometry", "drawer task loop", "reference correction"]
+  },
+  "required_comparison": {
+    "arms": ["exact original task-family pipeline", "frozen candidate pipeline"],
+    "first_gate": "Reproduce the original 35 cases and require the candidate to preserve all 35 successes",
+    "repeatability": "Repeat the paired regression with recorded matched random seeds and fixed dependencies; report every repetition",
+    "second_gate": "Evaluate both full pipelines on the same predeclared harder cases, starting with bottom-drawer opening and closing",
+    "matched_conditions": [
+      "task instructions and official initial states",
+      "camera inputs and calibration",
+      "initial visual grounding and grasp proposals when their inputs are identical",
+      "model checkpoints and dependency versions",
+      "random seeds and inference settings",
+      "planning budgets and episode control-step limits",
+      "planning collision/contact permission policy",
+      "complete issued trajectories without execution-time vetoes",
+      "native LIBERO task-success predicate"
+    ],
+    "all_planned_episodes_in_denominator": true,
+    "selective_fallback_to_original_after_observing_failure": false,
+    "separate_component_ablations_from_full_system_comparison": true,
+    "promotion": "Preserve the original successful cases and demonstrate a measured benefit on the matched harder cases; otherwise retain the original as the accepted reference"
+  },
+  "api_budget_policy": "configs/api_budget_policy.json",
+  "cleanup": "Compact after every run; retain evidence, videos, frozen configuration and source provenance",
+  "comparison_execution_status": "not_yet_run"
+}

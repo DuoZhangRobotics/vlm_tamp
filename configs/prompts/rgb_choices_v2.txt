@@ -1,0 +1,7 @@
+Fill the final-goal form from the instruction and RGB images. Choose image numbers and states; generate no descriptions, coordinates, motion stages or constraints.
+
+Images show the original scene, numbered pixels, and matching numbered context crops. Select a number whose marked pixel is on the requested object, not just a crop containing it. Several numbers may belong to one object. Background and robot pixels are distractors. Use the original scene for spatial relationships and the enlarged crops to inspect object appearance and visible package labels. Compare similar packages carefully; a can is not automatically the requested food. If appearance or text is insufficient, choose 0 rather than another plausible package.
+
+State meanings are exclusive: inside = containment; on_top = resting on another object or surface, including bowl-on-plate placement; in_front_of = destination in front of an object. Open/closed describe final mechanical states. Powered_on/powered_off describe activation. There is no separate stacking choice.
+
+Fill object_choice/object_part and, for placement, target_choice/target_part. For hidden interiors or drawers, select the visible owner and the correct part. Single-object states use target_choice=0 and target_part=whole. Preserve every requested final goal, including final closure and separate assignments of multiple objects. Temporary access opening is not a final goal. A multicolored mug is one object. Use 0 or unknown when needed.

@@ -1,0 +1,148 @@
+{
+  "dataset": "data/rgbd-drawer-frontview-pilot",
+  "depth_dataset": "data/rgbd-drawer-frontview-pilot",
+  "candidate_dataset": "data/rgbd-drawer-frontview-candidates",
+  "prompt": "configs/prompts/drawer_blanks_v1.txt",
+  "image_detail": "high",
+  "service_tier": "default",
+  "image_token_allowance": 8192,
+  "capture_usage_details": true,
+  "geometry": {
+    "depth_patch_radius_pixels": 1,
+    "maximum_depth_jump_m": 0.03,
+    "maximum_depth_m": 5.0,
+    "plane_patch_radius_pixels": 7,
+    "plane_depth_band_m": 0.02,
+    "maximum_plane_rms_m": 0.003,
+    "maximum_support_tilt_degrees": 25.0,
+    "minimum_closing_span_m": 0.002,
+    "maximum_gripper_width_m": 0.08,
+    "finger_clearance_m": 0.004,
+    "pregrasp_distance_m": 0.08,
+    "minimum_object_axis_length_m": 0.01,
+    "placement_clearance_m": 0.01,
+    "point_tolerance_m": 0.01,
+    "upright_tolerance_degrees": 5.0,
+    "minimum_drawer_face_span_m": 0.02,
+    "minimum_drawer_triangle_sine": 0.08,
+    "minimum_drawer_view_normal_cosine": 0.15,
+    "drawer_line_tolerance_m": 0.01
+  },
+  "requested_extension_m": null,
+  "evaluation": {
+    "axis_tolerance_degrees": 5.0,
+    "handle_surface_tolerance_m": 0.01
+  },
+  "parent_config": "configs/task_grounding_frontview.json",
+  "frozen_protocol": "configs/frozen_drawer_models_high.json",
+  "models": {
+    "luna": "gpt-6-luna",
+    "astra": "gpt-6-astra"
+  },
+  "pricing_by_model": {
+    "luna": {
+      "input_per_million": 0.1,
+      "cached_input_per_million": 0.01,
+      "cache_write_per_million": 0.125,
+      "output_per_million": 0.5
+    },
+    "astra": {
+      "input_per_million": 10.0,
+      "cached_input_per_million": 1.0,
+      "cache_write_per_million": 12.5,
+      "output_per_million": 50.0
+    }
+  },
+  "pricing_sources": {
+    "luna": "https://developers.openai.com/api/docs/models/gpt-6-luna",
+    "astra": "https://developers.openai.com/api/docs/models/gpt-6-astra"
+  },
+  "pricing_checked": "2026-10-13",
+  "reasoning_effort": "high",
+  "max_output_tokens": 6000,
+  "timeout_seconds": 240,
+  "max_requests": 8,
+  "max_retries": 0,
+  "overall_budget_usd": 2.0,
+  "prior_usage_trials": [
+    "results/rgbd-dino-luna-comparison",
+    "results/task-grounding-scope-luna",
+    "results/task-grounding-frontview-luna"
+  ],
+  "prior_usage_cost_usd": 0.009198,
+  "max_budget_usd": 1.990802,
+  "cases": [
+    {
+      "id": "luna_high_state000",
+      "base_case_id": "direct_rgb_state000",
+      "example_id": "libero_goal-00-state000-seed0",
+      "model_key": "luna",
+      "model": "gpt-6-luna",
+      "condition": "direct_rgb",
+      "task_type": "open_middle_drawer"
+    },
+    {
+      "id": "astra_high_state000",
+      "base_case_id": "direct_rgb_state000",
+      "example_id": "libero_goal-00-state000-seed0",
+      "model_key": "astra",
+      "model": "gpt-6-astra",
+      "condition": "direct_rgb",
+      "task_type": "open_middle_drawer"
+    },
+    {
+      "id": "luna_high_state010",
+      "base_case_id": "direct_rgb_state010",
+      "example_id": "libero_goal-00-state010-seed0",
+      "model_key": "luna",
+      "model": "gpt-6-luna",
+      "condition": "direct_rgb",
+      "task_type": "open_middle_drawer"
+    },
+    {
+      "id": "astra_high_state010",
+      "base_case_id": "direct_rgb_state010",
+      "example_id": "libero_goal-00-state010-seed0",
+      "model_key": "astra",
+      "model": "gpt-6-astra",
+      "condition": "direct_rgb",
+      "task_type": "open_middle_drawer"
+    },
+    {
+      "id": "luna_high_state020",
+      "base_case_id": "direct_rgb_state020",
+      "example_id": "libero_goal-00-state020-seed0",
+      "model_key": "luna",
+      "model": "gpt-6-luna",
+      "condition": "direct_rgb",
+      "task_type": "open_middle_drawer"
+    },
+    {
+      "id": "astra_high_state020",
+      "base_case_id": "direct_rgb_state020",
+      "example_id": "libero_goal-00-state020-seed0",
+      "model_key": "astra",
+      "model": "gpt-6-astra",
+      "condition": "direct_rgb",
+      "task_type": "open_middle_drawer"
+    },
+    {
+      "id": "luna_high_state030",
+      "base_case_id": "direct_rgb_state030",
+      "example_id": "libero_goal-00-state030-seed0",
+      "model_key": "luna",
+      "model": "gpt-6-luna",
+      "condition": "direct_rgb",
+      "task_type": "open_middle_drawer"
+    },
+    {
+      "id": "astra_high_state030",
+      "base_case_id": "direct_rgb_state030",
+      "example_id": "libero_goal-00-state030-seed0",
+      "model_key": "astra",
+      "model": "gpt-6-astra",
+      "condition": "direct_rgb",
+      "task_type": "open_middle_drawer"
+    }
+  ]
+}

@@ -1,0 +1,149 @@
+{
+  "schema_version": "1.2",
+  "schema_sha256": "1f49681fec9e7e6322dcbd2e7c98eafe7ef43023e1ecb64841ccb3b251b05955",
+  "prompt_sha256": "49ec63875f6183401f8cbc6d818d7d186e28d64d0f858333b5b75ddf79f5ebb5",
+  "models": [
+    "gpt-5.4-mini-2026-03-17"
+  ],
+  "example_ids": [
+    "libero_goal-05-state000-seed0",
+    "libero_goal-06-state000-seed0",
+    "libero_goal-07-state000-seed0",
+    "libero_spatial-04-state000-seed0",
+    "libero_spatial-08-state000-seed0",
+    "libero_object-00-state000-seed0",
+    "libero_object-09-state000-seed0",
+    "libero_10-03-state000-seed0",
+    "libero_10-04-state000-seed0",
+    "libero_10-09-state000-seed0"
+  ],
+  "conditions": [
+    "rgb",
+    "candidates"
+  ],
+  "temperature": 0,
+  "image_detail": "high",
+  "max_output_tokens": 1500,
+  "reasoning_effort": "none",
+  "max_retries": 0,
+  "selection": {
+    "collection_seed": 0,
+    "state_index": 0,
+    "image_size": 256,
+    "suites": {
+      "libero_goal": [
+        5,
+        6,
+        7
+      ],
+      "libero_spatial": [
+        4,
+        8
+      ],
+      "libero_object": [
+        0,
+        9
+      ],
+      "libero_10": [
+        3,
+        4,
+        9
+      ]
+    },
+    "selection_rule": "Ten previously unqueried task groups, selected from official instructions before inference to cover pushing, containment, activation, drawer retrieval, spatial bowl selection, packaged objects, multiple mug assignments, and insertion followed by closing.",
+    "conditions": [
+      "rgb",
+      "candidates"
+    ],
+    "max_requests": 20,
+    "max_budget_usd": 0.14,
+    "maximum_cumulative_estimated_usage_usd": 0.5
+  },
+  "selection_sha256": "1344c259d012bfd31fb16488fd3ba51769cbd03770c0368558d6ea9407922985",
+  "dataset_sha256": "b6ad176c389a5d6ffc7063d05e6eaac924319769f19cb09cce97b3febbc0c623",
+  "previously_queried_task_keys": [
+    [
+      "libero_goal",
+      0
+    ],
+    [
+      "libero_goal",
+      1
+    ],
+    [
+      "libero_goal",
+      2
+    ],
+    [
+      "libero_goal",
+      3
+    ],
+    [
+      "libero_spatial",
+      0
+    ],
+    [
+      "libero_spatial",
+      1
+    ],
+    [
+      "libero_spatial",
+      2
+    ],
+    [
+      "libero_spatial",
+      3
+    ]
+  ],
+  "prior_paid_history": [
+    {
+      "manifest": "results/backbone-41mini/manifest.json",
+      "sha256": "436ecf6d94adf46aa776cc7112bff2cd3886ffd0954ab1b77ef51843b0c9fa30"
+    },
+    {
+      "manifest": "results/backbone-54mini/manifest.json",
+      "sha256": "29213a001ce39e6c3a130813ac53ab2e45f45b64438429dae6316872ad328955"
+    },
+    {
+      "manifest": "results/drawer-verifier-trial/manifest.json",
+      "sha256": "2cd79e45d62f628c7edf550d0bb3131d336f71335b4390ddde5ab746b2234438"
+    },
+    {
+      "manifest": "results/logic-markers-41mini/manifest.json",
+      "sha256": "4ff3e3c603dd315cc4ba2d9290eff1f1493b5aae002d0c9bea3ea878cda709b4"
+    },
+    {
+      "manifest": "results/logic-markers-54mini/manifest.json",
+      "sha256": "e6170a23a802ac61989f1a6e889b7f1621314a0784e7f0020186173fdb3ed021"
+    },
+    {
+      "manifest": "results/openai-pilot/manifest.json",
+      "sha256": "b64b90c1719c3222d6ba2071a31c7ee458230d9aae841e7c0670ebaeadfb6d2e"
+    },
+    {
+      "manifest": "results/openai-pilot-v2/manifest.json",
+      "sha256": "a445463c16f138b7b482d7c305fd5ee4de97135deafb3280cf1ec77a51b649f2"
+    },
+    {
+      "manifest": "results/semantic-development/manifest.json",
+      "sha256": "7e5dd9c988eac55e46398f3bb4870bb88e7f1f1b2e8649ddc83ff7b3367c361a"
+    },
+    {
+      "manifest": "results/semantic-heldout/manifest.json",
+      "sha256": "f1616b382b4aba1f82673693fb428bb2a0adffe2f868b6ee78ff78214dfe06c2"
+    }
+  ],
+  "previous_estimated_usage_usd": 0.3580396,
+  "previous_api_attempts": 114,
+  "maximum_inference_attempts": 20,
+  "partition_budget_usd": 0.14,
+  "maximum_total_estimated_usage_usd": 0.4980396,
+  "linker_protocol_sha256": "a6a612e0c4c378467575ed2b1f7de3b7ca3fc916860677291f5d72e083784c6c",
+  "evaluator_sha256": "bd773b6e6450a1df06557c59b15944a8a3977acafccd510715f0d74cdbaf1edb",
+  "primary_endpoints": [
+    "raw and linked schema/request validity with failures retained",
+    "strict complete instance-goal agreement",
+    "visible whole-object final-goal argument identity"
+  ],
+  "interpretation": "Purposive task expansion, one initial state each, same frozen schema/prompt/model as v5. New relative to project query history, not a claim about pretraining. Inventory is oracle-assisted. Stage/contact/path accuracy and robot execution remain unassessed."
+}

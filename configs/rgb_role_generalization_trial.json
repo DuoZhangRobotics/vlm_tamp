@@ -1,0 +1,48 @@
+{
+  "model": "gpt-5.4-mini-2026-03-17",
+  "prompt": "configs/prompts/rgb_role_points_v1.txt",
+  "conditions": [
+    "rgb_role_points"
+  ],
+  "example_ids": [
+    "libero_goal-04-state004-seed0",
+    "libero_goal-08-state005-seed0",
+    "libero_spatial-05-state004-seed0",
+    "libero_spatial-06-state005-seed0",
+    "libero_spatial-07-state004-seed0",
+    "libero_spatial-09-state005-seed0",
+    "libero_object-01-state004-seed0",
+    "libero_object-02-state005-seed0",
+    "libero_object-03-state004-seed0",
+    "libero_object-04-state005-seed0",
+    "libero_object-05-state004-seed0",
+    "libero_object-06-state005-seed0",
+    "libero_object-07-state004-seed0",
+    "libero_object-08-state005-seed0",
+    "libero_90-03-state004-seed0",
+    "libero_90-04-state005-seed0",
+    "libero_90-14-state004-seed0",
+    "libero_90-65-state005-seed0",
+    "libero_90-68-state004-seed0",
+    "libero_90-39-state005-seed0"
+  ],
+  "reasoning_effort": "medium",
+  "temperature": null,
+  "service_tier": "default",
+  "image_detail": "high",
+  "max_output_tokens": 3000,
+  "timeout_seconds": 180,
+  "max_requests": 20,
+  "max_retries": 0,
+  "max_budget_usd": 0.1,
+  "image_token_allowance": 4096,
+  "capture_usage_details": true,
+  "pricing": {
+    "input_per_million": 0.75,
+    "output_per_million": 4.5
+  },
+  "pricing_source": "https://developers.openai.com/api/docs/models/gpt-5.4-mini",
+  "pricing_checked": "2026-10-12",
+  "references": "configs/rgb_role_generalization_references.json",
+  "frozen_protocol": "configs/frozen_rgb_role_generalization_trial.json"
+}

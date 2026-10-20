@@ -1,0 +1,171 @@
+{
+  "dataset": "data/rgb-role-generalization",
+  "dataset_sha256": "e4d4cd9a74e47a3c319a671c6f0af8c7b37f63914e8081832fe16691e79f7aee",
+  "model_id": "wentao-yuan/robopoint-v1-vicuna-v1.5-13b",
+  "model_revision": "508ed28687caeeb923e1d7d5905e37dccc16c991",
+  "repository": "https://github.com/wentaoyuan/RoboPoint",
+  "repository_commit": "206cb1e086fc3960a8673725a8540766655cd9c5",
+  "references": "configs/rgb_role_generalization_references.json",
+  "offline_roles": "configs/rgb_role_generalization_roles.json",
+  "prompt_template": "Task instruction: {instruction}\nPinpoint several points on the visible surface of the object described as: {role}. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin.",
+  "quantization": "8bit; supported upstream option, not full-precision paper replication",
+  "conversation_mode": "llava_v1",
+  "do_sample": false,
+  "max_new_tokens": 1024,
+  "point_selection": "First returned point; no mask-dependent selection or correction",
+  "query_granularity": "One RGB query per instruction-derived role; 39 queries for 20 tasks",
+  "input_inventory": false,
+  "frozen_before_inference": true,
+  "requests": {
+    "libero_goal-04-state004-seed0": {
+      "image_sha256": "464d2abf81f1bdfbc2d76e9677a9b67aa13904240d69581d94d55753c0b3b856",
+      "role_queries": {
+        "slot_0": "Task instruction: put the bowl on top of the cabinet\nPinpoint several points on the visible surface of the object described as: the bowl. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin.",
+        "slot_1": "Task instruction: put the bowl on top of the cabinet\nPinpoint several points on the visible surface of the object described as: top of the cabinet. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin."
+      }
+    },
+    "libero_goal-08-state005-seed0": {
+      "image_sha256": "e7998156e564ee0f483b66edb21cff55f5ffc60e40cc2f0f8567b25f7ea68e60",
+      "role_queries": {
+        "slot_0": "Task instruction: put the bowl on the plate\nPinpoint several points on the visible surface of the object described as: the bowl. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin.",
+        "slot_1": "Task instruction: put the bowl on the plate\nPinpoint several points on the visible surface of the object described as: the plate. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin."
+      }
+    },
+    "libero_spatial-05-state004-seed0": {
+      "image_sha256": "a3ebe60d3a92c07cdd48fae6ff9c0243b7e6b79c4cd75525bdc871b6fc865e40",
+      "role_queries": {
+        "slot_0": "Task instruction: pick up the black bowl on the ramekin and place it on the plate\nPinpoint several points on the visible surface of the object described as: the black bowl on the ramekin. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin.",
+        "slot_1": "Task instruction: pick up the black bowl on the ramekin and place it on the plate\nPinpoint several points on the visible surface of the object described as: the plate. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin."
+      }
+    },
+    "libero_spatial-06-state005-seed0": {
+      "image_sha256": "490629e4af9ac5e0e1ba4381da4b9573d408bce809286158413677ae3c848ac1",
+      "role_queries": {
+        "slot_0": "Task instruction: pick up the black bowl next to the cookie box and place it on the plate\nPinpoint several points on the visible surface of the object described as: the black bowl next to the cookie box. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin.",
+        "slot_1": "Task instruction: pick up the black bowl next to the cookie box and place it on the plate\nPinpoint several points on the visible surface of the object described as: the plate. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin."
+      }
+    },
+    "libero_spatial-07-state004-seed0": {
+      "image_sha256": "ced0b78b651c42755e4181850683d842e06b529b349f834a7e2cd64f887ef103",
+      "role_queries": {
+        "slot_0": "Task instruction: pick up the black bowl on the stove and place it on the plate\nPinpoint several points on the visible surface of the object described as: the black bowl on the stove. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin.",
+        "slot_1": "Task instruction: pick up the black bowl on the stove and place it on the plate\nPinpoint several points on the visible surface of the object described as: the plate. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin."
+      }
+    },
+    "libero_spatial-09-state005-seed0": {
+      "image_sha256": "a7e93aa81408dcc9376bc75251f878028a9b303907d025a393bf53c45395cfe1",
+      "role_queries": {
+        "slot_0": "Task instruction: pick up the black bowl on the wooden cabinet and place it on the plate\nPinpoint several points on the visible surface of the object described as: the black bowl on the wooden cabinet. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin.",
+        "slot_1": "Task instruction: pick up the black bowl on the wooden cabinet and place it on the plate\nPinpoint several points on the visible surface of the object described as: the plate. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin."
+      }
+    },
+    "libero_object-01-state004-seed0": {
+      "image_sha256": "633c99edc90e606d7ad44cba0937d544c70f19f6278bcd0b8886f8afbb473303",
+      "role_queries": {
+        "slot_0": "Task instruction: pick up the cream cheese and place it in the basket\nPinpoint several points on the visible surface of the object described as: the cream cheese. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin.",
+        "slot_1": "Task instruction: pick up the cream cheese and place it in the basket\nPinpoint several points on the visible surface of the object described as: the basket. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin."
+      }
+    },
+    "libero_object-02-state005-seed0": {
+      "image_sha256": "8aaa2a773b68c0f233cb61cf22cc832fd4bf260af51a8aa1ffe0da2c51d53fae",
+      "role_queries": {
+        "slot_0": "Task instruction: pick up the salad dressing and place it in the basket\nPinpoint several points on the visible surface of the object described as: the salad dressing. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin.",
+        "slot_1": "Task instruction: pick up the salad dressing and place it in the basket\nPinpoint several points on the visible surface of the object described as: the basket. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin."
+      }
+    },
+    "libero_object-03-state004-seed0": {
+      "image_sha256": "3cdccb6a7eeeb3922c88ce056d19806ed25990c26f5ad3e037029f913334e14c",
+      "role_queries": {
+        "slot_0": "Task instruction: pick up the bbq sauce and place it in the basket\nPinpoint several points on the visible surface of the object described as: the bbq sauce. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin.",
+        "slot_1": "Task instruction: pick up the bbq sauce and place it in the basket\nPinpoint several points on the visible surface of the object described as: the basket. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin."
+      }
+    },
+    "libero_object-04-state005-seed0": {
+      "image_sha256": "d24c68ade7747fc284145b0cfbbe943a64cd084197a4d62d50c7b428dcc5e406",
+      "role_queries": {
+        "slot_0": "Task instruction: pick up the ketchup and place it in the basket\nPinpoint several points on the visible surface of the object described as: the ketchup. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin.",
+        "slot_1": "Task instruction: pick up the ketchup and place it in the basket\nPinpoint several points on the visible surface of the object described as: the basket. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin."
+      }
+    },
+    "libero_object-05-state004-seed0": {
+      "image_sha256": "1a1de5da9992d3d0b433a2699435b0492c20c1068ebc262f9074b57800ec6d2a",
+      "role_queries": {
+        "slot_0": "Task instruction: pick up the tomato sauce and place it in the basket\nPinpoint several points on the visible surface of the object described as: the tomato sauce. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin.",
+        "slot_1": "Task instruction: pick up the tomato sauce and place it in the basket\nPinpoint several points on the visible surface of the object described as: the basket. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin."
+      }
+    },
+    "libero_object-06-state005-seed0": {
+      "image_sha256": "09cd56cb466da56dcce2ec789915ec6aae3340114957be42b05109176eb2a717",
+      "role_queries": {
+        "slot_0": "Task instruction: pick up the butter and place it in the basket\nPinpoint several points on the visible surface of the object described as: the butter. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin.",
+        "slot_1": "Task instruction: pick up the butter and place it in the basket\nPinpoint several points on the visible surface of the object described as: the basket. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin."
+      }
+    },
+    "libero_object-07-state004-seed0": {
+      "image_sha256": "9ffa4feccd8899236ba82dea46dc537132884635226dd77253c2229dbe67c05e",
+      "role_queries": {
+        "slot_0": "Task instruction: pick up the milk and place it in the basket\nPinpoint several points on the visible surface of the object described as: the milk. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin.",
+        "slot_1": "Task instruction: pick up the milk and place it in the basket\nPinpoint several points on the visible surface of the object described as: the basket. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin."
+      }
+    },
+    "libero_object-08-state005-seed0": {
+      "image_sha256": "849dead0846e78a0c6b751b72f9b488d9e8e2ff83632e2c903acecf585a63d23",
+      "role_queries": {
+        "slot_0": "Task instruction: pick up the chocolate pudding and place it in the basket\nPinpoint several points on the visible surface of the object described as: the chocolate pudding. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin.",
+        "slot_1": "Task instruction: pick up the chocolate pudding and place it in the basket\nPinpoint several points on the visible surface of the object described as: the basket. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin."
+      }
+    },
+    "libero_90-03-state004-seed0": {
+      "image_sha256": "27e815dc311018cd09a7d608b73b8fb1973e2f0c337e2e53894cb9024714da8b",
+      "role_queries": {
+        "slot_0": "Task instruction: put the butter at the back in the top drawer of the cabinet and close it\nPinpoint several points on the visible surface of the object described as: the butter at the back. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin.",
+        "slot_1": "Task instruction: put the butter at the back in the top drawer of the cabinet and close it\nPinpoint several points on the visible surface of the object described as: the cabinet. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin."
+      }
+    },
+    "libero_90-04-state005-seed0": {
+      "image_sha256": "be46737208e8357baf2c20b4a1c71365b304f49b78c420ba1f12a034fdca6b08",
+      "role_queries": {
+        "slot_0": "Task instruction: put the butter at the front in the top drawer of the cabinet and close it\nPinpoint several points on the visible surface of the object described as: the butter at the front. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin.",
+        "slot_1": "Task instruction: put the butter at the front in the top drawer of the cabinet and close it\nPinpoint several points on the visible surface of the object described as: the cabinet. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin."
+      }
+    },
+    "libero_90-14-state004-seed0": {
+      "image_sha256": "febeaf84d4f8abce8e9082e4fefc694d80f0396b15e3dfcc4a31845e33842363",
+      "role_queries": {
+        "slot_0": "Task instruction: put the middle black bowl on the plate\nPinpoint several points on the visible surface of the object described as: the middle black bowl. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin.",
+        "slot_1": "Task instruction: put the middle black bowl on the plate\nPinpoint several points on the visible surface of the object described as: the plate. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin."
+      }
+    },
+    "libero_90-65-state005-seed0": {
+      "image_sha256": "64a12ec18397edcd5671fb58eb6519119d9b895691cf034a2b68a0d0effd1555",
+      "role_queries": {
+        "slot_0": "Task instruction: put the red mug on the left plate\nPinpoint several points on the visible surface of the object described as: the red mug. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin.",
+        "slot_1": "Task instruction: put the red mug on the left plate\nPinpoint several points on the visible surface of the object described as: the left plate. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin."
+      }
+    },
+    "libero_90-68-state004-seed0": {
+      "image_sha256": "8a3855282e9d44dc30ea1ac4a64fe2a10319924f17a821075077cea74edf6d12",
+      "role_queries": {
+        "slot_0": "Task instruction: put the yellow and white mug on the right plate\nPinpoint several points on the visible surface of the object described as: the yellow and white mug. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin.",
+        "slot_1": "Task instruction: put the yellow and white mug on the right plate\nPinpoint several points on the visible surface of the object described as: the right plate. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin."
+      }
+    },
+    "libero_90-39-state005-seed0": {
+      "image_sha256": "52830722a4c211f318f1625b56765569394d627960b52da40a457d2db31ee863",
+      "role_queries": {
+        "slot_0": "Task instruction: turn off the stove\nPinpoint several points on the visible surface of the object described as: the stove. Preserve the instance and spatial qualifiers in that description. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...]. The coordinates should be between 0 and 1, indicating normalized pixel locations with a top-left origin."
+      }
+    }
+  },
+  "implementation_hashes": {
+    "robopoint_baseline.py": "8d7fd9f0397df6bde9bed589fe48c0fe54fc3a9c4e12914c0708cd6a42bb22d1",
+    "rgb_role_points.py": "512a4b25f0e68ca16d25bb20a2251d70246886c2cca484757dffd70f3a77764f",
+    "rgb_role_choices.py": "24aa3dbdcea929fe87e2905d994934455ecf96fbadcd94edb05f4441a85cd379",
+    "rgb_evaluation.py": "11060957db0d2637307bb0c2cf6baa5d746dd200833b2a146a42a3aec5c0772d",
+    "rgb_role_diagnostics.py": "4444a9dca7bcc413e929e0c928566103a9f2f281b08ca3ee6a0aa485e59effe8",
+    "rgb_grounding.py": "17c80de7963e34cd53f38ea0dbd6bed01196daa71994b2a31b08b9f5fcddb17f"
+  },
+  "parent_protocol_sha256": "2ef4eb467369b3407d703e28042fcc0abe153730b5513e3d6fe3bbfc497f1ba6",
+  "setup_diagnostic_run": "results/robopoint-generalization",
+  "reason_for_new_protocol": "The adapter's initial 128-token limit truncated native multi-point lists; use the official evaluation limit of 1024 without changing prompts, point selection, images or scoring."
+}

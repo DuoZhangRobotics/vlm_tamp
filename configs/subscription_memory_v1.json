@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "scope": "Current microwave-opening backend; public episodic memory is enabled by default.",
+  "public_library": "data/agent_memory/luna-microwave-v1/library",
+  "library_manifest_sha256": "0855ce6b565556541e25da3cb309ba0c7813cdfa13552b3fe30bec40398b2215",
+  "prompt": "data/agent_memory/luna-microwave-v1/prompt.txt",
+  "prompt_sha256": "2e964a5689e0fef7b31aeeda92011b0781660f00be3fa4e62c0f4d9cfdda91f1",
+  "common_guide": "data/agent_memory/luna-microwave-v1/guidelines.json",
+  "common_guide_sha256": "0af07a3abe1292d920c21431ba3953e2e9551ee12c30bd68b0b8528a7042f8ea",
+  "protected_inputs": [
+    "data/agent_memory/luna-microwave-v1",
+    "results/state11-observed-contact-recovery-20261015/open_microwave-state011"
+  ],
+  "approved_example_public_backup": "data/agent_memory/luna-microwave-v1/library/episode-0001/evidence/workspace/example"
+}

@@ -1,0 +1,113 @@
+{
+  "model": "gpt-5.4-mini-2026-03-17",
+  "prompt": "configs/prompts/rgb_semantics_v1.txt",
+  "conditions": [
+    "rgb"
+  ],
+  "example_ids": [
+    "libero_goal-05-state000-seed0",
+    "libero_goal-06-state000-seed0",
+    "libero_goal-07-state000-seed0",
+    "libero_spatial-04-state000-seed0",
+    "libero_spatial-08-state000-seed0",
+    "libero_object-00-state000-seed0",
+    "libero_object-09-state000-seed0",
+    "libero_10-03-state000-seed0",
+    "libero_10-04-state000-seed0",
+    "libero_10-09-state000-seed0"
+  ],
+  "reasoning_effort": "medium",
+  "temperature": null,
+  "service_tier": "default",
+  "image_detail": "high",
+  "max_output_tokens": 8000,
+  "timeout_seconds": 180,
+  "max_requests": 10,
+  "max_retries": 0,
+  "max_budget_usd": 0.25,
+  "image_token_allowance": 4096,
+  "capture_usage_details": true,
+  "pricing": {
+    "input_per_million": 0.75,
+    "output_per_million": 4.5
+  },
+  "pricing_source": "https://developers.openai.com/api/docs/models/gpt-5.4-mini",
+  "pricing_checked": "2026-10-12",
+  "references": "configs/rgb_semantic_references_v1.json",
+  "frozen_protocol": "configs/frozen_rgb_semantics_trial.json",
+  "dataset_sha256": "b6ad176c389a5d6ffc7063d05e6eaac924319769f19cb09cce97b3febbc0c623",
+  "prompt_sha256": "9230b2c533b021d249a3c8f55c672328a1e7ec9f4a59c2647c22b38c4ddb5bb7",
+  "schema_sha256": "5064060fbcbb55c4e421b6ed30dc35fad32312f554a04cead646141cb4cdc7ae",
+  "references_sha256": "aefa9212ef2b8e60d30fcddc4f7e06b5e4744a9b5436ade5cc027ff0d04eab5d",
+  "implementation_hashes": {
+    "rgb_grounding": {
+      "path": "src/vlm_tamp/rgb_grounding.py",
+      "sha256": "17c80de7963e34cd53f38ea0dbd6bed01196daa71994b2a31b08b9f5fcddb17f"
+    },
+    "rgb_evaluation": {
+      "path": "src/vlm_tamp/rgb_evaluation.py",
+      "sha256": "11060957db0d2637307bb0c2cf6baa5d746dd200833b2a146a42a3aec5c0772d"
+    },
+    "rgb_trial": {
+      "path": "src/vlm_tamp/rgb_trial.py",
+      "sha256": "91bff10d7785b65d0a2f925c145be228a8815834f56c5b17aa2608572c71a66b"
+    }
+  },
+  "previous_cost_usd": 2.8365271,
+  "previous_calls": 174,
+  "prior_paid_history": [
+    {
+      "manifest": "results/backbone-41mini/manifest.json",
+      "sha256": "436ecf6d94adf46aa776cc7112bff2cd3886ffd0954ab1b77ef51843b0c9fa30"
+    },
+    {
+      "manifest": "results/backbone-54mini/manifest.json",
+      "sha256": "29213a001ce39e6c3a130813ac53ab2e45f45b64438429dae6316872ad328955"
+    },
+    {
+      "manifest": "results/drawer-verifier-trial/manifest.json",
+      "sha256": "2cd79e45d62f628c7edf550d0bb3131d336f71335b4390ddde5ab746b2234438"
+    },
+    {
+      "manifest": "results/expanded-grounding-raw/manifest.json",
+      "sha256": "4e4260aec6daf6cb8a0ef13096cfc98a1c457a0a973dfaf416ccbfe9f6732aac"
+    },
+    {
+      "manifest": "results/logic-markers-41mini/manifest.json",
+      "sha256": "4ff3e3c603dd315cc4ba2d9290eff1f1493b5aae002d0c9bea3ea878cda709b4"
+    },
+    {
+      "manifest": "results/logic-markers-54mini/manifest.json",
+      "sha256": "e6170a23a802ac61989f1a6e889b7f1621314a0784e7f0020186173fdb3ed021"
+    },
+    {
+      "manifest": "results/openai-pilot/manifest.json",
+      "sha256": "b64b90c1719c3222d6ba2071a31c7ee458230d9aae841e7c0670ebaeadfb6d2e"
+    },
+    {
+      "manifest": "results/openai-pilot-v2/manifest.json",
+      "sha256": "a445463c16f138b7b482d7c305fd5ee4de97135deafb3280cf1ec77a51b649f2"
+    },
+    {
+      "manifest": "results/reasoning-astra-medium-raw/manifest.json",
+      "sha256": "3f3293ae6c126575c9708364a73496d87e8c015b99e0b615ff046ff02ef7ca7e"
+    },
+    {
+      "manifest": "results/reasoning-mini-medium-raw/manifest.json",
+      "sha256": "2fc7ef8aee64b0d2bad0198c9eb59ad238387b58a81bd0d2c6661a2afa81a614"
+    },
+    {
+      "manifest": "results/semantic-development/manifest.json",
+      "sha256": "7e5dd9c988eac55e46398f3bb4870bb88e7f1f1b2e8649ddc83ff7b3367c361a"
+    },
+    {
+      "manifest": "results/semantic-heldout/manifest.json",
+      "sha256": "f1616b382b4aba1f82673693fb428bb2a0adffe2f868b6ee78ff78214dfe06c2"
+    }
+  ],
+  "legacy_evaluator_sha256": "bd773b6e6450a1df06557c59b15944a8a3977acafccd510715f0d74cdbaf1edb",
+  "semantic_metric_changed": true,
+  "metric_scope": "Natural-language desired relations with image-identified whole objects and explicit owned-part selectors. Does not require simulator region IDs; does not certify region/part pixel localization, full containment, grasps or robot execution.",
+  "baseline_comparison": "Old RGB-only outputs can be separately adapted to this same evaluator. Raw BDDL scores remain unchanged. Prompt and representation changes are coupled. No inventory, masks, IDs, poses or reference answers enter inference.",
+  "development_tasks_not_fresh_heldout": true
+}

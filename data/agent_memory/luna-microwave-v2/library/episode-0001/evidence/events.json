@@ -1,0 +1,233 @@
+[
+  {
+    "sequence": 1,
+    "operation": "reset",
+    "tool_ok": true,
+    "plan_available": null,
+    "record_scope": "Historical tool outcome only; scene-specific arguments and arrays omitted."
+  },
+  {
+    "sequence": 2,
+    "operation": "ground",
+    "tool_ok": true,
+    "plan_available": null,
+    "record_scope": "Historical tool outcome only; scene-specific arguments and arrays omitted."
+  },
+  {
+    "sequence": 3,
+    "operation": "plan_grasp",
+    "tool_ok": true,
+    "plan_available": null,
+    "record_scope": "Historical tool outcome only; scene-specific arguments and arrays omitted."
+  },
+  {
+    "sequence": 4,
+    "operation": "execute",
+    "tool_ok": true,
+    "plan_available": null,
+    "record_scope": "Historical tool outcome only; scene-specific arguments and arrays omitted."
+  },
+  {
+    "sequence": 5,
+    "operation": "gripper",
+    "tool_ok": true,
+    "plan_available": null,
+    "record_scope": "Historical tool outcome only; scene-specific arguments and arrays omitted."
+  },
+  {
+    "sequence": 6,
+    "operation": "start_tracking",
+    "tool_ok": true,
+    "plan_available": null,
+    "record_scope": "Historical tool outcome only; scene-specific arguments and arrays omitted."
+  },
+  {
+    "sequence": 7,
+    "operation": "plan_arc",
+    "tool_ok": false,
+    "plan_available": null,
+    "record_scope": "Historical tool outcome only; scene-specific arguments and arrays omitted."
+  },
+  {
+    "sequence": 8,
+    "operation": "plan_arc",
+    "tool_ok": true,
+    "plan_available": null,
+    "record_scope": "Historical tool outcome only; scene-specific arguments and arrays omitted."
+  },
+  {
+    "sequence": 9,
+    "operation": "execute",
+    "tool_ok": true,
+    "plan_available": null,
+    "record_scope": "Historical tool outcome only; scene-specific arguments and arrays omitted."
+  },
+  {
+    "sequence": 10,
+    "operation": "measure_tracking",
+    "tool_ok": true,
+    "plan_available": null,
+    "record_scope": "Historical tool outcome only; scene-specific arguments and arrays omitted."
+  },
+  {
+    "sequence": 11,
+    "operation": "apply_tracking",
+    "tool_ok": true,
+    "plan_available": null,
+    "record_scope": "Historical tool outcome only; scene-specific arguments and arrays omitted."
+  },
+  {
+    "sequence": 12,
+    "operation": "plan_arc",
+    "tool_ok": true,
+    "plan_available": null,
+    "record_scope": "Historical tool outcome only; scene-specific arguments and arrays omitted."
+  },
+  {
+    "sequence": 13,
+    "operation": "execute",
+    "tool_ok": true,
+    "plan_available": null,
+    "record_scope": "Historical tool outcome only; scene-specific arguments and arrays omitted."
+  },
+  {
+    "sequence": 14,
+    "operation": "measure_tracking",
+    "tool_ok": true,
+    "plan_available": null,
+    "record_scope": "Historical tool outcome only; scene-specific arguments and arrays omitted."
+  },
+  {
+    "sequence": 15,
+    "operation": "reset",
+    "tool_ok": true,
+    "plan_available": null,
+    "record_scope": "Historical tool outcome only; scene-specific arguments and arrays omitted."
+  },
+  {
+    "sequence": 16,
+    "operation": "ground",
+    "tool_ok": true,
+    "plan_available": null,
+    "record_scope": "Historical tool outcome only; scene-specific arguments and arrays omitted."
+  },
+  {
+    "sequence": 17,
+    "operation": "plan_grasp",
+    "tool_ok": true,
+    "plan_available": null,
+    "record_scope": "Historical tool outcome only; scene-specific arguments and arrays omitted."
+  },
+  {
+    "sequence": 18,
+    "operation": "execute",
+    "tool_ok": true,
+    "plan_available": null,
+    "record_scope": "Historical tool outcome only; scene-specific arguments and arrays omitted."
+  },
+  {
+    "sequence": 19,
+    "operation": "gripper",
+    "tool_ok": true,
+    "plan_available": null,
+    "record_scope": "Historical tool outcome only; scene-specific arguments and arrays omitted."
+  },
+  {
+    "sequence": 20,
+    "operation": "start_tracking",
+    "tool_ok": true,
+    "plan_available": null,
+    "record_scope": "Historical tool outcome only; scene-specific arguments and arrays omitted."
+  },
+  {
+    "sequence": 21,
+    "operation": "plan_arc",
+    "tool_ok": true,
+    "plan_available": null,
+    "record_scope": "Historical tool outcome only; scene-specific arguments and arrays omitted."
+  },
+  {
+    "sequence": 22,
+    "operation": "execute",
+    "tool_ok": true,
+    "plan_available": null,
+    "record_scope": "Historical tool outcome only; scene-specific arguments and arrays omitted."
+  },
+  {
+    "sequence": 23,
+    "operation": "measure_tracking",
+    "tool_ok": true,
+    "plan_available": null,
+    "record_scope": "Historical tool outcome only; scene-specific arguments and arrays omitted."
+  },
+  {
+    "sequence": 24,
+    "operation": "start_tracking",
+    "tool_ok": true,
+    "plan_available": null,
+    "record_scope": "Historical tool outcome only; scene-specific arguments and arrays omitted."
+  },
+  {
+    "sequence": 25,
+    "operation": "plan_arc",
+    "tool_ok": false,
+    "plan_available": null,
+    "record_scope": "Historical tool outcome only; scene-specific arguments and arrays omitted."
+  },
+  {
+    "sequence": 26,
+    "operation": "plan_arc",
+    "tool_ok": true,
+    "plan_available": null,
+    "record_scope": "Historical tool outcome only; scene-specific arguments and arrays omitted."
+  },
+  {
+    "sequence": 27,
+    "operation": "execute",
+    "tool_ok": true,
+    "plan_available": null,
+    "record_scope": "Historical tool outcome only; scene-specific arguments and arrays omitted."
+  },
+  {
+    "sequence": 28,
+    "operation": "measure_tracking",
+    "tool_ok": true,
+    "plan_available": null,
+    "record_scope": "Historical tool outcome only; scene-specific arguments and arrays omitted."
+  },
+  {
+    "sequence": 29,
+    "operation": "plan_arc",
+    "tool_ok": true,
+    "plan_available": null,
+    "record_scope": "Historical tool outcome only; scene-specific arguments and arrays omitted."
+  },
+  {
+    "sequence": 30,
+    "operation": "execute",
+    "tool_ok": true,
+    "plan_available": null,
+    "record_scope": "Historical tool outcome only; scene-specific arguments and arrays omitted."
+  },
+  {
+    "sequence": 31,
+    "operation": "plan_arc",
+    "tool_ok": true,
+    "plan_available": null,
+    "record_scope": "Historical tool outcome only; scene-specific arguments and arrays omitted."
+  },
+  {
+    "sequence": 32,
+    "operation": "execute",
+    "tool_ok": true,
+    "plan_available": null,
+    "record_scope": "Historical tool outcome only; scene-specific arguments and arrays omitted."
+  },
+  {
+    "sequence": 33,
+    "operation": "finish",
+    "tool_ok": true,
+    "plan_available": null,
+    "record_scope": "Historical tool outcome only; scene-specific arguments and arrays omitted."
+  }
+]

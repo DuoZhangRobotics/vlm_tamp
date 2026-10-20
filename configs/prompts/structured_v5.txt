@@ -1,0 +1,64 @@
+Ground the manipulation instruction using only the supplied instruction and scene evidence.
+Return GroundingPrediction schema_version="1.2". These are semantic declarations for later verification.
+
+ENTITY IDENTITY AND GEOMETRIC TARGETS
+Entities name scene objects, movable parts and genuine semantic regions. Use local entity IDs in goals,
+stages and constraints. Every part/region has a declared local parent. Entity.parent is a local ID,
+never a candidate identifier. Parent links must be acyclic. Spatial support/containment is a predicate,
+not a new ownership parent for a whole object.
+Without a candidate inventory, every reference_id is null. Do not invent simulator IDs.
+With an inventory, reference_id is exactly a supplied candidate identifier, kind matches that candidate,
+and the declared local parent resolves to its supplied parent. Inventory regions are kind="region",
+even when they describe an articulated drawer body. Declare the parent object when using its region.
+Retain real supplied region identities: a named cooking site or drawer region can be a symbolic goal argument.
+Resolve numbered duplicate objects through scene evidence. If unresolved, reference_id=null and ambiguous=true.
+Numerical or execution uncertainty alone does not make an otherwise resolved identity ambiguous.
+
+Describe contact surfaces, interiors, handles and joint-body geometry in geometry_targets, each owned
+by a declared entity. A geometry target ID is not an entity and must never be a goal argument.
+For example, when placing an item on a plate, the symbolic goal uses the plate entity; its contact
+surface is a separate geometry_target with role="support_surface" owned by that plate. Do not invent
+an unresolved plate_region entity and replace a known plate identity with it. If a real semantic region
+is explicitly supplied and selected, use that region entity and describe its geometry separately.
+For insertion into a drawer region, describe its interior geometry on that same selected region entity;
+do not create a second unresolved interior entity for the containment goal.
+Unknown geometric parameters have value=null, status="unresolved". Do not invent precise surface poses,
+joint axes/limits, grasp transforms or collision geometry from RGB or a generic object pose.
+
+FINAL GOALS VERSUS INTERMEDIATE ACTIONS
+Each goals entry has intent and evidence_text. evidence_text is a verbatim phrase from the supplied
+instruction. intent="task_outcome" describes the requested result; intent="explicit_terminal" describes
+a specifically requested terminal state. intent="uncertain" preserves ambiguity about whether a predicate
+must persist as a final state, and requires an explanatory abstention.
+Opening a container to access its interior can be an intermediate stage with an Open subgoal, followed
+by a final In goal. Do not automatically add access opening as an additional final predicate.
+A standalone request to open a drawer is a final Open goal. An explicit request to leave/keep the drawer
+open is also a final Open goal, including when combined with insertion. Preserve such explicit terminal
+state requests. If the instruction leaves persistence genuinely uncertain, declare that uncertainty.
+Stages and their subgoals can represent access, grasping, transport, placement and release without
+being copied into goals. Use a small partial-order graph and state scene-dependent conditions.
+
+goal_logic describes ONLY the connective between final predicates. Use "and" for a positive conjunction,
+including a single predicate, even when entity identities, geometry, mechanism or execution are unresolved.
+Use "unresolved" only for logical structures that cannot be represented as a positive conjunction,
+such as unresolved disjunction/negation; explain the logical issue. It is independent of terminal intent.
+Use On for support and In for containment, preserving ordered arguments. Open, Close, Turnon and Turnoff
+are unary state predicates. Use specific object categories; do not confuse a cabinet with its drawer region.
+
+VISUAL AND CONSTRAINT EVIDENCE
+When RGB is supplied, provide a point or box for relevant visible entities when feasible. Coordinates
+are normalized, origin top-left, camera="agentview". Boxes are [xmin,ymin,xmax,ymax] corners with positive
+width/height. Missing localization is null. Do not claim image coordinates without an image.
+If markers are supplied, they label all collected visible whole-object masks, including distractors.
+The mappings associate labels with exact candidate identifiers. Marker presence does not mean relevance.
+Use the candidate identifier, never the marker label, as reference_id. The image dimensions are unchanged.
+Markers identify whole objects, not drawer interiors/parts or cooking regions. Use supported candidate
+parent/region relationships for those, and abstain when unresolved.
+
+Separate required, conditional and optional constraints. Do not add generic grasp/contact rules without
+task-specific evidence. For articulated manipulation, category="articulation", articulated_part is the
+local ID of a declared part/region also in entities, and joint_type is "prismatic", "revolute" or "unknown".
+Use scope="path" for following a joint during motion or "goal" for a terminal joint-state requirement.
+An opening action is not a joint mechanism. Non-articulation joint_type/articulated_part fields are null.
+Unresolved axes/axis_points belong in parameters. Known values require evidence, units and an explicit
+frame. All model-generated constraints have verified=false. Geometry descriptions are unverified too.

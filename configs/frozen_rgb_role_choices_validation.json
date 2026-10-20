@@ -1,0 +1,340 @@
+{
+  "config": {
+    "model": "gpt-5.4-mini-2026-03-17",
+    "prompt": "configs/prompts/rgb_role_bindings_v1.txt",
+    "conditions": [
+      "rgb_role_choices"
+    ],
+    "example_ids": [
+      "libero_goal-05-state003-seed0",
+      "libero_goal-06-state003-seed0",
+      "libero_goal-07-state003-seed0",
+      "libero_spatial-04-state003-seed0",
+      "libero_spatial-08-state003-seed0",
+      "libero_object-00-state003-seed0",
+      "libero_object-09-state003-seed0",
+      "libero_10-03-state003-seed0",
+      "libero_10-04-state003-seed0",
+      "libero_10-09-state003-seed0"
+    ],
+    "reasoning_effort": "medium",
+    "temperature": null,
+    "service_tier": "default",
+    "image_detail": "high",
+    "max_output_tokens": 3000,
+    "timeout_seconds": 180,
+    "max_requests": 10,
+    "max_retries": 0,
+    "max_budget_usd": 0.1,
+    "image_token_allowance": 16384,
+    "capture_usage_details": true,
+    "pricing": {
+      "input_per_million": 0.75,
+      "output_per_million": 4.5
+    },
+    "pricing_source": "https://developers.openai.com/api/docs/models/gpt-5.4-mini",
+    "pricing_checked": "2026-10-12",
+    "references": "configs/rgb_role_choices_references.json",
+    "frozen_protocol": "configs/frozen_rgb_role_choices_validation.json"
+  },
+  "partition": "validation",
+  "dataset_sha256": "9e6c968a32fb4d66b85c0cba0d2af2ce2674ceafb12293a08f5b0640579dc768",
+  "prompt_sha256": "200b3424651849ee86743528ca8c472d09a24f6c907f6aa93d62e7d2c7b7c1d8",
+  "references_sha256": "96801457769eec93cf1b0d69f972f56a9739482a47b9ff81dfee40a90de1c243",
+  "prompt_words": 189,
+  "requests": {
+    "libero_goal-05-state003-seed0": {
+      "payload_fields": [
+        "instruction",
+        "roles",
+        "visual_choices"
+      ],
+      "payload_sha256": "7dfe868911748b43b290f334fdf7ad0ca884bddf9e08364ba60804d48f1f8663",
+      "source_image_sha256": "68792aa38461db64f98732ad75ee35345f725a9390dc20afda5093720a03153b",
+      "scene_image_sha256": "bcaa77ab619b320007708c607da2808d0e12959cad976eb25ea700db4a5cc954",
+      "cards_image_sha256": "29190c3ac2d03ce451de102d7bc559939edb5cfe65ad1b6c83b508a85028d3b0",
+      "regions_sha256": "29218a85b2c78efa922475111a2b0deb5adafc7fa54637d7ad7451ee51d09d78",
+      "schema_sha256": "ee6b582742923ed0ea48877d9f70a7ec52790138a216403109debece892fb038",
+      "visual_choice_count": 19
+    },
+    "libero_goal-06-state003-seed0": {
+      "payload_fields": [
+        "instruction",
+        "roles",
+        "visual_choices"
+      ],
+      "payload_sha256": "310e60819c6aa51b117a4aaab9e59d13aa0a2b8d584a151034ff9f7a03c272c6",
+      "source_image_sha256": "e830e37861d974c1779b7c8c89abc52625bc7db4e9eedf53c10cb1be031eb565",
+      "scene_image_sha256": "12a69906e6d23ab9254cc2b2c6f86f734d3b7da810d5772775e03bc027659079",
+      "cards_image_sha256": "b85b2bfd3b1bf30f71dbc2991bef58fd67a23f91a26ab8dd7f05770a79e5e679",
+      "regions_sha256": "4319e5aa026366edfc833c4673266e9d82b68e56fa18ceed03e14e79542f92f4",
+      "schema_sha256": "63cd3aa808c91d4807f7ab478efc6efbd159f226b5798c04fddbea50a1d21ef0",
+      "visual_choice_count": 17
+    },
+    "libero_goal-07-state003-seed0": {
+      "payload_fields": [
+        "instruction",
+        "roles",
+        "visual_choices"
+      ],
+      "payload_sha256": "188689abffde3f6c95b7cdb144826e68788cef7c325127091a0da0dc6bbd0284",
+      "source_image_sha256": "176257b06d87c71528cdc63d35fd68722665753888b5de2c5cc3de27044d56e8",
+      "scene_image_sha256": "57f374631172d8dbb38cccd32680b56177a4c6d23da87541725728ad74478fe1",
+      "cards_image_sha256": "cd7303f28ef7eb54cc631b3ea37bf20e8cb30af32ce632c9c91ce2edecff73bc",
+      "regions_sha256": "a776cbf6c52359c05fca7d9e9e3dc1b3985b20352ab3ca5bedc5ed6403cbdbe2",
+      "schema_sha256": "6b58f8c6c66d87d799de2a93a54a1a1acb7b5720f3c1ca991ff300bbb8d488c1",
+      "visual_choice_count": 16
+    },
+    "libero_spatial-04-state003-seed0": {
+      "payload_fields": [
+        "instruction",
+        "roles",
+        "visual_choices"
+      ],
+      "payload_sha256": "a53ef2d77594b0fedb6242616fd3397b955f57207152b6d50f5b1b1e1cff3f73",
+      "source_image_sha256": "c3bb6498ec8555739f2a8401433274fcd5db6dc5fe05aff59e68c0891198e9d3",
+      "scene_image_sha256": "c19713e583e82f9167090c6cc12f954a0be54806cfd86592071e35b99b8a90ba",
+      "cards_image_sha256": "be030a03ced0eda9d8eadb4f7eca8b1636c5a6995e60a4966466321f98d70586",
+      "regions_sha256": "1bfefb9f20e3b3fc18a42a1f5d1c63afeaf14cd10df409564bbabf56a6b0ed73",
+      "schema_sha256": "dea0e193b0b5e6183c163cb9c6fcc775bda54908c2a30640a0117f97b5581a7d",
+      "visual_choice_count": 17
+    },
+    "libero_spatial-08-state003-seed0": {
+      "payload_fields": [
+        "instruction",
+        "roles",
+        "visual_choices"
+      ],
+      "payload_sha256": "488cc6bdf0a4174fa6c2519571ed541048c1bc92a48326ad4647a37bb1749a97",
+      "source_image_sha256": "8fd5d0c0dcc603a51a2f882be0d1f714b3ecc98a95eb4d607797ecf414f45c83",
+      "scene_image_sha256": "46ef0c8bc6854758923418debbab654070750c5ff1c508cd5fa27de6ad378e86",
+      "cards_image_sha256": "178f8b7a5096803256b8cbd4253696bab643c3c937be01a628fbbbee5f9fd73d",
+      "regions_sha256": "a8c48005f8d069fac567ba4a88b34fd3a441974df92e9d9d793e5a63f15af20e",
+      "schema_sha256": "f3b5f1753220fb6a0f58a71a62014d8c408095e739041eed8c871f85f02e53ad",
+      "visual_choice_count": 15
+    },
+    "libero_object-00-state003-seed0": {
+      "payload_fields": [
+        "instruction",
+        "roles",
+        "visual_choices"
+      ],
+      "payload_sha256": "7c2731d6a52f3e9090a6b98f7e5bd9e2fdd8c352b7702d5b17093108771b9e31",
+      "source_image_sha256": "6d1e84cedb123c62c5a0fdcc0e2807e91b832d10ca8b4b26a95fedef0d2e8dcc",
+      "scene_image_sha256": "dcb02eb2b982886ad495f167cd50fdde761882835992b804efe08a743df7a0f7",
+      "cards_image_sha256": "2afb7ebb1183fe44689c08e618961404a9049653ad2b5b12ffce9ffea3ba6bf9",
+      "regions_sha256": "552f1171aabfda32d7d87eefb22512f78b6776426cb5058504ccada8a95ade17",
+      "schema_sha256": "7aebd27032aabff1e2d44c649de896971c3834b0f5a1e438ce22fffef2295fec",
+      "visual_choice_count": 19
+    },
+    "libero_object-09-state003-seed0": {
+      "payload_fields": [
+        "instruction",
+        "roles",
+        "visual_choices"
+      ],
+      "payload_sha256": "2c067f9e8799ff548e92b5a4225cd56ac61c5b23c42a338b5be29c206cd075b2",
+      "source_image_sha256": "c99f975d68b7210f578d56fdc45f7f88894b30713336e52c23d70d673f172bb8",
+      "scene_image_sha256": "fc295b32be7030e49227d428cf00fcb60438f52a6bc51d0c041e08c83e978a69",
+      "cards_image_sha256": "a6db490911a613ee889de9429fb1362984c6457571e05355095a004cb57e9793",
+      "regions_sha256": "122558b9b975e6270dec17aa463502e8f578767566d8edd14576dc4caeadba4f",
+      "schema_sha256": "1b10c915e872f86fba35a584cd2b5bb504e540ed02ce6ccf0e2b24655c11c195",
+      "visual_choice_count": 19
+    },
+    "libero_10-03-state003-seed0": {
+      "payload_fields": [
+        "instruction",
+        "roles",
+        "visual_choices"
+      ],
+      "payload_sha256": "4ea5d438417aa7545643aa8556971fd12481f242c4fd2581ba0fbcf7f6e5ddc5",
+      "source_image_sha256": "2206c7f38b1ff8feb9eb95009be55b57d133707d80ea8c47c22785cb5218a662",
+      "scene_image_sha256": "5d5f5e692472a85eb676c74c9365334101bf5b7d668f284ee11c6009e61abee0",
+      "cards_image_sha256": "b4e3020c6b696c7f98531c43ac047fdabd7a8d94c50e582b6c0f73f52872654e",
+      "regions_sha256": "ee7c1692a3bbc9b1d19fb5967664ef95df6611df609d2afe0bf451ab8d308b81",
+      "schema_sha256": "d6152413a46f6621eba7d6f93ee1020fc44d4ee2555bf10cbd7bb58a3d564670",
+      "visual_choice_count": 24
+    },
+    "libero_10-04-state003-seed0": {
+      "payload_fields": [
+        "instruction",
+        "roles",
+        "visual_choices"
+      ],
+      "payload_sha256": "1dc036f80f60a78732acb8c19f02a5c5df628dd3b286a4a788a428da5cf8272d",
+      "source_image_sha256": "2a3f7cbb4c7223ad5ac1699e60177d4cf53a69d0734059bcf4d6235b65aaca33",
+      "scene_image_sha256": "438bbaf171ec1b7e0ddd604ad1e1569d1cfa24f0309e88fe3c41783cada38106",
+      "cards_image_sha256": "e15e52f0ba562c8c24b06584e32d818fab63104b7167ec038ccaf51f0cc90015",
+      "regions_sha256": "3d67e92441f1fc38e176380eef8f0924a449081b4ecc4d36be62431e163c321d",
+      "schema_sha256": "6de2aaee5e5bc71298fe60dec5e4964cc7aeea686292a808cdedf84e39b220c9",
+      "visual_choice_count": 14
+    },
+    "libero_10-09-state003-seed0": {
+      "payload_fields": [
+        "instruction",
+        "roles",
+        "visual_choices"
+      ],
+      "payload_sha256": "d2d940e4dfb104a4ad94571bf6266b6fe793294b7b9b098a47954b873f0d69db",
+      "source_image_sha256": "0504b770727189710463a10eb29d06fdd9b55c6da84801dafb4dd7b9df424500",
+      "scene_image_sha256": "040f69b76a12a371f287a20f00bb5f7f03ebf2b5182e5693d59bee37e4f476d9",
+      "cards_image_sha256": "caf9d10d4c14db2de71afc9f7638a757326be407c2da43f4ccb89282d82e6a6b",
+      "regions_sha256": "fcb70b88bf0b6348182681d5a7619b5a7a9aebb64eb0f6df37e4639f87347161",
+      "schema_sha256": "d638298ff1f9bc47583fbbc8172fdabfed7bcdeb516484aeb5cb3a5d5450b40a",
+      "visual_choice_count": 18
+    }
+  },
+  "implementation_hashes": {
+    "rgb_role_choices.py": {
+      "path": "src/vlm_tamp/rgb_role_choices.py",
+      "sha256": "24aa3dbdcea929fe87e2905d994934455ecf96fbadcd94edb05f4441a85cd379"
+    },
+    "rgb_object_choices.py": {
+      "path": "src/vlm_tamp/rgb_object_choices.py",
+      "sha256": "113823caac207253241b6eca2bd2f893f36e4e813413c09745e476cb92b70c6f"
+    },
+    "rgb_role_trial.py": {
+      "path": "src/vlm_tamp/rgb_role_trial.py",
+      "sha256": "1ae2de21402e9b0f95e58fbee34f02d4c53582f64bb85048cb74f060dab65c3f"
+    },
+    "rgb_choices_v2.py": {
+      "path": "src/vlm_tamp/rgb_choices_v2.py",
+      "sha256": "5503a21c8e6bd7efbf7b2454ae1ea83b145a8d44d4750c709082b21f3e1aaaa3"
+    },
+    "rgb_choices.py": {
+      "path": "src/vlm_tamp/rgb_choices.py",
+      "sha256": "0808d32f75397583f8c509583553d8f3a94ed65c888acb1afdf591332919ee29"
+    },
+    "rgb_evaluation.py": {
+      "path": "src/vlm_tamp/rgb_evaluation.py",
+      "sha256": "11060957db0d2637307bb0c2cf6baa5d746dd200833b2a146a42a3aec5c0772d"
+    },
+    "rgb_grounding.py": {
+      "path": "src/vlm_tamp/rgb_grounding.py",
+      "sha256": "17c80de7963e34cd53f38ea0dbd6bed01196daa71994b2a31b08b9f5fcddb17f"
+    },
+    "dataset.py": {
+      "path": "src/vlm_tamp/dataset.py",
+      "sha256": "1768552392a2210324e65a4595ea11032fa887721a78912c629238d2d0011526"
+    },
+    "experiment.py": {
+      "path": "src/vlm_tamp/experiment.py",
+      "sha256": "667c7c341342b06e671adde915e163e35bbaf6021b29eb57d85b21cd1ab9c657"
+    },
+    "providers.py": {
+      "path": "src/vlm_tamp/providers.py",
+      "sha256": "d80147c36ad26be5a692eaccc3fd6a98ce6f65366a886b355b6568c803034dca"
+    },
+    "grounding.py": {
+      "path": "src/vlm_tamp/grounding.py",
+      "sha256": "421fe50a0309fa0db4973e92274f6d1495257c558d09082cf863d2549237b06f"
+    },
+    "libero.py": {
+      "path": "src/vlm_tamp/libero.py",
+      "sha256": "30c24a8305098246c64b397c296d28bb81151c13ff8170771e67e97e12b4a33a"
+    },
+    "segmentation_weights": {
+      "path": "third_party/MobileSAM/weights/mobile_sam.pt",
+      "sha256": "6dbb90523a35330fedd7f1d3dfc66f995213d81b29a5ca8108dbcdd4e37d6c2f"
+    }
+  },
+  "region_settings": {
+    "grid_side": 8,
+    "pred_iou_thresh": 0.75,
+    "stability_score_thresh": 0.88,
+    "minimum_area": 90,
+    "maximum_area_fraction": 0.4,
+    "containment_threshold": 0.98,
+    "maximum_choices": 32
+  },
+  "prior_paid_history": [
+    {
+      "path": "results/backbone-41mini/manifest.json",
+      "sha256": "436ecf6d94adf46aa776cc7112bff2cd3886ffd0954ab1b77ef51843b0c9fa30"
+    },
+    {
+      "path": "results/backbone-54mini/manifest.json",
+      "sha256": "29213a001ce39e6c3a130813ac53ab2e45f45b64438429dae6316872ad328955"
+    },
+    {
+      "path": "results/expanded-grounding-raw/manifest.json",
+      "sha256": "4e4260aec6daf6cb8a0ef13096cfc98a1c457a0a973dfaf416ccbfe9f6732aac"
+    },
+    {
+      "path": "results/logic-markers-41mini/manifest.json",
+      "sha256": "4ff3e3c603dd315cc4ba2d9290eff1f1493b5aae002d0c9bea3ea878cda709b4"
+    },
+    {
+      "path": "results/logic-markers-54mini/manifest.json",
+      "sha256": "e6170a23a802ac61989f1a6e889b7f1621314a0784e7f0020186173fdb3ed021"
+    },
+    {
+      "path": "results/openai-pilot/manifest.json",
+      "sha256": "b64b90c1719c3222d6ba2071a31c7ee458230d9aae841e7c0670ebaeadfb6d2e"
+    },
+    {
+      "path": "results/openai-pilot-v2/manifest.json",
+      "sha256": "a445463c16f138b7b482d7c305fd5ee4de97135deafb3280cf1ec77a51b649f2"
+    },
+    {
+      "path": "results/reasoning-astra-medium-raw/manifest.json",
+      "sha256": "3f3293ae6c126575c9708364a73496d87e8c015b99e0b615ff046ff02ef7ca7e"
+    },
+    {
+      "path": "results/reasoning-mini-medium-raw/manifest.json",
+      "sha256": "2fc7ef8aee64b0d2bad0198c9eb59ad238387b58a81bd0d2c6661a2afa81a614"
+    },
+    {
+      "path": "results/rgb-choice-astra/manifest.json",
+      "sha256": "71e26c1c0d10b4b1a1df4e97fbafbe1daaaaacddf704fc0f5031755c2557012d"
+    },
+    {
+      "path": "results/rgb-choice-mini/manifest.json",
+      "sha256": "610652d7a51a099035d5f15178e1cf9972eb70fa63d0f1d2e450f4e92bf3fd43"
+    },
+    {
+      "path": "results/rgb-choice-v2-mini-dev/manifest.json",
+      "sha256": "76f814f80f5b6558125ed6bb758cbdbb54dcdc92657c5458d6fb98a322e6a14f"
+    },
+    {
+      "path": "results/rgb-choice-v2-mini-validation/manifest.json",
+      "sha256": "ec3f0c87c4a5480063aa80a0f554328ad8e1fa934337856f25cae72fe767f9a4"
+    },
+    {
+      "path": "results/rgb-object-mini-dev/manifest.json",
+      "sha256": "7a9020df2faec8a405dc208d058ff76393130422ae83d6c7f080bece5ad19f58"
+    },
+    {
+      "path": "results/rgb-object-mini-validation/manifest.json",
+      "sha256": "cd427356e0eb534caec5a799f2f856f2ad4d2056fb4e6afc71c4a9179b1e1030"
+    },
+    {
+      "path": "results/rgb-repair-mini/manifest.json",
+      "sha256": "8eecb430d1e2a3f676f2666746efb8df124b0df1c16b30f9f4868653bca01d27"
+    },
+    {
+      "path": "results/semantic-development/manifest.json",
+      "sha256": "7e5dd9c988eac55e46398f3bb4870bb88e7f1f1b2e8649ddc83ff7b3367c361a"
+    },
+    {
+      "path": "results/semantic-heldout/manifest.json",
+      "sha256": "f1616b382b4aba1f82673693fb428bb2a0adffe2f868b6ee78ff78214dfe06c2"
+    }
+  ],
+  "validation_images_previously_queried": false,
+  "same_initial_states_for_development": true,
+  "comparison_scope": "Development repeats the state2 scenes previously scored 6/10. Validation uses unqueried state3 scenes. Mini only matches instruction-derived roles; the controlled language grammar compiles final goals and parts. No simulator inventory or expected answer enters inference.",
+  "previous_baseline": "results/rgb-object-mini-validation: 6/10 on state2 at 512 RGB",
+  "prior_api_attempts": 244,
+  "prior_estimated_usage_usd": 3.7248871,
+  "combined_new_budget_usd": 0.2,
+  "legacy_evaluator_sha256": "bd773b6e6450a1df06557c59b15944a8a3977acafccd510715f0d74cdbaf1edb",
+  "previous_mini_manifest_sha256": "610652d7a51a099035d5f15178e1cf9972eb70fa63d0f1d2e450f4e92bf3fd43",
+  "previous_astra_manifest_sha256": "71e26c1c0d10b4b1a1df4e97fbafbe1daaaaacddf704fc0f5031755c2557012d",
+  "frozen_before_either_partition_inference": true,
+  "segmentation_model": {
+    "repository": "https://github.com/ChaoningZhang/MobileSAM",
+    "commit": "f706ad9c4eb7f219c00d9050e46328518ffb65d2",
+    "labels_used": false
+  }
+}

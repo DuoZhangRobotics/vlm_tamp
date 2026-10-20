@@ -1,0 +1,318 @@
+{
+  "config": {
+    "model": "gpt-5.4-mini-2026-03-17",
+    "prompt": "configs/prompts/rgb_object_choices_v3.txt",
+    "conditions": [
+      "rgb_object_choices"
+    ],
+    "example_ids": [
+      "libero_goal-05-state001-seed0",
+      "libero_goal-06-state001-seed0",
+      "libero_goal-07-state001-seed0",
+      "libero_spatial-04-state001-seed0",
+      "libero_spatial-08-state001-seed0",
+      "libero_object-00-state001-seed0",
+      "libero_object-09-state001-seed0",
+      "libero_10-03-state001-seed0",
+      "libero_10-04-state001-seed0",
+      "libero_10-09-state001-seed0"
+    ],
+    "reasoning_effort": "medium",
+    "temperature": null,
+    "service_tier": "default",
+    "image_detail": "high",
+    "max_output_tokens": 8000,
+    "timeout_seconds": 180,
+    "max_requests": 10,
+    "max_retries": 0,
+    "max_budget_usd": 0.17,
+    "image_token_allowance": 16384,
+    "capture_usage_details": true,
+    "pricing": {
+      "input_per_million": 0.75,
+      "output_per_million": 4.5
+    },
+    "pricing_source": "https://developers.openai.com/api/docs/models/gpt-5.4-mini",
+    "pricing_checked": "2026-10-12",
+    "references": "configs/rgb_object_choices_references.json",
+    "frozen_protocol": "configs/frozen_rgb_object_choices_dev.json"
+  },
+  "partition": "dev",
+  "dataset_sha256": "f99fe313e161f92f2b0dcf526c777a184445e48c8c4df1610b9990c9817b9e1a",
+  "prompt_sha256": "43770ca49cffd82f409941cab47fcef44d8f7beab7a87e59ccc69c0331cd9abb",
+  "references_sha256": "724e84647d41d533e5beb5bac7c168bda3038fcd248fdf9f4065cc1a4be740d2",
+  "prompt_words": 216,
+  "requests": {
+    "libero_goal-05-state001-seed0": {
+      "payload_fields": [
+        "instruction",
+        "visual_choices"
+      ],
+      "payload_sha256": "9e2412a48344bf6e9da5d186d7bc27f8b32e214c2e5ace24f09845da8dd8ce0b",
+      "source_image_sha256": "e1fc4faa6f37d8e00dd20dcbf20320b7ea3554b917c90662ed72363abf03bb9a",
+      "scene_image_sha256": "4661e8776776545af1851f4d19cd43a8bfab5b066737769b7fdb667583c336a2",
+      "cards_image_sha256": "1c20595676e7954cfcaf968a3790b82eb575a724aa4a6ebdcf0b46743c688af2",
+      "regions_sha256": "8f6ef7c4295d56c30257b778f69804b03f5c12320381abc8500089b50fad8672",
+      "schema_sha256": "2f3b5fc71aa433ac168b2d86fec30690bf4e732c8692b77725ddfb8456599647",
+      "visual_choice_count": 18
+    },
+    "libero_goal-06-state001-seed0": {
+      "payload_fields": [
+        "instruction",
+        "visual_choices"
+      ],
+      "payload_sha256": "0805d3d7ddcd2d6c45bf7e35bc6d69f161feadc4594e15f5f09ff33810b6986b",
+      "source_image_sha256": "b372ce552716c29de1f0210765307dea1f448d80719f33796e1b6df4e960eaca",
+      "scene_image_sha256": "6b2abc4160f9b949f72a9e9e7388b0f08a5fb40a36977744f290978e79f0fdd6",
+      "cards_image_sha256": "ec60db8d0c40f14432a4ba53c6509ad8b0421a1b52b6d32939dbacbc82a8a06d",
+      "regions_sha256": "a4507f9839518d9b479e15c2cd31a394881e29f703c8f060c96660db400f1a9d",
+      "schema_sha256": "d69bd019e789a8805db1e2e40020f132008081e6e84b65d5a672cc9d5fa7db1c",
+      "visual_choice_count": 19
+    },
+    "libero_goal-07-state001-seed0": {
+      "payload_fields": [
+        "instruction",
+        "visual_choices"
+      ],
+      "payload_sha256": "72106e359772190d6f2a11a7066907b5abdf027baffa2c0ed88ada604a030a33",
+      "source_image_sha256": "e1c8180f1e1638611958589eba02e3548bd38c9c7ed1ddd74efd556129d41d49",
+      "scene_image_sha256": "2b58986ff9f84ded13b7a144a06f4bcb567beca77698795b6f71dbfee3fa205c",
+      "cards_image_sha256": "5f63c7b50362fea3b0bc3355524204f703e1c002269d494829d2790b24867c25",
+      "regions_sha256": "f0868d1b280bd8b8b2dc9884767464c00697230c99f3f470c6e0f6aebee2fbe5",
+      "schema_sha256": "2f3b5fc71aa433ac168b2d86fec30690bf4e732c8692b77725ddfb8456599647",
+      "visual_choice_count": 18
+    },
+    "libero_spatial-04-state001-seed0": {
+      "payload_fields": [
+        "instruction",
+        "visual_choices"
+      ],
+      "payload_sha256": "d67acc76d29bfbc1fe72b5b51590359323d3ff4626d497d1778de180230e551e",
+      "source_image_sha256": "b735652bf5b889247a4b8bf3c055a9ee6be93c81834fd029956f1ed6c3537eab",
+      "scene_image_sha256": "bdc62c4b72ccd9654643dda55402d0453e70653543c79ab3288a0c027cc08f40",
+      "cards_image_sha256": "ffacc57eaf096d152fd73a4e1bbd2ab9b47dc99ff02b145b71fe7612128b0ee8",
+      "regions_sha256": "646cc343840564553ca7cb5fa0cb98d015d85d3b1435e5c6a693ad9a8ff8f021",
+      "schema_sha256": "f260cbd2e7b55ad2daad304d1d0d206d3160fadfb42cf6327c3f910f4ba1796a",
+      "visual_choice_count": 13
+    },
+    "libero_spatial-08-state001-seed0": {
+      "payload_fields": [
+        "instruction",
+        "visual_choices"
+      ],
+      "payload_sha256": "d232f7f0cfb619116ed0b800ce04e75aa2d6514f8f3cb28e82677a5f945ff42f",
+      "source_image_sha256": "055c861b84f6d84008e2eb9971c3799cdc7cac4e532dc5e4bb4d3c5185239c3b",
+      "scene_image_sha256": "c88bb8377ec4967e44f7ebe0392b9062a6d100de78a1fda9edf7611c2831cdca",
+      "cards_image_sha256": "debcc993bb350547a1d8202b74915240454989325dda4cd860f79ecdda4b5535",
+      "regions_sha256": "f64c47b566603c0b6eaf5557e698f89a63cc7e19a6cd69aca86fe1e0f33919bb",
+      "schema_sha256": "00b68096efe94a99be064095a2607d6005d81d35eb184f91050fa18591211557",
+      "visual_choice_count": 15
+    },
+    "libero_object-00-state001-seed0": {
+      "payload_fields": [
+        "instruction",
+        "visual_choices"
+      ],
+      "payload_sha256": "79b8c3f32dc599df3ec40628c9fdc139501a839aab86d598e0ee30c8204dc911",
+      "source_image_sha256": "a36fbe4dca09183d36d8b086223f881c90ddc7c14debcb5aae170fa570759513",
+      "scene_image_sha256": "4e44fd5467a28e6e249811758e86e4fe6371210a793224f68d66eddd9979763e",
+      "cards_image_sha256": "83b1c2f8ac9c8442f5f757d0817efed0ad453cb384cdc1bce7940c93c5abf5c3",
+      "regions_sha256": "c9d7da62f6dbf4ec7e1b77ab19e41fa16a292e9da1c3a37fff486e1a656bea69",
+      "schema_sha256": "3ef36319d79dcf5f40596b460a4e2c8394e87e1212b2c87f6dfa6dc1c53766fa",
+      "visual_choice_count": 20
+    },
+    "libero_object-09-state001-seed0": {
+      "payload_fields": [
+        "instruction",
+        "visual_choices"
+      ],
+      "payload_sha256": "e423c1f3fabe5e1b8df7de3e73bd4d5a5da2904144cf92fa1741a978a03b94c5",
+      "source_image_sha256": "7e0f4b81ea437185fcc6e84d2c002f1f5dd16501484aa67aa2b08dc75a05384f",
+      "scene_image_sha256": "a1455ff4435ba971a6285cf62a9f09d6f312319cc278293495f5dfc157f7001b",
+      "cards_image_sha256": "14ad81016c2ca9cf75bb642b6c2a45e7e6f07aff314e8ea068df48bad10715cc",
+      "regions_sha256": "eeabd48d9e67d5e8043bf996d5357393bc1e57d244678e6c0a1f86c6547f7ba7",
+      "schema_sha256": "3ef36319d79dcf5f40596b460a4e2c8394e87e1212b2c87f6dfa6dc1c53766fa",
+      "visual_choice_count": 20
+    },
+    "libero_10-03-state001-seed0": {
+      "payload_fields": [
+        "instruction",
+        "visual_choices"
+      ],
+      "payload_sha256": "9587b5e06bcb622c5c1deba39e1e83130c4d3056c3746b5a63952a9c9feae049",
+      "source_image_sha256": "cff225a49a41a90f3000a6f4b1e283cc6763a1a5baf19d9c3e487fc551d9b9b7",
+      "scene_image_sha256": "84aac1e8f508ec4694d074dd33519970c69a8fe743efd395c26d4a9d0b6f1198",
+      "cards_image_sha256": "d665bda819448a1ec7a8f9209ede382a499d35f1f37d466642901cda6a55a8bf",
+      "regions_sha256": "dff9eed983e5fd6f43a6527056175410c1303354609bcedf55219e0bf73aaadc",
+      "schema_sha256": "b2992908729da659436c2c56107daea0eeaa85099762b9ec3a09d41bb96bbe79",
+      "visual_choice_count": 27
+    },
+    "libero_10-04-state001-seed0": {
+      "payload_fields": [
+        "instruction",
+        "visual_choices"
+      ],
+      "payload_sha256": "46fc8779a96578876ee78cf8a72c7e7f3e9adeab6eac7403f92c9167d2b9ad37",
+      "source_image_sha256": "dea50571a88a95453665fbe4d640fd4933b3355379da1c63cc0fd27c139e621f",
+      "scene_image_sha256": "b98b6036fe9a309d2629485f7e1af5bf534980fb65a9f43ab2155d724b1d7483",
+      "cards_image_sha256": "a796109f26ae8eb94bda718f41b68d3ab787f8eafccf34719256232ed1396140",
+      "regions_sha256": "dbef285adc377d238f2a9271d3f19435dac4b578d00c0e56399bf4feccd55b44",
+      "schema_sha256": "2f3b5fc71aa433ac168b2d86fec30690bf4e732c8692b77725ddfb8456599647",
+      "visual_choice_count": 18
+    },
+    "libero_10-09-state001-seed0": {
+      "payload_fields": [
+        "instruction",
+        "visual_choices"
+      ],
+      "payload_sha256": "c2f1e3f487302a6465c5169c36148e419b576f0555c6ada16273b951036566a1",
+      "source_image_sha256": "1ff23ca36417b66933d5de2a8245d22ce27c10b92675d822c93383db84c33f05",
+      "scene_image_sha256": "5b0e8d32846bfba08ee1f8b35b9c50cfd68bfefe1d951c3a25422a84be66561b",
+      "cards_image_sha256": "b11c94be30ea65ddfe6a5122706bffab6fa7c2fe1112e7e9b3a564bca7109c2e",
+      "regions_sha256": "05def4cc87c4b83e01655db78e1daa499124565077cf57ec9e272abeddc27a83",
+      "schema_sha256": "375a3176a265860e55856ee01d196a04d13069e3e342213f5fd2a919041ab021",
+      "visual_choice_count": 25
+    }
+  },
+  "implementation_hashes": {
+    "rgb_object_choices.py": {
+      "path": "src/vlm_tamp/rgb_object_choices.py",
+      "sha256": "113823caac207253241b6eca2bd2f893f36e4e813413c09745e476cb92b70c6f"
+    },
+    "rgb_object_trial.py": {
+      "path": "src/vlm_tamp/rgb_object_trial.py",
+      "sha256": "3db72dd0acff9b599ec5abe034385bb8645bfa40e833a6f28195c17cdf736386"
+    },
+    "rgb_choices_v2.py": {
+      "path": "src/vlm_tamp/rgb_choices_v2.py",
+      "sha256": "5503a21c8e6bd7efbf7b2454ae1ea83b145a8d44d4750c709082b21f3e1aaaa3"
+    },
+    "rgb_choices.py": {
+      "path": "src/vlm_tamp/rgb_choices.py",
+      "sha256": "0808d32f75397583f8c509583553d8f3a94ed65c888acb1afdf591332919ee29"
+    },
+    "rgb_evaluation.py": {
+      "path": "src/vlm_tamp/rgb_evaluation.py",
+      "sha256": "11060957db0d2637307bb0c2cf6baa5d746dd200833b2a146a42a3aec5c0772d"
+    },
+    "rgb_grounding.py": {
+      "path": "src/vlm_tamp/rgb_grounding.py",
+      "sha256": "17c80de7963e34cd53f38ea0dbd6bed01196daa71994b2a31b08b9f5fcddb17f"
+    },
+    "dataset.py": {
+      "path": "src/vlm_tamp/dataset.py",
+      "sha256": "1768552392a2210324e65a4595ea11032fa887721a78912c629238d2d0011526"
+    },
+    "experiment.py": {
+      "path": "src/vlm_tamp/experiment.py",
+      "sha256": "667c7c341342b06e671adde915e163e35bbaf6021b29eb57d85b21cd1ab9c657"
+    },
+    "providers.py": {
+      "path": "src/vlm_tamp/providers.py",
+      "sha256": "d80147c36ad26be5a692eaccc3fd6a98ce6f65366a886b355b6568c803034dca"
+    },
+    "grounding.py": {
+      "path": "src/vlm_tamp/grounding.py",
+      "sha256": "421fe50a0309fa0db4973e92274f6d1495257c558d09082cf863d2549237b06f"
+    },
+    "libero.py": {
+      "path": "src/vlm_tamp/libero.py",
+      "sha256": "30c24a8305098246c64b397c296d28bb81151c13ff8170771e67e97e12b4a33a"
+    },
+    "segmentation_weights": {
+      "path": "third_party/MobileSAM/weights/mobile_sam.pt",
+      "sha256": "6dbb90523a35330fedd7f1d3dfc66f995213d81b29a5ca8108dbcdd4e37d6c2f"
+    }
+  },
+  "region_settings": {
+    "grid_side": 8,
+    "pred_iou_thresh": 0.75,
+    "stability_score_thresh": 0.88,
+    "minimum_area": 90,
+    "maximum_area_fraction": 0.4,
+    "containment_threshold": 0.98,
+    "maximum_choices": 32
+  },
+  "prior_paid_history": [
+    {
+      "path": "results/backbone-41mini/manifest.json",
+      "sha256": "436ecf6d94adf46aa776cc7112bff2cd3886ffd0954ab1b77ef51843b0c9fa30"
+    },
+    {
+      "path": "results/backbone-54mini/manifest.json",
+      "sha256": "29213a001ce39e6c3a130813ac53ab2e45f45b64438429dae6316872ad328955"
+    },
+    {
+      "path": "results/expanded-grounding-raw/manifest.json",
+      "sha256": "4e4260aec6daf6cb8a0ef13096cfc98a1c457a0a973dfaf416ccbfe9f6732aac"
+    },
+    {
+      "path": "results/logic-markers-41mini/manifest.json",
+      "sha256": "4ff3e3c603dd315cc4ba2d9290eff1f1493b5aae002d0c9bea3ea878cda709b4"
+    },
+    {
+      "path": "results/logic-markers-54mini/manifest.json",
+      "sha256": "e6170a23a802ac61989f1a6e889b7f1621314a0784e7f0020186173fdb3ed021"
+    },
+    {
+      "path": "results/openai-pilot/manifest.json",
+      "sha256": "b64b90c1719c3222d6ba2071a31c7ee458230d9aae841e7c0670ebaeadfb6d2e"
+    },
+    {
+      "path": "results/openai-pilot-v2/manifest.json",
+      "sha256": "a445463c16f138b7b482d7c305fd5ee4de97135deafb3280cf1ec77a51b649f2"
+    },
+    {
+      "path": "results/reasoning-astra-medium-raw/manifest.json",
+      "sha256": "3f3293ae6c126575c9708364a73496d87e8c015b99e0b615ff046ff02ef7ca7e"
+    },
+    {
+      "path": "results/reasoning-mini-medium-raw/manifest.json",
+      "sha256": "2fc7ef8aee64b0d2bad0198c9eb59ad238387b58a81bd0d2c6661a2afa81a614"
+    },
+    {
+      "path": "results/rgb-choice-astra/manifest.json",
+      "sha256": "71e26c1c0d10b4b1a1df4e97fbafbe1daaaaacddf704fc0f5031755c2557012d"
+    },
+    {
+      "path": "results/rgb-choice-mini/manifest.json",
+      "sha256": "610652d7a51a099035d5f15178e1cf9972eb70fa63d0f1d2e450f4e92bf3fd43"
+    },
+    {
+      "path": "results/rgb-choice-v2-mini-dev/manifest.json",
+      "sha256": "76f814f80f5b6558125ed6bb758cbdbb54dcdc92657c5458d6fb98a322e6a14f"
+    },
+    {
+      "path": "results/rgb-choice-v2-mini-validation/manifest.json",
+      "sha256": "ec3f0c87c4a5480063aa80a0f554328ad8e1fa934337856f25cae72fe767f9a4"
+    },
+    {
+      "path": "results/rgb-repair-mini/manifest.json",
+      "sha256": "8eecb430d1e2a3f676f2666746efb8df124b0df1c16b30f9f4868653bca01d27"
+    },
+    {
+      "path": "results/semantic-development/manifest.json",
+      "sha256": "7e5dd9c988eac55e46398f3bb4870bb88e7f1f1b2e8649ddc83ff7b3367c361a"
+    },
+    {
+      "path": "results/semantic-heldout/manifest.json",
+      "sha256": "f1616b382b4aba1f82673693fb428bb2a0adffe2f868b6ee78ff78214dfe06c2"
+    }
+  ],
+  "validation_images_previously_queried": false,
+  "same_initial_states_for_development": true,
+  "comparison_scope": "Development repeats the state1 scenes previously scored 6/10. Validation uses previously unqueried state2 scenes of the same tasks. MobileSAM, masked object crops and image-derived coordinates change the visual interface; no simulator inventory enters inference.",
+  "previous_baseline": "results/rgb-choice-v2-mini-validation: 6/10 on state1 at 512 RGB",
+  "prior_api_attempts": 224,
+  "prior_estimated_usage_usd": 3.5874676,
+  "combined_new_budget_usd": 0.34,
+  "legacy_evaluator_sha256": "bd773b6e6450a1df06557c59b15944a8a3977acafccd510715f0d74cdbaf1edb",
+  "previous_mini_manifest_sha256": "610652d7a51a099035d5f15178e1cf9972eb70fa63d0f1d2e450f4e92bf3fd43",
+  "previous_astra_manifest_sha256": "71e26c1c0d10b4b1a1df4e97fbafbe1daaaaacddf704fc0f5031755c2557012d",
+  "frozen_before_either_partition_inference": true,
+  "segmentation_model": {
+    "repository": "https://github.com/ChaoningZhang/MobileSAM",
+    "commit": "f706ad9c4eb7f219c00d9050e46328518ffb65d2",
+    "labels_used": false
+  }
+}

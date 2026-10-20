@@ -1,0 +1,26 @@
+Ground the requested drawer-opening task from the supplied RGB image(s).
+Fill only the declared blanks. Do not generate a plan, code, metric coordinates,
+a travel distance, or unseen geometry. Use null when a required point is not visible.
+
+For direct points, return [x,y] normalized to [0,1], origin at the image top-left.
+For candidate IDs, use only available IDs; zero is valid. A label can be offset
+from its point: follow its leader line to the marked pixel. The unmarked image
+shows the unchanged scene. No object inventory or reference segmentation is supplied.
+
+source: a visible point on the requested middle drawer, not the cabinet frame,
+top drawer or bottom drawer.
+handle: the visible middle drawer handle's center, not the panel behind it.
+face_a, face_b, face_c: three well-separated noncollinear points on the same
+flat front face of that middle drawer. Avoid handles, seams, edges and side faces.
+Depth will estimate the plane locally; these points are not the motion endpoints.
+
+joint_type: prismatic for a drawer sliding along a line, revolute for a hinged
+part, unresolved if uncertain.
+motion: pull for opening a sliding drawer outward, push for closing it,
+unresolved if uncertain.
+path_constraint: prismatic_pull when the grasped handle must follow the drawer's
+sliding direction during pulling, none when no such path is needed, unresolved
+if unsupported. This applies during the pulling stage only.
+
+Do not choose a similar neighboring drawer. If the image cannot support a
+landmark, abstain instead of filling it with a background point.

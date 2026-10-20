@@ -1,0 +1,137 @@
+{
+  "task": "Open a microwave door by grasping its vertical handle and moving the door toward an open pose.",
+  "robot": "Panda",
+  "observed_failure": {
+    "summary": "The initial attempt selected the handle-side panel edge as the hinge. Later tracking candidates conflicted with that hinge hypothesis, and the fit was rejected as unstable or inconsistent. Tracking updates did not correct the mistaken pivot, and the door remained visually nearly closed before the attempt was reset.",
+    "attempt_context": "Initial closed view, grounding, planning, execution, tracking, and reset.",
+    "important_detail": "Applying a tracking transform without supplying a hinge updated moving geometry but did not correct the pivot. A later plan therefore still used the incorrect pivot hypothesis."
+  },
+  "successful_correction": {
+    "summary": "In the corrected attempt, the acting agent selected the panel edge opposite the handle as the hinge while retaining the handle as the contact. The resulting geometry hypothesis matched the visible handle and hinge arrangement. An unrefined arc visibly opened the door and exposed the cavity, although tracking could not fit consistent rigid motion. Later refined arcs were followed by views of the panel swung away from the cabinet face. This is sensor and image evidence, not a native evaluator result.",
+    "attempt_context": "Corrected grounding, grasp, tracking, arc planning and execution, and finish.",
+    "evidence_basis": "Visible door pose and RGB-D plane orientation were used as evidence of progress. Planned motion alone is not evidence that the panel moved."
+  },
+  "applicability": {
+    "match_checks": [
+      "Use a fresh front view and another view to verify a microwave with a closed upright door, a visible vertical handle, a distinct cabinet and panel boundary, and a hinge edge opposite the handle. Determine these relationships from current observations; do not assume a screen side.",
+      "Check that the panel is near its initial closed pose and that camera views, depth coverage, handle visibility, approach clearance, and geometry are suitable. A changed view, mirrored layout, different hinge side, already open door, obscured handle, or changed geometry invalidates old image regions and metric estimates.",
+      "Use current RGB-D observations to fit the panel and handle. Check that the proposed hinge is at the cabinet-connected panel edge opposite the observed handle. Compare views and stationary cabinet geometry when the edge is ambiguous. Historical pivot and axis estimates apply only to their captured scene."
+    ],
+    "remeasure_if_scene_differs": [
+      "Measure current camera-specific contact and panel regions, hinge edge, opening direction, depth, calibration, and panel and handle geometry.",
+      "Re-estimate the current world-frame hinge, upright axis and sign, panel normal, handle contact anchor, and collision geometry. Do not transfer historical coordinates or plan identifiers.",
+      "After diagnostic motion, obtain fresh panel landmarks and RGB-D correspondences. Assess motion-fit support, residual, rotation, and candidate pivot consistency. If tracking is occluded or inconsistent, inspect fresh images and local RGB-D geometry rather than inferring progress from end-effector motion."
+    ],
+    "scope": "A single recorded microwave case with a Panda and inherited numerical tools. It does not establish general success."
+  },
+  "procedure": [
+    {
+      "instruction": "Acquire a fresh observation and inspect a front view plus another camera view. Establish which visible edge is attached to the cabinet and which side carries the handle. Recompute image regions for the current view.",
+      "evidence_events": [
+        1,
+        2,
+        15,
+        16
+      ]
+    },
+    {
+      "instruction": "Fit articulated geometry from fresh RGB regions and metric depth. Keep the contact region on the functional handle and the hinge pixels on the cabinet-connected edge opposite it. Check the fitted pivot and axis against the visible edge and adjacent stationary depth geometry before planning.",
+      "evidence_events": [
+        2,
+        16
+      ]
+    },
+    {
+      "instruction": "Plan a handle approach with plan_grasp, then execute the returned approach plan with the gripper set to keep the fingers open throughout the approach. After the approach, use gripper to physically close on the handle. Inspect the new image to confirm the fingers are around the handle; closure is not a virtual attachment. Obtain fresh tool arguments from current observations and the documented tool interface.",
+      "evidence_events": [
+        3,
+        4,
+        5,
+        17,
+        18,
+        19
+      ]
+    },
+    {
+      "instruction": "If using optical tracking, start_tracking after the grasp and immediately before a diagnostic arc, then measure_tracking after execution. Treat the accepted flag, correspondence support, spatial span, residual, motion magnitude, candidate pivot, and consistency with independently checked geometry as separate evidence. A fit can be accepted while its pivot consistency check fails; an unavailable or inconsistent fit leaves motion unknown.",
+      "evidence_events": [
+        6,
+        9,
+        10,
+        14,
+        20,
+        22,
+        23,
+        24,
+        27,
+        28
+      ]
+    },
+    {
+      "instruction": "For an ambiguous hinge, stop before repeating substantial pulls on a model whose pivot is at the handle side. Reinspect cabinet and door geometry, revise the hinge edge, and obtain a new geometry fit; model updates make old plans stale. Applying a tracking transform without a hinge did not repair the mistaken pivot in the failed attempt. The corrected attempt selected the opposite panel edge and was followed by observed opening.",
+      "evidence_events": [
+        10,
+        11,
+        14,
+        15,
+        16
+      ]
+    },
+    {
+      "instruction": "Plan an initial modest arc against the current measured model. If unrefined planning exhausts its search, refined planning at a modest angle may be tried, and only a returned current plan should be executed. Refined planning was a fallback observed in this case, not a universal requirement.",
+      "evidence_events": [
+        7,
+        8,
+        9,
+        21,
+        22,
+        25,
+        26,
+        27
+      ]
+    },
+    {
+      "instruction": "After each pull, inspect fresh views and measure the panel itself. If tracking is occluded or inconsistent, do not count planned motion or end-effector travel as door rotation. Reselect the visible panel region, fit its depth plane, compare its normal with a freshly measured initial panel normal, and report selection or occlusion uncertainty.",
+      "evidence_events": [
+        23,
+        28,
+        30,
+        32,
+        33
+      ]
+    },
+    {
+      "instruction": "Continue with modest collision-checked arc plans only while fresh observations support safe contact and door progress. Confirm the terminal pose from sensor geometry and views. The recorded corrected attempt showed the panel near edge-on, with the selected-plane normal differing substantially from the initial fit; this was an approximate image and RGB-D assessment.",
+      "evidence_events": [
+        29,
+        30,
+        31,
+        32,
+        33
+      ]
+    }
+  ],
+  "do_not_repeat": [
+    "Do not place the hinge at the handle side merely because it is prominent or lies at a panel boundary. Verify the cabinet-connected edge using current views and depth.",
+    "Do not carry historical image regions, world coordinates, axis sign, grasp pose, plan identifiers, or arc values into a new scene as universal settings.",
+    "Do not treat successful planning, a plan goal, end-effector travel, or gripper closure as proof that the door moved or reached the requested pose.",
+    "Do not treat apply_tracking without a hinge argument as a pivot correction. In the failed attempt it updated moving geometry while the mistaken pivot remained unchanged.",
+    "Do not keep pulling on a hinge hypothesis when independent geometry and measured motion produce conflicting pivots; correct or re-estimate the model first.",
+    "Do not interpret a rejected or unstable hinge fit as evidence that the door did not move, or a failed fit as a measured angle. Inspect fresh visual and depth evidence."
+  ],
+  "limitations": [
+    "The progress claim is an approximate sensor and image assessment. No native evaluator, hidden simulator state, native articulation measurement, implementation, or other history was available; scoring was separate.",
+    "The final RGB-D region selection, brightness filtering, and trimmed plane fit were manual and partly affected by arm occlusion and perspective. The reported uncertainty was a judgment, not a calibrated confidence interval.",
+    "Tracking in the corrected attempt failed to fit consistent rigid motion after pulls and after renewing the reference. The episode does not establish a sensor-derived hinge correction or prove the true hinge coordinates.",
+    "The failed attempt's pose and motion fit was accepted while its pivot consistency check failed. These are separate results, not a fully accepted hinge measurement.",
+    "The planners and robot client are inherited numerical tools. Their internal implementation, collision guarantees, and broader behavior were not inspectable.",
+    "Event records identify tool requests and outcomes, not private reasoning behind every call. Attribution is limited to recorded caller choices and supplied materials; no event identifies a human selecting the corrected hinge pixels."
+  ],
+  "attribution": {
+    "acting_agent_decisions": "The event log records the agent choosing the grounding image regions and direction, selecting when to track, choosing which returned plans to execute, and deciding when to reset. No human choice of the hinge edge is recorded. The corrected edge choice belongs to the acting agent in the prior run.",
+    "inherited_tool_outputs_and_behavior": "ground generated the numeric model and pivot and axis from agent-supplied image regions and an upright geometry prior. Planning and execution results, RGB-D tracking measurements, and apply_tracking behavior are inherited tool outputs. Tool decisions and numerical fits are not human choices or independent validation of hidden articulation.",
+    "human_supplied_material": "The human-supplied example and its images, landmark matches, and sensor-fit analysis provided the RGB-D landmark matching, upright robust rigid-motion and fixed-pivot fitting approach, and moving-cloud update idea. Their measurements and coordinates came from another example and do not prescribe this scene.",
+    "prior_agent_material": "Prior-agent analyses and hypotheses were checked against the categorical event trace and saved sensor and image evidence. Completion analysis was an analyst claim; its approximate final pose is supported by image and RGB-D analysis, not an available native score.",
+    "event_citation_rule": "Evidence identifiers cite sequence values in the supplied categorical event trace. Historical image regions, world coordinates, plan identifiers, and arc values are omitted."
+  }
+}

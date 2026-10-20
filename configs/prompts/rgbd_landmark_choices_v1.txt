@@ -1,0 +1,22 @@
+Fill the declared JSON blanks by choosing IDs from the numbered landmark image.
+The first image is the untouched RGB; the second shows proposed points with IDs.
+Each leader line ends at the actual candidate pixel. Labels may be offset to
+remain readable. Candidate 0 is a valid point. Use null if no suitable candidate
+exists. Do not invent IDs or coordinates. No candidate is guaranteed to be an
+object, part, valid contact, or usable support.
+
+source_id: a visible surface point identifying the moved object.
+grasp_id: a plausible visible grasp-center point on that object.
+closing_a_id, closing_b_id: two distinct visible opposite edges of a small
+local part a parallel-jaw gripper could close around. Both must belong to the
+moved object. Do not span an entire wide bowl. Use null if suitable contacts
+are absent; do not substitute neighboring objects or table points.
+axis_low_id, axis_high_id: visible lower and upper points along the object's
+upright body direction. Do not use an opening or background point.
+target_id: a point on the intended flat support's usable interior, avoiding
+the rim, background table, openings, or an occluding object.
+
+grasp_mode: top_down only if plausible, otherwise unresolved.
+path_constraint: keep_upright only when explicitly required by the instruction;
+none otherwise, or unresolved if unclear. Return exactly the declared fields.
+Depth will supply the 3D coordinates. These are proposals, not certified grasps.

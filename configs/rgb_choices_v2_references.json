@@ -1,0 +1,486 @@
+{
+  "version": "rgb-semantic-1.0",
+  "dataset_sha256": "b1537547b3057f15f6635d6cd63135873e7a582e4cdbc32364f66f3f63e918c0",
+  "reference_builder_sha256": "11060957db0d2637307bb0c2cf6baa5d746dd200833b2a146a42a3aec5c0772d",
+  "goal_encoding_changed_from_raw_bddl": true,
+  "references": {
+    "libero_goal-05-state000-seed0": {
+      "evaluable": true,
+      "goals": [
+        [
+          "InFrontOf",
+          [
+            [
+              "plate_1",
+              "whole"
+            ],
+            [
+              "flat_stove_1",
+              "whole"
+            ]
+          ]
+        ]
+      ],
+      "notes": [],
+      "source": "official instruction and BDDL instance labels, normalized through frozen task-independent scene-role contract",
+      "human_reviewed_constraints": false
+    },
+    "libero_goal-05-state001-seed0": {
+      "evaluable": true,
+      "goals": [
+        [
+          "InFrontOf",
+          [
+            [
+              "plate_1",
+              "whole"
+            ],
+            [
+              "flat_stove_1",
+              "whole"
+            ]
+          ]
+        ]
+      ],
+      "notes": [],
+      "source": "official instruction and BDDL instance labels, normalized through frozen task-independent scene-role contract",
+      "human_reviewed_constraints": false
+    },
+    "libero_goal-06-state000-seed0": {
+      "evaluable": true,
+      "goals": [
+        [
+          "In",
+          [
+            [
+              "cream_cheese_1",
+              "whole"
+            ],
+            [
+              "akita_black_bowl_1",
+              "interior"
+            ]
+          ]
+        ]
+      ],
+      "notes": [
+        "Containment relation is sourced from the published instruction; legacy BDDL On is retained separately."
+      ],
+      "source": "official instruction and BDDL instance labels, normalized through frozen task-independent scene-role contract",
+      "human_reviewed_constraints": false
+    },
+    "libero_goal-06-state001-seed0": {
+      "evaluable": true,
+      "goals": [
+        [
+          "In",
+          [
+            [
+              "cream_cheese_1",
+              "whole"
+            ],
+            [
+              "akita_black_bowl_1",
+              "interior"
+            ]
+          ]
+        ]
+      ],
+      "notes": [
+        "Containment relation is sourced from the published instruction; legacy BDDL On is retained separately."
+      ],
+      "source": "official instruction and BDDL instance labels, normalized through frozen task-independent scene-role contract",
+      "human_reviewed_constraints": false
+    },
+    "libero_goal-07-state000-seed0": {
+      "evaluable": true,
+      "goals": [
+        [
+          "Turnon",
+          [
+            [
+              "flat_stove_1",
+              "whole"
+            ]
+          ]
+        ]
+      ],
+      "notes": [],
+      "source": "official instruction and BDDL instance labels, normalized through frozen task-independent scene-role contract",
+      "human_reviewed_constraints": false
+    },
+    "libero_goal-07-state001-seed0": {
+      "evaluable": true,
+      "goals": [
+        [
+          "Turnon",
+          [
+            [
+              "flat_stove_1",
+              "whole"
+            ]
+          ]
+        ]
+      ],
+      "notes": [],
+      "source": "official instruction and BDDL instance labels, normalized through frozen task-independent scene-role contract",
+      "human_reviewed_constraints": false
+    },
+    "libero_spatial-04-state000-seed0": {
+      "evaluable": true,
+      "goals": [
+        [
+          "On",
+          [
+            [
+              "akita_black_bowl_1",
+              "whole"
+            ],
+            [
+              "plate_1",
+              "whole"
+            ]
+          ]
+        ]
+      ],
+      "notes": [],
+      "source": "official instruction and BDDL instance labels, normalized through frozen task-independent scene-role contract",
+      "human_reviewed_constraints": false
+    },
+    "libero_spatial-04-state001-seed0": {
+      "evaluable": true,
+      "goals": [
+        [
+          "On",
+          [
+            [
+              "akita_black_bowl_1",
+              "whole"
+            ],
+            [
+              "plate_1",
+              "whole"
+            ]
+          ]
+        ]
+      ],
+      "notes": [],
+      "source": "official instruction and BDDL instance labels, normalized through frozen task-independent scene-role contract",
+      "human_reviewed_constraints": false
+    },
+    "libero_spatial-08-state000-seed0": {
+      "evaluable": true,
+      "goals": [
+        [
+          "On",
+          [
+            [
+              "akita_black_bowl_1",
+              "whole"
+            ],
+            [
+              "plate_1",
+              "whole"
+            ]
+          ]
+        ]
+      ],
+      "notes": [],
+      "source": "official instruction and BDDL instance labels, normalized through frozen task-independent scene-role contract",
+      "human_reviewed_constraints": false
+    },
+    "libero_spatial-08-state001-seed0": {
+      "evaluable": true,
+      "goals": [
+        [
+          "On",
+          [
+            [
+              "akita_black_bowl_1",
+              "whole"
+            ],
+            [
+              "plate_1",
+              "whole"
+            ]
+          ]
+        ]
+      ],
+      "notes": [],
+      "source": "official instruction and BDDL instance labels, normalized through frozen task-independent scene-role contract",
+      "human_reviewed_constraints": false
+    },
+    "libero_object-00-state000-seed0": {
+      "evaluable": true,
+      "goals": [
+        [
+          "In",
+          [
+            [
+              "alphabet_soup_1",
+              "whole"
+            ],
+            [
+              "basket_1",
+              "interior"
+            ]
+          ]
+        ]
+      ],
+      "notes": [],
+      "source": "official instruction and BDDL instance labels, normalized through frozen task-independent scene-role contract",
+      "human_reviewed_constraints": false
+    },
+    "libero_object-00-state001-seed0": {
+      "evaluable": true,
+      "goals": [
+        [
+          "In",
+          [
+            [
+              "alphabet_soup_1",
+              "whole"
+            ],
+            [
+              "basket_1",
+              "interior"
+            ]
+          ]
+        ]
+      ],
+      "notes": [],
+      "source": "official instruction and BDDL instance labels, normalized through frozen task-independent scene-role contract",
+      "human_reviewed_constraints": false
+    },
+    "libero_object-09-state000-seed0": {
+      "evaluable": true,
+      "goals": [
+        [
+          "In",
+          [
+            [
+              "orange_juice_1",
+              "whole"
+            ],
+            [
+              "basket_1",
+              "interior"
+            ]
+          ]
+        ]
+      ],
+      "notes": [],
+      "source": "official instruction and BDDL instance labels, normalized through frozen task-independent scene-role contract",
+      "human_reviewed_constraints": false
+    },
+    "libero_object-09-state001-seed0": {
+      "evaluable": true,
+      "goals": [
+        [
+          "In",
+          [
+            [
+              "orange_juice_1",
+              "whole"
+            ],
+            [
+              "basket_1",
+              "interior"
+            ]
+          ]
+        ]
+      ],
+      "notes": [],
+      "source": "official instruction and BDDL instance labels, normalized through frozen task-independent scene-role contract",
+      "human_reviewed_constraints": false
+    },
+    "libero_10-03-state000-seed0": {
+      "evaluable": true,
+      "goals": [
+        [
+          "Close",
+          [
+            [
+              "white_cabinet_1",
+              "bottom_drawer"
+            ]
+          ]
+        ],
+        [
+          "In",
+          [
+            [
+              "akita_black_bowl_1",
+              "whole"
+            ],
+            [
+              "white_cabinet_1",
+              "bottom_drawer"
+            ]
+          ]
+        ]
+      ],
+      "notes": [],
+      "source": "official instruction and BDDL instance labels, normalized through frozen task-independent scene-role contract",
+      "human_reviewed_constraints": false
+    },
+    "libero_10-03-state001-seed0": {
+      "evaluable": true,
+      "goals": [
+        [
+          "Close",
+          [
+            [
+              "white_cabinet_1",
+              "bottom_drawer"
+            ]
+          ]
+        ],
+        [
+          "In",
+          [
+            [
+              "akita_black_bowl_1",
+              "whole"
+            ],
+            [
+              "white_cabinet_1",
+              "bottom_drawer"
+            ]
+          ]
+        ]
+      ],
+      "notes": [],
+      "source": "official instruction and BDDL instance labels, normalized through frozen task-independent scene-role contract",
+      "human_reviewed_constraints": false
+    },
+    "libero_10-04-state000-seed0": {
+      "evaluable": true,
+      "goals": [
+        [
+          "On",
+          [
+            [
+              "porcelain_mug_1",
+              "whole"
+            ],
+            [
+              "plate_1",
+              "whole"
+            ]
+          ]
+        ],
+        [
+          "On",
+          [
+            [
+              "white_yellow_mug_1",
+              "whole"
+            ],
+            [
+              "plate_2",
+              "whole"
+            ]
+          ]
+        ]
+      ],
+      "notes": [],
+      "source": "official instruction and BDDL instance labels, normalized through frozen task-independent scene-role contract",
+      "human_reviewed_constraints": false
+    },
+    "libero_10-04-state001-seed0": {
+      "evaluable": true,
+      "goals": [
+        [
+          "On",
+          [
+            [
+              "porcelain_mug_1",
+              "whole"
+            ],
+            [
+              "plate_1",
+              "whole"
+            ]
+          ]
+        ],
+        [
+          "On",
+          [
+            [
+              "white_yellow_mug_1",
+              "whole"
+            ],
+            [
+              "plate_2",
+              "whole"
+            ]
+          ]
+        ]
+      ],
+      "notes": [],
+      "source": "official instruction and BDDL instance labels, normalized through frozen task-independent scene-role contract",
+      "human_reviewed_constraints": false
+    },
+    "libero_10-09-state000-seed0": {
+      "evaluable": true,
+      "goals": [
+        [
+          "In",
+          [
+            [
+              "white_yellow_mug_1",
+              "whole"
+            ],
+            [
+              "microwave_1",
+              "interior"
+            ]
+          ]
+        ],
+        [
+          "Close",
+          [
+            [
+              "microwave_1",
+              "whole"
+            ]
+          ]
+        ]
+      ],
+      "notes": [],
+      "source": "official instruction and BDDL instance labels, normalized through frozen task-independent scene-role contract",
+      "human_reviewed_constraints": false
+    },
+    "libero_10-09-state001-seed0": {
+      "evaluable": true,
+      "goals": [
+        [
+          "In",
+          [
+            [
+              "white_yellow_mug_1",
+              "whole"
+            ],
+            [
+              "microwave_1",
+              "interior"
+            ]
+          ]
+        ],
+        [
+          "Close",
+          [
+            [
+              "microwave_1",
+              "whole"
+            ]
+          ]
+        ]
+      ],
+      "notes": [],
+      "source": "official instruction and BDDL instance labels, normalized through frozen task-independent scene-role contract",
+      "human_reviewed_constraints": false
+    }
+  }
+}

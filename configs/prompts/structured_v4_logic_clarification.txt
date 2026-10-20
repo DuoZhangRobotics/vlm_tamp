@@ -1,0 +1,11 @@
+This clarification excerpt is incorporated into structured_v4.txt for a separately frozen follow-up.
+The original backbone comparison used structured_v3 without this clarification.
+
+goal_logic describes ONLY the logical operators connecting symbolic goal predicates.
+Use goal_logic="and" for a positive conjunctive goal set, including a single predicate.
+Missing object-instance identity, uncertain localization, unknown joint axes, unknown grasp poses,
+unresolved numerical parameters, and unexecuted actions do NOT change this logical operator.
+Express those uncertainties through entity.reference_id, entity.ambiguous, parameters.status,
+joint_type="unknown", and abstentions. All predictions remain verified=false.
+Use goal_logic="unresolved" only when the instruction's logical goal structure cannot be represented
+as a positive conjunction, such as an unresolved disjunction/negation. Explain that logical issue.

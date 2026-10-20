@@ -1,0 +1,72 @@
+{
+  "model": "gpt-5.4-mini-2026-03-17",
+  "dataset": "data/rgb-role-generalization",
+  "depth_dataset": "data/rgbd-numerical-pilot",
+  "prompt": "configs/prompts/rgbd_numerical_blanks_v1.txt",
+  "frozen_protocol": "configs/frozen_rgbd_numeric_evaluation_fixed.json",
+  "reasoning_effort": "medium",
+  "image_detail": "high",
+  "service_tier": "default",
+  "max_output_tokens": 3000,
+  "timeout_seconds": 180,
+  "max_requests": 6,
+  "max_retries": 0,
+  "max_budget_usd": 0.1,
+  "image_token_allowance": 4096,
+  "capture_usage_details": true,
+  "pricing": {
+    "input_per_million": 0.75,
+    "output_per_million": 4.5
+  },
+  "pricing_source": "https://developers.openai.com/api/docs/models/gpt-5.4-mini",
+  "pricing_checked": "2026-10-13",
+  "cases": [
+    {
+      "id": "bowl_plate",
+      "example_id": "libero_goal-08-state005-seed0",
+      "upright": false
+    },
+    {
+      "id": "middle_bowl_plate",
+      "example_id": "libero_90-14-state004-seed0",
+      "upright": false
+    },
+    {
+      "id": "red_mug_left_plate",
+      "example_id": "libero_90-65-state005-seed0",
+      "upright": false
+    },
+    {
+      "id": "yellow_mug_right_plate",
+      "example_id": "libero_90-68-state004-seed0",
+      "upright": false
+    },
+    {
+      "id": "bowl_plate_upright",
+      "example_id": "libero_goal-08-state005-seed0",
+      "upright": true
+    },
+    {
+      "id": "red_mug_left_plate_upright",
+      "example_id": "libero_90-65-state005-seed0",
+      "upright": true
+    }
+  ],
+  "geometry": {
+    "depth_patch_radius_pixels": 1,
+    "maximum_depth_jump_m": 0.03,
+    "maximum_depth_m": 5.0,
+    "plane_patch_radius_pixels": 7,
+    "plane_depth_band_m": 0.02,
+    "maximum_plane_rms_m": 0.003,
+    "maximum_support_tilt_degrees": 25.0,
+    "minimum_closing_span_m": 0.002,
+    "maximum_gripper_width_m": 0.08,
+    "finger_clearance_m": 0.004,
+    "pregrasp_distance_m": 0.08,
+    "minimum_object_axis_length_m": 0.01,
+    "placement_clearance_m": 0.01,
+    "point_tolerance_m": 0.01,
+    "upright_tolerance_degrees": 5.0
+  }
+}
