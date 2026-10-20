@@ -72,19 +72,35 @@ Tool interfaces (all coordinate conventions are explicit):
   to establish a new reference; no automatic reference renewal occurs.
 - set_model(hinge_world_m=null, axis_world=null): set your numerical hypothesis.
   Updating geometry makes previously planned trajectories stale.
-- plan_grasp(probe_degrees=3, max_candidates=24): generate GraspGen proposals,
+- plan_grasp(probe_degrees=3, max_candidates=24, seed=0): generate GraspGen proposals,
   search robot IK/approach and a contact probe of your chosen angle. Returns an
   approach plan id and pose. Makes no motion; the probe is planning admission.
+  seed selects a new diffusion candidate sample; it is included in cache identity.
+  A different sample does not establish that a better grasp exists.
 - execute(plan_id, gripper=1, speed=0.35, hold=6): execute that complete joint
   trajectory; gripper=-1 opens, 0 holds, +1 closes. Speed is maximum joint rad/s.
   For an approach you can request open fingers. Returns new sensor observation.
 - gripper(close=true, steps=40): physically close/open while holding the current
   arm joints. Steps can be 1..60. No virtual attachment is made.
-- plan_arc(degrees, refined=false): plan a relative positive angle around YOUR
-  current pivot/axis using MC-VAMP and partial pose constraints. The contact point
-  follows the circle; end-effector orientation has numerical continuity costs.
-  refined selects the numerical planner's calibrated-motion orientation range.
+- plan_arc(degrees, refined=false, grasp_constraint="point"): plan a relative
+  positive angle up to 90 degrees around your current pivot/axis using MC-VAMP.
+  "point" keeps the contact midpoint on its arc with bounded jaw tilt.
+  "rigid" transports the measured hand orientation with the moving handle.
+  "jaw_axis" transports the line between the fingers, allowing rotation about
+  that line. These are different grasp assumptions, not guarantees of retention.
+  refined only changes the old point-mode wrist allowance; it estimates no hinge
+  and has no effect in the rigid or jaw_axis modes.
   Returns a plan id and joint path, or numerical failure; makes no motion.
+  The requested arc is planned in full or fails; it is not silently shortened.
+  Failed arc requests include planning_diagnostic with endpoint-projection,
+  collision and search-budget evidence plus a readable full_diagnostic JSON.
+  These describe the attempted numerical search, not proof of infeasibility.
+  After an executed arc, the moving cloud is synchronized for the next query:
+  RGB-D rigid tracking is preferred, otherwise measured hand motion predicts
+  the transform assuming retained contact. The returned scene_pose_update
+  labels its source and fit. This update does not refine the hinge or certify
+  that the handle actually followed the hand. Explicit tracking/model tools
+  remain available. No update vetoes an executing trajectory.
 - ik(pose_world_xyzw): return robot-valid IK proposals for a chosen TCP pose.
 - plan_joint(joints): collision-aware free-motion plan to seven arm joint angles.
 - finish(): end the current physical attempt and retain the experiment evidence.

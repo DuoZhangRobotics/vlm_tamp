@@ -35,6 +35,9 @@ from vlm_tamp.handle_contact import ground_handle
 from vlm_tamp.rigid_hinge_tracking import RGBDHingeTracker, measured_pose
 from vlm_tamp.timed_execution import schedule
 from vlm_tamp.mcvamp_microwave import NativeScene, clear_native_cache
+from vlm_tamp.scene_pose_sync import hand_motion, transport_scene
+from vlm_tamp.planning_feedback import summarize_arc_failure
+from vlm_tamp.rekep_libero.geometry import transform_points
 from run_mcvamp_microwave import select_grasp, contact_plan
 from run_coupled_door import fresh_mask
 from try_rekep_bowl_v3 import read_observation_v3
@@ -93,6 +96,7 @@ class RobotService:
             maximum_grasp_poses=24, maximum_grasp_search_seconds=180.,
             maximum_contact_plan_seconds=8., planning_backend='partial_pose_arc',
             motion_policy='short', arc_search_seconds=20., arc_goal_proposals=32,
+            scene_pose_sync='rgbd', grasp_constraint='point',
             reconcile_handle_roles=True, handle_association_m=.008,
             curobo_deterministic_proposals=True)
         write_json(self.output/'inherited-tools.json', {
@@ -401,11 +405,14 @@ class RobotService:
                 'kind': kind, 'result': result,
                 'note': 'Planning makes no robot motion. Execute explicitly.'}
 
-    def plan_grasp(self, probe_degrees=3., max_candidates=24):
+    def plan_grasp(self, probe_degrees=3., max_candidates=24, seed=0):
         if not 0<float(probe_degrees)<=90 or not 1<=int(max_candidates)<=100:
             raise ValueError('Use probe 0..90 degrees and 1..100 grasp candidates')
         if self.scene is None:
             raise ValueError('Ground the target first')
+        if type(seed) is not int or not 0<=seed<2**31:
+            raise ValueError('Grasp seed must be an integer in [0, 2**31)')
+        self.resources.grasp_seed=seed
         folder = self.folder('grasp'); folder.mkdir()
         generated = self.resources.grasps(self.cloud, folder/'generation')
         aperture = self.spec['observed_handle_radius_m']+.001
@@ -423,14 +430,27 @@ class RobotService:
             'grasp_pose_world_xyzw':selected['pose_world_xyzw'], 'proposal_source':selected['source'],
             'initial_contact_probe_degrees':probe_degrees}, 'approach', {'grasp_joints':selected['joints']})
 
-    def plan_arc(self, degrees, refined=False):
+    def plan_arc(self, degrees, refined=False, grasp_constraint=None):
         angle = float(degrees)
         if not np.isfinite(angle) or not 0<angle<=90:
             raise ValueError('Specify a positive relative angle no larger than 90 degrees')
-        path, result = contact_plan(self.ik, self.scene, self.record, self.state['metadata'],
-            self.spec, np.asarray(self.state['metadata']['joint_positions']), np.radians(angle),
-            self.folder('arc'), backend='partial_pose_arc',
-            search_options={**self.config,'hinge_refinement_accepted':bool(refined)})
+        mode = grasp_constraint or self.config.get('grasp_constraint', 'point')
+        if mode not in {'point','rigid','jaw_axis'}:
+            raise ValueError('Choose point, rigid or jaw_axis grasp constraint')
+        folder = self.folder('arc')
+        try:
+            path, result = contact_plan(self.ik, self.scene, self.record, self.state['metadata'],
+                self.spec, np.asarray(self.state['metadata']['joint_positions']), np.radians(angle),
+                folder, backend='partial_pose_arc',
+                search_options={**self.config,'hinge_refinement_accepted':bool(refined),'grasp_constraint':mode})
+        except Exception as error:
+            if (folder/'result.json').exists():
+                diagnostic = read_json(folder/'result.json')
+                target = self.public/f'attempt{self.attempt:02d}'/f'plan{self.calls:03d}-failure.json'
+                write_json(target, diagnostic)
+                error.planning_diagnostic = {**summarize_arc_failure(diagnostic),
+                    'full_diagnostic':str(target.relative_to(self.workspace))}
+            raise
         return self.keep_plan(path, result, 'arc')
 
     def plan_joint(self, joints):
@@ -464,6 +484,16 @@ class RobotService:
     def issue(self, refs, gripper, label):
         if len(refs)>600-self.state['control_steps']:
             raise ValueError('Complete requested trajectory exceeds remaining physical-step budget')
+        synchronize = (getattr(self,'config',{}).get('scene_pose_sync','none') != 'none'
+                       and self.plans.get(label, {}).get('kind') == 'arc' and gripper == 1)
+        before = self.state['metadata'] if synchronize else None
+        pose_tracker = None
+        if synchronize and self.config.get('scene_pose_sync') == 'rgbd':
+            try:
+                pose_tracker = RGBDHingeTracker(self.cameras, self.scene.moving_reference,
+                    prior=self.scene.origin, reference_step=self.state['control_steps'])
+            except Exception as error:
+                write_json(self.episode/f'{self.calls:03d}-pose-tracker-error.json', {'error':str(error)})
         np.save(self.episode/f'{self.calls:03d}-requested-{label}.npy',refs)
         self.state, result = execute_batch(self.sim,self.state,refs,gripper=gripper,event_sink=self.events.append,
                                           stop_on_success=self.stop_on_success)
@@ -473,6 +503,28 @@ class RobotService:
         write_json(self.episode/'executions.json',self.executions)
         observation=self.capture()
         response={'execution':compact,'observation':observation}
+        if synchronize and not result.get('terminated_on_simulator_success'):
+            predicted, angle = hand_motion(self.scene, self.ik.chain, before, self.state['metadata'])
+            transform, source, fit = predicted, 'hand_motion_prediction', None
+            if pose_tracker is not None:
+                try:
+                    fit = pose_tracker.observe(self.cameras, control_step=self.state['control_steps'])
+                    measured = measured_pose(fit)
+                    if measured is not None:
+                        transform, source = measured, 'rgbd_rigid_motion'
+                except Exception as error:
+                    fit = {'pose_accepted':False, 'error':str(error)}
+            self.scene = transport_scene(self.scene, transform, source=source,
+                reference_step=self.state['control_steps'], fit=fit)
+            self.spec = self.scene.spec
+            self.cloud = self.scene.contact_reference
+            self.anchors = transform_points(self.anchors, transform).tolist()
+            if self.tracker is not None:
+                self.applied_pose = transform @ self.applied_pose
+            self.epoch += 1
+            update = {**self.scene.pose_update, 'hand_predicted_angle_rad':angle, 'geometry_epoch':self.epoch}
+            write_json(self.episode/f'{self.calls:03d}-scene-pose-update.json', update)
+            response['scene_pose_update'] = {k:v for k,v in update.items() if k!='parent_pose_update'}
         if self.stop_on_success:
             self.episode_success=bool(result.get('terminated_on_simulator_success'))
             response.update(task_success=self.episode_success,episode_done=self.episode_success)
@@ -602,6 +654,8 @@ def handle_request(service,path,replies):
                 with (service.output/'backend-errors.log').open('a') as out: out.write(traceback.format_exc()+'\n')
                 message=str(error).replace(str(ROOT),'[private backend]')
                 response={'ok':False,'error_type':type(error).__name__,'error':message}
+                if hasattr(error,'planning_diagnostic'):
+                    response['planning_diagnostic']=error.planning_diagnostic
             record={'sequence':service.calls,'request':request,'response':response,
                     'wall_seconds':time.perf_counter()-start}
             text=json.dumps(response,default=lambda x:x.tolist() if hasattr(x,'tolist') else str(x))

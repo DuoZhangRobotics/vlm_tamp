@@ -66,7 +66,44 @@ def segment(scene,record,metadata,ik,q,progress,output,*,seconds=8.,posture_rank
     write_json(output/'planning.json',result);return None,result
 
 
+def contact_probe_progress(spec,config,strategy=None):
+    if config.get('grasp_probe_full_task',False):
+        return float(spec['target_progress'])
+    if strategy is not None and strategy.get('step_mm') is not None and spec['joint_family']=='prismatic':
+        return strategy['step_mm']/1000
+    return .025 if spec['joint_family']=='prismatic' else np.deg2rad(6)
+
+
+class NoFeasibleGrasp(ValueError):
+    pass
+
+
 def select_grasp(generated,cloud,spec,scene,record,ik,state,sim,folder,config,*,strategy=None):
+    if not config.get('adaptive_grasp_horizon',False):
+        return _select_grasp_once(generated,cloud,spec,scene,record,ik,state,sim,folder,config,strategy=strategy)
+    before=time.perf_counter();budget=float(config.get('maximum_grasp_search_seconds',600.))
+    attempts=[]
+    for full,name in [(True,'full-task-probe'),(False,'short-probe-fallback')]:
+        destination=Path(folder)/name;destination.mkdir()
+        remaining=budget-(time.perf_counter()-before)
+        if remaining<=0:break
+        local={**config,'grasp_probe_full_task':full,
+               'maximum_grasp_search_seconds':min(.5*budget,remaining) if full else remaining}
+        try:
+            chosen,path=_select_grasp_once(generated,cloud,spec,scene,record,ik,state,sim,destination,local,strategy=strategy)
+        except NoFeasibleGrasp as error:
+            attempts.append({'search':name,'accepted':False,'reason':str(error)})
+            continue
+        chosen['horizon_support']='full_task' if full else 'short_probe_only'
+        attempts.append({'search':name,'accepted':True})
+        write_json(Path(folder)/'grasp-horizon-selection.json',{'attempts':attempts,
+            'selected':chosen['horizon_support'],'task_specific_rules':False})
+        return chosen,path
+    write_json(Path(folder)/'grasp-horizon-selection.json',{'attempts':attempts,'selected':None})
+    raise NoFeasibleGrasp('No candidate supports a full motion or a short probe within the shared search budget')
+
+
+def _select_grasp_once(generated,cloud,spec,scene,record,ik,state,sim,folder,config,*,strategy=None):
     # Apply contact-direction eligibility before spending the 24-candidate budget.
     # Proximity alone can rank upside-down grasps ahead of every usable pose.
     proposals=generated
@@ -96,10 +133,11 @@ def select_grasp(generated,cloud,spec,scene,record,ik,state,sim,folder,config,*,
             if not solutions:rejected.append({**row,'reason':'requested_posture_unavailable','requested_posture_rank':rank})
         if not solutions:rejected.append({**row,'reason':'no_robot_valid_ik'})
         batches.append((ordinal,row,solutions))
-    tested=0;chosen=None
+    tested=0;chosen=None;began=time.perf_counter()
     with NativeScene(scene,record,state['metadata'],q0,.03,articulated=False) as open_context:
         for ordinal,row,rank,solution in ranked_postures(batches):
             if tested>=config['maximum_total_ik_postures']:break
+            if time.perf_counter()-began>float(config.get('maximum_grasp_search_seconds',600.)):break
             tested+=1;q=np.asarray(solution['joints']);evidence={**row,'ik_rank':solution.get('posture_rank',rank),'joints':q.tolist()}
             write_json(folder/'grasp-search-progress.json',{'tested_ik_postures':tested,'eligible_poses':len(rows),'candidate_index':row['index']})
             opened=open_context.validate(q)
@@ -114,9 +152,7 @@ def select_grasp(generated,cloud,spec,scene,record,ik,state,sim,folder,config,*,
             if not closed['accepted']:
                 rejected.append({**evidence,'reason':'closure_scene_collision','diagnostic':closed});continue
             trial=folder/f'candidate-{tested:03d}';trial.mkdir()
-            probe=.025 if spec['joint_family']=='prismatic' else np.deg2rad(6)
-            if strategy is not None and strategy.get('step_mm') is not None and spec['joint_family']=='prismatic':
-                probe=strategy['step_mm']/1000
+            probe=contact_probe_progress(spec,config,strategy)
             probe_path,probe_info=segment(scene,record,closed_metadata,ik,q,probe,trial/'probe',seconds=4.)
             if probe_path is None:
                 rejected.append({**evidence,'reason':'manipulation_probe_not_plannable','planning':probe_info});continue
@@ -142,7 +178,7 @@ def select_grasp(generated,cloud,spec,scene,record,ik,state,sim,folder,config,*,
             np.save(folder/'approach-path.npy',approach);break
     write_json(folder/'grasp-admission.json',{'selected':chosen,'rejected_candidates':rejected,
         'tested_ik_postures':tested,'eligible_poses':len(rows),'posture_budget':config['maximum_total_ik_postures']})
-    if chosen is None:raise ValueError('No candidate with complete grasp approach and constrained probe within search budget')
+    if chosen is None:raise NoFeasibleGrasp('No candidate with complete grasp approach and constrained probe within search budget')
     return chosen,np.load(folder/'approach-path.npy')
 
 
@@ -246,11 +282,22 @@ def run_episode(task,index,folder,config,resources,*,prepared=None):
             write_json(folder/'direction-probe.json',{'attempts':outcomes,'selected_sign':direction,
                 'observed_direction_supported':bool(supported),'fallback':'bounded opposite-direction exploration',
                 'simulator_task_success_or_joint_state_used':False})
-        chunk=.025 if spec['joint_family']=='prismatic' else np.deg2rad(8.)
+        short_chunk=.025 if spec['joint_family']=='prismatic' else np.deg2rad(8.)
+        adaptive=bool(config.get('adaptive_grasp_horizon',False))
+        long_enabled=(chosen.get('horizon_support')=='full_task' if adaptive
+                      else config.get('mechanism_horizon')=='remaining')
+        chunk=float(spec['target_progress']) if long_enabled else short_chunk
+        horizon_fallbacks=[]
         while commanded<spec['target_progress']-1e-6:
             amount=min(chunk,spec['target_progress']-commanded)
             stage='mcvamp_planning_between_complete_trajectories';q=np.asarray(state['metadata']['joint_positions'])
             path,info=segment(scene,record,state['metadata'],ik,q,amount,folder/f'plan-{plan_number:02d}',seconds=8.);plan_number+=1
+            if path is None and adaptive and amount>short_chunk+1e-9:
+                horizon_fallbacks.append({'requested_progress':amount,'failure':info,
+                    'fallback_progress':min(short_chunk,spec['target_progress']-commanded)})
+                write_json(folder/'planning-horizon-fallbacks.json',horizon_fallbacks)
+                chunk=short_chunk;amount=min(chunk,spec['target_progress']-commanded)
+                path,info=segment(scene,record,state['metadata'],ik,q,amount,folder/f'plan-{plan_number:02d}',seconds=8.);plan_number+=1
             if path is None:raise ValueError('No complete MC-VAMP mechanism segment: '+info['reason'])
             stage='timed_mechanism';issue(path,f'manipulate-{plan_number:02d}',hold=6)
             commanded+=amount;state=sim.observe(folder/f'observation-{plan_number:02d}')

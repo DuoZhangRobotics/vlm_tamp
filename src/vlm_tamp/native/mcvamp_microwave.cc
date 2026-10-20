@@ -61,6 +61,7 @@ struct Scene {
     bool allow_contact = true;
     float goal_angle = 0;
     bool aligned_jaws = true;
+    int grasp_constraint = 0; // 0 point, 1 rigid relative pose, 2 contact-line direction
     Eigen::Matrix3f reference_rotation;
     Clock::time_point deadline;
     bool timed_out = false;
@@ -203,6 +204,7 @@ public:
         geometry.eef_to_tcp=s.eef_to_tcp;geometry.pad_local=s.pad_local;
         geometry.goal_angle=s.goal_angle;geometry.aligned_jaws=s.aligned_jaws;
         geometry.reference_rotation=s.reference_rotation;
+        geometry.grasp_constraint=s.grasp_constraint;
     }
     Task(const Task& other): Task(other.geometry) {}
     using Residual = Eigen::Matrix<float,6,1>;
@@ -220,6 +222,18 @@ public:
         const float cone=std::acos(std::clamp(std::abs(tcp.block<3,3>(0,0).col(1).dot(s.axis)),0.F,1.F));
         Residual result=Residual::Zero();
         result[0]=now.norm()-first.norm();result[1]=height;
+        if(s.grasp_constraint) {
+            const Eigen::Matrix3f expected=Eigen::AngleAxisf(theta,s.axis).toRotationMatrix()*s.reference_rotation;
+            const Eigen::Matrix3f actual=tcp.block<3,3>(0,0);
+            if(s.grasp_constraint==1) {
+                Eigen::AngleAxisf error(expected.transpose()*actual);
+                result.segment<3>(2)=.15F*error.angle()*error.axis();
+            } else {
+                result.segment<3>(2)=.15F*(actual.col(0)-expected.col(0));
+            }
+            result[5]=.15F*(theta-std::clamp(theta,-.03F,s.goal_angle+.03F));
+            return result;
+        }
         result[2]=.15F*(s.aligned_jaws ? jaw : std::copysign(std::max(0.F,std::abs(jaw)-.8660254F),jaw));
         result[3]=.15F*(theta-std::clamp(theta,-.03F,s.goal_angle+.03F));
         result[4]=.15F*std::max(0.F,cone-float(M_PI/2));
@@ -288,7 +302,7 @@ void mcvamp_configure(Scene* s,const float* config,const float* gripper,int ng) 
     std::array<float,7> reference;
     std::copy_n(config+44,7,reference.begin());
     s->reference_rotation=(Panda::eefk(reference)[0].matrix()*s->eef_to_tcp).block<3,3>(0,0);
-    s->goal_angle=config[51];s->aligned_jaws=config[52]>.5;
+    s->goal_angle=config[51];s->aligned_jaws=config[52]>.5;s->grasp_constraint=0;
     s->gripper.resize(ng);
     for(int i=0;i<ng;++i) std::copy_n(gripper+5*i,5,s->gripper[i].begin());
     s->gripper_convex.clear();
@@ -318,6 +332,10 @@ void* mcvamp_clone(void* original,const float* config,const float* gripper,int n
     } catch (...) { return nullptr; }
 }
 void mcvamp_destroy(void* p) { delete static_cast<Scene*>(p); }
+int mcvamp_set_grasp_constraint(void* p,int mode) {
+    if(mode<0 || mode>2) return 0;
+    static_cast<Scene*>(p)->grasp_constraint=mode;return 1;
+}
 int mcvamp_set_gripper_convex(void* p,const float* planes,const int* offsets,const float* bounds,int count,float padding) {
     try {
         auto& s=*static_cast<Scene*>(p);s.gripper_convex.clear();s.gripper_point_padding=padding;

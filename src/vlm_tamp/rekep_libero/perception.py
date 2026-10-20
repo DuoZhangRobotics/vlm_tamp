@@ -307,14 +307,16 @@ class GraspGen:
             raise ValueError('Only the Panda diffusion/discriminator checkpoint is supported')
         self.sampler = GraspGenSampler(self.cfg)
 
-    def generate(self, cloud, out_dir):
+    def generate(self, cloud, out_dir, *, seed=0):
         torch = self.torch
         xyz = np.asarray(cloud, np.float32)
         if xyz.ndim != 2 or xyz.shape[1] != 3 or len(xyz) < 30 or not np.isfinite(xyz).all():
             raise ValueError('GraspGen needs at least 30 finite metric XYZ points')
-        np.random.seed(0)
-        torch.manual_seed(0)
-        torch.cuda.manual_seed_all(0)
+        if type(seed) is not int or not 0<=seed<2**31:
+            raise ValueError('Grasp seed must be an integer in [0, 2**31)')
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
         torch.cuda.reset_peak_memory_stats()
         before = time.monotonic()
         # sample returns raw 200 generated poses and discriminator scores. Keeping
@@ -337,7 +339,7 @@ class GraspGen:
         out.mkdir(parents=True, exist_ok=True)
         np.savez_compressed(out / 'grasp_candidates.npz', poses_world_base=poses, scores=scores,
                             retained_indices=order, contacts=np.asarray(contacts) if contacts is not None else np.empty((0, 3)))
-        record = {'model': 'GraspGen Panda diffusion + discriminator', 'seed': 0, 'requested_candidates': 200,
+        record = {'model': 'GraspGen Panda diffusion + discriminator', 'seed': seed, 'requested_candidates': 200,
                   'generated_candidates': len(poses), 'retained_candidates': len(order), 'tries': 1,
                   'contacts_provided_by_model': contacts is not None,
                   'approach_axis': '+z', 'closing_axis': '+x', 'pose_origin': 'gripper_base_link',

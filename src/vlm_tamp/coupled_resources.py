@@ -118,6 +118,9 @@ class CoupledResources:
         import yaml
         output=Path(output)
         xyz=np.asarray(cloud,np.float32)
+        seed=getattr(self,'grasp_seed',0)
+        if type(seed) is not int or not 0<=seed<2**31:
+            raise ValueError('Grasp seed must be an integer in [0, 2**31)')
         if self.pins is None:
             config=ROOT/'.runtime/graspgen-models/checkpoints/graspgen_franka_panda.yml'
             raw=yaml.safe_load(config.read_text())
@@ -126,11 +129,13 @@ class CoupledResources:
                 checkpoint=Path(raw[key]['checkpoint'])
                 if not checkpoint.is_absolute():checkpoint=config.parent/checkpoint
                 self.pins[key+'_checkpoint_sha256']=sha(checkpoint)
-        digest=hashlib.sha256(xyz.tobytes()+json.dumps(self.pins,sort_keys=True).encode()).hexdigest()
+        seed_key=b'' if seed==0 else f'grasp-seed:{seed}'.encode()
+        digest=hashlib.sha256(xyz.tobytes()+json.dumps(self.pins,sort_keys=True).encode()+seed_key).hexdigest()
         cache=self.cache/('graspgen-'+digest)
         if cache.exists():
             provenance=read(cache/'input-provenance.json')
-            if provenance['cache_key']!=digest or provenance['checkpoint_pins']!=self.pins:
+            if (provenance['cache_key']!=digest or provenance['checkpoint_pins']!=self.pins
+                    or provenance.get('grasp_seed',0)!=seed):
                 raise ValueError('Grasp cache checkpoint provenance differs')
             if not np.array_equal(np.load(cache/'input-cloud.npy'),xyz):
                 raise ValueError('Grasp cache point cloud differs')
@@ -141,9 +146,9 @@ class CoupledResources:
         if self.graspgen is None:
             from .rekep_libero.perception import GraspGen
             self.graspgen=GraspGen()
-        result=self.graspgen.generate(xyz,output)
+        result=self.graspgen.generate(xyz,output,**({'seed':seed} if seed else {}))
         np.save(output/'input-cloud.npy',xyz)
-        save(output/'input-provenance.json',{'cache_key':digest,'reused':False,'checkpoint_pins':self.pins,
+        save(output/'input-provenance.json',{'cache_key':digest,'reused':False,'checkpoint_pins':self.pins,'grasp_seed':seed,
             'input_source':'current predicted RGB-D handle cloud','provided_inventory':False})
         shutil.copytree(output,cache)
         return result

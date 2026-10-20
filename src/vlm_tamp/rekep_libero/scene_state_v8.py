@@ -29,6 +29,7 @@ class ObservedScene(SceneV7):
                       collision_exemptions='finger/selected-target, local drawer-panel brace, object/task-support')
         result['finger_noncontact_clearance_m'] = self.config.get('finger_noncontact_clearance_m', 0.)
         result['moving_payload_clearance_m'] = self.config.get('moving_payload_clearance_m', 0.)
+        result['robot_payload_clearance_m'] = self.config.get('robot_payload_clearance_m', self.margin)
         result['support_plane_frame'] = 'stationary world'
         return result
 
@@ -84,7 +85,11 @@ class ObservedScene(SceneV7):
                       if name in self.policy.finger_names else self.margin)
             for part, points, tree in [('stationary_scene', self.static_points, self.static_tree),
                                         ('moving_source', moving, moving_tree)]:
-                indices, values = bounded_points(points, tree, volume, max(margin, self.margin))
+                pair_margin=(float(self.config.get('robot_payload_clearance_m',margin))
+                             if check_payload and part=='moving_source' and name not in self.policy.finger_names else margin)
+                if not np.isfinite(pair_margin) or pair_margin<0:
+                    raise ValueError('Robot-payload clearance must be finite and nonnegative')
+                indices, values = bounded_points(points, tree, volume, max(pair_margin, self.margin))
                 if not len(indices):
                     continue
                 hit = points[indices]
@@ -98,17 +103,17 @@ class ObservedScene(SceneV7):
                 if (panel_allowed & ~target_allowed).any():
                     permissions.append({'robot_geom_name': name, 'scene_part': part, 'rule': 'finger_local_panel_support',
                                         'points': int((panel_allowed & ~target_allowed).sum())})
-                proximity = (values > margin) & ~allowed
+                proximity = (values > pair_margin) & ~allowed
                 if proximity.any():
                     near_contacts.append({'robot_geom_name': name, 'scene_part': part,
                                           'points': int(proximity.sum()),
                                           'minimum_positive_clearance_m': float(values[proximity].min())})
-                blocked = (values <= margin) & ~allowed
+                blocked = (values <= pair_margin) & ~allowed
                 if blocked.any():
                     collisions.append({'robot_geom_name': name, 'scene_part': part,
                         'blocked_observed_points': int(blocked.sum()),
                         'minimum_signed_point_distance_m': float(values[blocked].min()),
-                        'required_clearance_m': margin,
+                        'required_clearance_m': pair_margin,
                         'maximum_point_penetration_m': max(0., float(-values[blocked].min())),
                         'example_points_world_m': hit[blocked][:3].tolist()})
         if check_payload:

@@ -109,6 +109,20 @@ def moving_box():
     return np.array([[x, y, z] for x in [-.003, .009] for y in [-.003, .003] for z in [.997, 1.003]])
 
 
+def test_held_object_boundary_preserves_static_margin_and_rejects_penetration():
+    def points(low):
+        return np.array([[x,y,z] for x in [low,.014] for y in [-.002,.002] for z in [.998,1.002]])
+    scene=scene_fixture([[.2,.2,.9]],points(.0105))
+    assert not scene.check([PALM],TCP,stage='carry',check_payload=True)['accepted']
+    scene.config['robot_payload_clearance_m']=0.
+    assert scene.check([PALM],TCP,stage='carry',check_payload=True)['accepted']
+    assert not scene.check([PALM],TCP,stage='approach',check_payload=False)['accepted']
+    scene=scene_fixture([[-.0105,0,1]],points(.0105));scene.config['robot_payload_clearance_m']=0.
+    assert not scene.check([PALM],TCP,stage='carry',check_payload=True)['accepted']
+    scene=scene_fixture([[.2,.2,.9]],points(.0095));scene.config['robot_payload_clearance_m']=0.
+    assert not scene.check([PALM],TCP,stage='carry',check_payload=True)['accepted']
+
+
 def test_real_overlap_with_selected_bowl_is_allowed_but_unrelated_stationary_surface_blocks():
     scene = scene_fixture([[.008, .002, 1.]], moving_box())
     result = scene.check([FINGER], TCP, stage='grasp')

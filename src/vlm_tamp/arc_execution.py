@@ -18,15 +18,18 @@ def contact_arc(scene,record,metadata,start,goal,folder,config):
     compact['robot_collision_volumes_world']=[v for v in metadata['robot_collision_volumes_world'] if 'gripper' in v['robot_geom_name']]
     write_json(folder/'planning-input.json',{'task_spec':scene.spec,'metadata':compact,
         'reference_joints':start,'goal_angle_rad':goal,'planning_only':True,
-        'backend':'continuous_partial_pose_arc','end_effector_quaternion_prescribed':False,
+        'backend':'continuous_partial_pose_arc',
+        'end_effector_quaternion_prescribed':config.get('grasp_constraint','point')=='rigid',
         'search_options':{'motion_policy':config.get('motion_policy'),
+            'grasp_constraint':config.get('grasp_constraint','point'),
             'hinge_refinement_accepted':bool(config.get('hinge_refinement_accepted',False)),
             'arc_search_seconds':float(config.get('arc_search_seconds',60.)),
             'arc_goal_proposals':int(config.get('arc_goal_proposals',128)),
             'arc_seed':int(config.get('arc_seed',0))},
         'refined_flag_semantics':'Selects wrist-excursion allowance; it does not perform a new hinge estimate.',
         'reference_semantics':'Goal angle and moving-cloud rotation are relative to this query start; cloud pose must already correspond to that start.'})
-    with NativeScene(scene,record,metadata,start,goal,aligned=False) as context:
+    with NativeScene(scene,record,metadata,start,goal,aligned=False,
+                     grasp_constraint=config.get('grasp_constraint','point')) as context:
         context.motion_options=config
         path,result=full_arc_plan(context,goal,seconds=float(config.get('arc_search_seconds',60.)),
             proposals=int(config.get('arc_goal_proposals',128)),seed=int(config.get('arc_seed',0)))

@@ -133,7 +133,10 @@ def gripper_convex(metadata,world_robot,parts,point_radius):
 class NativeScene:
     """A process-local CAPT context. It is never passed to the executor."""
     def __init__(self,scene,record,metadata,reference_q,goal_angle,*,articulated=True,aligned=True,
-                 allow_contact=True,point_radius=.0025,gripper_padding=0.,output=None):
+                 allow_contact=True,point_radius=.0025,gripper_padding=0.,output=None,grasp_constraint='point'):
+        if grasp_constraint not in {'point','rigid','jaw_axis'}:
+            raise ValueError('Unknown grasp constraint')
+        self.grasp_constraint=grasp_constraint
         if not np.isfinite(gripper_padding) or gripper_padding<0:raise ValueError('Invalid gripper padding')
         build=json.loads((LIBRARY.parent/'build.json').read_text())
         if build['source_sha256']!=hashlib.sha256(SOURCE.read_bytes()).hexdigest():
@@ -202,6 +205,9 @@ class NativeScene:
             _TREE_CACHE[key]=(self.lib,base,time.perf_counter()-before)
         self.handle=self.lib.mcvamp_clone(_TREE_CACHE[key][1],_pointer(config),_pointer(grip),len(grip))
         if not self.handle:raise RuntimeError('Native CAPT construction failed')
+        self.lib.mcvamp_set_grasp_constraint.argtypes=[ctypes.c_void_p,ctypes.c_int]
+        if not self.lib.mcvamp_set_grasp_constraint(self.handle,{'point':0,'rigid':1,'jaw_axis':2}[grasp_constraint]):
+            self.close();raise RuntimeError('Could not configure grasp constraint')
         planes,offsets,bounds=gripper_convex(metadata,self.world_robot,parts,gripper_padding)
         if not self.lib.mcvamp_set_gripper_convex(self.handle,_pointer(planes),offsets.ctypes.data_as(INTEGER),
                 _pointer(bounds),len(bounds),gripper_padding):
@@ -231,6 +237,16 @@ class NativeScene:
             'ambient_dimension':7,'hinge_progress_coordinate':'derived from grip point',
             'projection':'native MC-VAMP composition with adapter finite-difference damped least-squares step',
             'native_simd_projection_fully_preserved':False,'aligned_jaws':bool(aligned)}
+        self.record.update(grasp_constraint=grasp_constraint,
+            grasp_orientation_reference='current measured TCP transported with the estimated articulation',
+            independent_wrist_excursion_limit_used=grasp_constraint=='point')
+        update=getattr(scene,'pose_update',None)
+        if update is not None:
+            self.record.update(contact_geometry_source='observed endpoints transported to the current query frame',
+                moving_geometry_pose_source=update['source'],
+                moving_geometry_reference_control_step=update['reference_control_step'],
+                transported_handle_reference_added_as_obstacle=False,
+                fresh_depth_endpoints_after_transport=False)
         if output:
             output=Path(output);output.mkdir(parents=True,exist_ok=True)
             preserve_scene(scene,output)

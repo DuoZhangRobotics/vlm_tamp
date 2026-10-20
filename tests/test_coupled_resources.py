@@ -99,3 +99,24 @@ def test_grasp_cache_requires_exact_point_cloud_and_checkpoint_pins():
         output=service.grasps(xyz,root/'out')
         assert output['scores'][0]==.9
         assert module.read(root/'out/input-provenance.json')['reused']
+
+
+def test_grasp_sampling_seed_is_part_of_cache_identity(tmp_path):
+    service=module.CoupledResources(tmp_path/'cache');service.pins={'model':'pinned'}
+    calls=[]
+    class Generator:
+        def generate(self,xyz,output,seed=0):
+            calls.append(seed);output.mkdir()
+            result={'poses_world_base':np.eye(4)[None],'scores':np.array([.9]),'retained_indices':np.array([0])}
+            np.savez(output/'grasp_candidates.npz',**result)
+            return result
+    service.graspgen=Generator();xyz=np.zeros((30,3),np.float32)
+    service.grasps(xyz,tmp_path/'zero')
+    service.grasp_seed=1
+    service.grasps(xyz,tmp_path/'one')
+    service.grasps(xyz,tmp_path/'one_again')
+    assert calls==[0,1]
+    assert len(list(service.cache.glob('graspgen-*')))==2
+    assert module.read(tmp_path/'one_again/input-provenance.json')['grasp_seed']==1
+    service.grasp_seed=True
+    with pytest.raises(ValueError,match='integer'):service.grasps(xyz,tmp_path/'invalid')

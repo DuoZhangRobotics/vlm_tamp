@@ -13,10 +13,12 @@ from scipy.spatial.transform import Rotation
 
 from .pose_constraints import skew
 from .rekep_libero.geometry import pose_matrix
+from .rekep_libero.robot_chain_v4 import fixed_orientation_residual
 
 
 class PartialPoseArc:
-    def __init__(self,chain,origin,axis,reference_q,pad_local,*,jaw_tilt=np.pi/3,margin=.025):
+    def __init__(self,chain,origin,axis,reference_q,pad_local,*,jaw_tilt=np.pi/3,margin=.025,
+                 grasp_constraint='point'):
         self.chain=chain;self.origin=np.asarray(origin,float)
         self.axis=np.asarray(axis,float);self.axis/=np.linalg.norm(self.axis)
         self.pad=np.asarray(pad_local,float)
@@ -26,6 +28,9 @@ class PartialPoseArc:
         self.anchor=tcp[:3,3]+tcp[:3,:3]@self.pad
         self.bounds=np.asarray(chain.limits,float)+[margin,-margin]
         self.jaw_limit=float(np.sin(jaw_tilt))
+        if grasp_constraint not in {'point','rigid','jaw_axis'}:
+            raise ValueError('Unknown grasp constraint')
+        self.grasp_constraint=grasp_constraint
 
     def point(self,angle):
         return self.origin+Rotation.from_rotvec(angle*self.axis).apply(self.anchor-self.origin)
@@ -34,11 +39,22 @@ class PartialPoseArc:
         pose,J=self.chain.forward(q,jacobian=True)
         tcp=pose_matrix(pose);R=tcp[:3,:3]
         point=tcp[:3,3]+R@self.pad
+        point_J=J[:3]-R@skew(self.pad)@J[3:]
+        expected=Rotation.from_rotvec(angle*self.axis).as_matrix()@self.reference_rotation
+        if self.grasp_constraint!='point':
+            if self.grasp_constraint=='rigid':
+                orientation,orientation_J=fixed_orientation_residual(expected,R,J[3:])
+            else:
+                # Preserve the line joining the two contacts, leaving rotation
+                # about that line free. This is weaker than a rigid attachment.
+                orientation=R[:,0]-expected[:,0]
+                orientation_J=-R@skew([1.,0.,0.])@J[3:]
+            residual=np.r_[point-self.point(angle),.15*orientation]
+            return (residual,np.vstack([point_J,.15*orientation_J])) if jacobian else residual
         value=float(self.axis@R[:,0])
         excess=max(0.,abs(value)-self.jaw_limit)
         residual=np.r_[point-self.point(angle),.15*excess]
         if not jacobian:return residual
-        point_J=J[:3]-R@skew(self.pad)@J[3:]
         jaw_J=-self.axis@R@skew([1.,0.,0.])@J[3:]
         return residual,np.vstack([point_J,.15*np.sign(value)*jaw_J if excess>0 else np.zeros(7)])
 
@@ -49,7 +65,7 @@ class PartialPoseArc:
         def fun(q):
             residual=20*self.residual(q,angle)
             if avoidance is not None:residual=np.r_[residual,avoidance.evaluate(q,angle)[0]]
-            if avoidance is not None and abs(angle)<np.radians(15):
+            if self.grasp_constraint=='point' and avoidance is not None and abs(angle)<np.radians(15):
                 rotation=pose_matrix(self.chain.forward(q))[:3,:3]
                 expected=Rotation.from_rotvec(angle*self.axis).as_matrix()@self.reference_rotation
                 residual=np.r_[residual,.025*(rotation-expected).T.ravel()]
@@ -57,7 +73,7 @@ class PartialPoseArc:
         def jac(q):
             derivative=20*self.residual(q,angle,jacobian=True)[1]
             if avoidance is not None:derivative=np.vstack([derivative,avoidance.evaluate(q,angle)[1]])
-            if avoidance is not None and abs(angle)<np.radians(15):
+            if self.grasp_constraint=='point' and avoidance is not None and abs(angle)<np.radians(15):
                 pose,J=self.chain.forward(q,jacobian=True);rotation=pose_matrix(pose)[:3,:3]
                 derivative=np.vstack([derivative,.025*np.vstack([-rotation@skew(e)@J[3:] for e in np.eye(3)])])
             return np.vstack([derivative,1e-6*np.eye(7)])
@@ -68,10 +84,11 @@ class PartialPoseArc:
         if avoidance is not None:
             candidate,polish=self.project(candidate,angle,evaluations=50)
         residual=self.residual(candidate,angle)
-        return candidate,{'accepted':bool(np.linalg.norm(residual[:3])<2e-5 and abs(residual[3])<1e-6),
+        return candidate,{'accepted':bool(np.linalg.norm(residual[:3])<2e-5 and np.linalg.norm(residual[3:])<1e-6),
             'position_error_m':float(np.linalg.norm(residual[:3])),
-            'jaw_inequality_error':float(abs(residual[3])), 'evaluations':solved.nfev,
-            'wrist_orientation_prescribed':False,'palm_clearance_objective_used':avoidance is not None,
+            'jaw_inequality_error':float(np.linalg.norm(residual[3:])), 'evaluations':solved.nfev,
+            'grasp_constraint':self.grasp_constraint,
+            'wrist_orientation_prescribed':self.grasp_constraint=='rigid','palm_clearance_objective_used':avoidance is not None,
             'pre_equality_polish_position_error_m':pre_polish_error}
 
     def nullspace(self,q,angle):
@@ -146,6 +163,7 @@ class PalmClearanceObjective:
 
 def short_wrist_limit(context,goal):
     options=getattr(context,'motion_options',context.scene.config)
+    if getattr(context,'grasp_constraint','point')!='point':return np.pi
     if options.get('motion_policy')!='short':return np.pi
     return np.radians(max(10.,2*np.degrees(goal)+3.) if options.get('hinge_refinement_accepted') else 8.)
 
@@ -163,7 +181,8 @@ def path_wrist_admitted(context,path,goal):
 
 
 def partial_goals(context,goal,*,proposals=160,maximum=8,seed=0,deadline=None):
-    model=PartialPoseArc(context.chain,context.origin,context.axis,context.reference_q,context.pad_local)
+    model=PartialPoseArc(context.chain,context.origin,context.axis,context.reference_q,context.pad_local,
+                        grasp_constraint=getattr(context,'grasp_constraint','point'))
     rng=np.random.default_rng(seed);start=context.reference_q
     avoidance=PalmClearanceObjective(context)
     seeds=[start]
@@ -196,7 +215,8 @@ def full_arc_plan(context,goal,*,seconds=40.,proposals=160,beam_width=5,seed=0):
     before=time.perf_counter();start=context.reference_q
     initial=context.validate(start)
     report={'start':initial,'goal_angle_rad':goal,'wrist_orientation_menu_used':False,
-        'end_effector_quaternion_prescribed':False,'complete_arc_required':True,
+        'end_effector_quaternion_prescribed':getattr(context,'grasp_constraint','point')=='rigid',
+        'grasp_constraint':getattr(context,'grasp_constraint','point'),'complete_arc_required':True,
         'execution_during_search':False,'global_queries':[],'continuation_layers':[]}
     if not initial['accepted']:return np.empty((0,7)),{**report,'status':'invalid_start'}
     model,goals,goal_records=partial_goals(context,goal,proposals=proposals,seed=seed,

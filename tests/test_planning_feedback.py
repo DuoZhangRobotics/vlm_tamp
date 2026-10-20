@@ -1,0 +1,47 @@
+from vlm_tamp.planning_feedback import summarize_arc_failure
+
+
+def test_feedback_separates_ik_projection_from_collision_and_unknown_values():
+    data={'status':'search_budget_exhausted','goal_angle_rad':1.5,'grasp_constraint':'rigid',
+          'start':{'accepted':True},'admissible_goals':0,
+          'goal_proposals':[
+              {'projection':{'accepted':False,'position_error_m':.1,'jaw_inequality_error':.15}},
+              {'projection':{'accepted':True,'position_error_m':0.,'jaw_inequality_error':0.},
+               'scene':{'accepted':False}}]}
+    result=summarize_arc_failure(data)
+    assert result['goal_projection_successes']==1
+    assert result['projected_goals_rejected_by_collision']==1
+    assert result['start_collision_free']
+    assert not result['simulator_object_state_used']
+    assert result['last_attempted_continuation_angle_deg'] is None
+    empty=summarize_arc_failure({'status':'invalid_start','start':{'accepted':False}})
+    assert empty['minimum_endpoint_position_error_m'] is None
+    assert not empty['start_collision_free']
+
+
+def test_failed_arc_exposes_current_diagnostics_without_private_path(tmp_path,monkeypatch):
+    import importlib.util
+    import json
+    from pathlib import Path
+    import pytest
+    source=Path(__file__).resolve().parents[1]/'scripts/serve_subscription_robot.py'
+    spec=importlib.util.spec_from_file_location('feedback_service_test',source)
+    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    robot=module.RobotService.__new__(module.RobotService)
+    robot.episode=tmp_path/'private';robot.episode.mkdir()
+    robot.workspace=tmp_path/'public';robot.public=robot.workspace/'robot_data'
+    (robot.public/'attempt01').mkdir(parents=True)
+    robot.calls=3;robot.attempt=1;robot.config={}
+    robot.ik=robot.scene=robot.record=robot.spec=None
+    robot.state={'metadata':{'joint_positions':[0.]*7}}
+    def fail(*args,**kwargs):
+        folder=args[7];folder.mkdir()
+        (folder/'result.json').write_text(json.dumps({'status':'search_budget_exhausted','goal_angle_rad':1.5}))
+        raise ValueError('No complete numerical plan')
+    monkeypatch.setattr(module,'contact_plan',fail)
+    with pytest.raises(ValueError) as caught:
+        robot.plan_arc(90,grasp_constraint='rigid')
+    details=caught.value.planning_diagnostic
+    assert details['status']=='search_budget_exhausted'
+    assert (robot.workspace/details['full_diagnostic']).exists()
+    assert str(robot.episode) not in json.dumps(details)

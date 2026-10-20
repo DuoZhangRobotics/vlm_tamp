@@ -612,6 +612,7 @@ class Scene:
 
     def record(self):
         return {'schema_version': 'coupled-observed-scene-1.0',
+                'pose_update': getattr(self, 'pose_update', None),
                 'static_observed_points': len(self.static_points),
                 'moving_observed_points': len(self.moving_reference),
                 'inferred_panel_points': len(self.inferred_panel_reference),
