@@ -37,6 +37,7 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--output',required=True)
     p.add_argument('--agent-seconds',type=int,default=1800)
+    p.add_argument('--episode-seconds',type=int,default=1800,help='Per-attempt wall budget during persistent practice')
     p.add_argument('--prompt-file',help='Optional exact recorded initial prompt for a fresh reproduction')
     p.add_argument('--fit-diagnostics',action='store_true',help='Expose sensor-only fit quality separately from initial-model agreement')
     p.add_argument('--state',type=int,default=21);p.add_argument('--dino-tools',action='store_true')
@@ -54,8 +55,9 @@ def main():
     p.add_argument('--abstract-experience',action='store_true')
     a=p.parse_args();out=(ROOT/a.output).resolve()
     if a.agent_seconds<=0:raise ValueError('Use a positive episode time budget')
-    if a.persistent_episode and (a.attempts!=1 or not a.stop_on_success or a.learning_practice):
-        raise ValueError('Persistent transfer requires one attempt with native-success termination')
+    if a.episode_seconds<=0:raise ValueError('Use a positive per-attempt time budget')
+    if a.persistent_episode and (not a.stop_on_success or (a.attempts!=1 and not a.learning_practice)):
+        raise ValueError('Persistence requires native-success termination and either one attempt or declared practice')
     validate_attempt_budget(a.attempts,learning_practice=a.learning_practice,evaluation_case=a.evaluation_case,initial_attempts=a.initial_attempts)
     if a.learning_practice and not a.prompt_file:
         raise ValueError('Learning practice requires an explicit practice prompt')
@@ -63,10 +65,13 @@ def main():
     if not 0<=a.state<50:raise ValueError('Official initial-state index must be 0..49')
     if not out.is_relative_to(ROOT/'results') or out==ROOT/'results':
         raise ValueError('Use a new results/<run> directory')
+    from vlm_tamp.storage_budget import require_storage_headroom
+    storage_check=require_storage_headroom(ROOT)
     status=subprocess.run(['codex','login','status'],capture_output=True,text=True,env=clean_environment(),check=True)
     if 'Logged in using ChatGPT' not in status.stdout+status.stderr:
         raise RuntimeError('ChatGPT login is required; API-key fallback is not permitted')
     out.mkdir(exist_ok=False)
+    (out/'storage-preflight.json').write_text(json.dumps(storage_check,indent=2)+'\n')
     work=Path(tempfile.mkdtemp(prefix='vlm-luna-workspace-'))
     env=clean_environment()
     subprocess.run(['/usr/bin/python3',str(ROOT/'scripts/prepare_subscription_pilot.py'),
@@ -87,7 +92,8 @@ def main():
     protocol['unconditioned_hinge_fit_diagnostics']=bool(a.fit_diagnostics)
     protocol['scene_variant']=a.scene_variant
     protocol['scene_variant_parameters_exposed_to_agent']=False
-    protocol['episode_wall_budget_seconds']=a.agent_seconds
+    protocol['episode_wall_budget_seconds']=a.episode_seconds if a.learning_practice else a.agent_seconds
+    protocol['session_wall_budget_seconds']=a.agent_seconds
     protocol['persistent_episode']=a.persistent_episode
     protocol['surface_contact_tools']=a.surface_contact_tools
     (out/'protocol.json').write_text(json.dumps(protocol,indent=2)+'\n')
@@ -99,6 +105,7 @@ def main():
         forbidden.append(ROOT/'data/agent_memory/luna-microwave-v1/library/episode-0001/procedure.json')
     readonly=[work/'episodic_library'] if a.memory_store else []
     if a.successful_method_file:readonly.append(work/'experience/successful-method.json')
+    if a.guidelines_source:readonly.append(work/'experience/guidelines.json')
     (out/'isolation.json').write_text(json.dumps(verify_isolation(work,forbidden,readonly_paths=readonly),indent=2))
     if a.memory_store:
         from vlm_tamp.episodic_memory import verify_memory_access
@@ -137,7 +144,8 @@ def main():
                 time.sleep(.1)
             if a.persistent_episode:
                 from vlm_tamp.episode_persistence import run_persistent_agent
-                code=run_persistent_agent(work,out,env,readonly,prompt,a.agent_seconds)
+                code=run_persistent_agent(work,out,env,readonly,prompt,a.agent_seconds,
+                    learning_practice=a.learning_practice,episode_seconds=a.episode_seconds)
             else:
                 args=codex_arguments(work,out/'agent-last.txt',readonly_paths=readonly)
                 (out/'agent-command.json').write_text(json.dumps(args,indent=2))

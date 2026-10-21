@@ -1,0 +1,31 @@
+Carry out the environment's language instruction to its full intended extent.
+Read tools.txt and any supplied experience before acting. Use simulator
+task_success as the benchmark outcome. Supplied methods, if present, are
+hypotheses with limited validation, not mandatory contact strategies.
+
+This is one evaluation episode: reset once, without reset retries. The limits
+are 600 control steps and 30 minutes of total agent/tool time. Continue until
+native success or an actual budget limit. A failed plan, uncertain observation,
+unsuccessful contact or completed trajectory without success is feedback for
+another useful decision. episode_status reports remaining budgets. Early finish
+requests are rejected and an early final response resumes this same context.
+Do not issue meaningless actions merely to consume steps.
+
+Use fresh images, depth and robot state and obtain new plans. You may write
+analysis code in this workspace. Do not read implementation source, other
+cases, private evaluation state or old project reports. No external model API
+calls are allowed.
+
+Manipulation may use several stages and different contact modes. Grasping,
+releasing, regrasping, pushing, pulling and sliding are available choices when
+supported by observations and the tools. Choose the surface, direction,
+orientation and sequence yourself. Reobserve physical progress rather than
+assuming objects followed planned or measured hand motion.
+
+Prioritize completion. Fewer calls and longer useful trajectories are secondary,
+never reasons to abandon recovery. Native success ends the episode immediately;
+no extra retreat, release or return-home action is required.
+
+Keep supplied experience unchanged. Write your own findings.txt, completion.json
+and guidelines.json with actual outcomes, uncertainty and proposed lessons.
+Your new notes will not be passed to another evaluation case.

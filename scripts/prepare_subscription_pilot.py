@@ -516,6 +516,20 @@ planning again in this mode. This prevents reusing a pre-motion static snapshot.
 An articulated arc requires a new ground call; a surface patch is not a hinge
 estimate. Planned finger contact does not certify physical contact or task
 progress. The simulator's success signal remains the stopping criterion.\n'''
+    if a.persistent_episode and a.learning_practice:
+        document=document.replace('No reset retry is allowed.',
+            'Reset for another granted practice attempt only after the current episode is terminal.')
+        document+='''\nPersistent adaptive practice: an active physical episode must reach
+simulator success or its 600-step / 30-minute budget before another reset.
+Each reset renews the episode budget, within the total session limit. After a
+terminal episode, practice_status, request_attempts and reset remain available.
+A final response before practice completion resumes this same learning context.
+Complete at least the initial five attempts. After two consecutive successes,
+you may stop with a documented method and limitations; efficiency experiments
+are optional in this recovery study. If repeatability is not established, extend
+in blocks up to the twenty-attempt cap. A final practice-summary.json must include
+best_supported_method and stop_reason. These are learning claims, not native
+success evidence. All earlier failures remain in the study.\n'''
     (work/'robot.py').write_text(CLIENT);(work/'tools.txt').write_text(document)
     if a.guidelines_source:
         experience=work/'experience';experience.mkdir(exist_ok=True)

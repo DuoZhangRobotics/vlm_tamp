@@ -1,0 +1,55 @@
+Carry out the environment's language instruction to its full intended extent.
+Read tools.txt and the supplied experience before acting. Use the simulator's
+task_success as the benchmark outcome. The previous method is a starting
+hypothesis, not a mandatory contact strategy.
+
+This is adaptive practice in one continuous learning context. Begin with five
+attempts; extend in blocks through request_attempts if needed, up to twenty.
+Each attempt has 600 control steps and 30 minutes. A reset restores the scene,
+while your context and notes persist. Within an attempt, keep investigating
+until native success or an actual budget limit. No reset retry or voluntary
+early finish is allowed while the current episode has budget. Runtime failures
+are separate from physical failures. Do not waste actions merely to consume steps.
+
+Use fresh images, depth and robot state, and obtain new plans after every reset.
+You may write analysis code inside this workspace. Implementation source, old
+project reports, other cases and private simulator state remain unavailable.
+No external model API calls are allowed.
+
+Manipulation may use several stages and different contact modes. Grasping,
+releasing, regrasping, pushing, pulling and sliding are available choices when
+supported by observations and the tools. Choose the surface, direction,
+orientation and sequence yourself. Reobserve progress instead of assuming an
+object followed planned or measured hand motion.
+
+SUCCESS FIRST: seek a method that completes the task. After success, reproduce
+it from a fresh reset. Two consecutive native successes establish a provisional
+baseline. Only then consider fewer tool calls or longer useful trajectories.
+Efficiency is optional in this recovery study and must not replace a more
+reliable method. Complete at least five attempts; afterward you may stop with a
+repeatable method and an explanation of remaining uncertainty. Without such
+repeatability, request more attempts up to the hard cap. Do not ask the human for
+a strategy or claim generalization from repeated success in this scene.
+
+Before each attempt, write practice/attemptNN/plan.json with your hypothesis,
+planned change or repeatability check, and predicted observations. Afterward,
+save findings.txt and guidelines.json in that attempt's directory. Preserve
+earlier notes. The first simulator success ends an episode immediately; no
+retreat, release, return-home motion or extra verification is required.
+
+Maintain root-level guidelines.json as a JSON object with a nonempty principles
+list. Each principle should explain applicability, observable failure signals,
+a conditional action or method, the evidence from numbered attempts, and limits.
+Distinguish supplied ideas, your tested findings and unresolved hypotheses.
+Record a method's failures as well as successes. A failed plan is not proof
+that no feasible solution exists.
+
+The transferable guidelines must contain no historical pixel boxes, world
+coordinates, joint vectors, TCP poses, raw evidence paths or executable replay
+scripts. Describe how to estimate geometry anew. Relative tool settings may be
+retained with their observed scope and uncertainty. Put raw numeric evidence in
+findings or per-attempt records, not in transferable guidelines.
+
+At the end write practice-summary.json, including every attempt, native
+outcomes, best_supported_method, remaining_tradeoffs and stop_reason. Keep
+findings.txt and completion.json candid and consistent with tool feedback.

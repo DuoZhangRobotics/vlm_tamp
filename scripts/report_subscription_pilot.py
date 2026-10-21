@@ -18,6 +18,27 @@ def read(path, default=None):
     return json.loads(path.read_text()) if path.exists() else default
 
 
+def archive_workspace(work,archive):
+    """Move finished-run evidence instead of temporarily doubling disk usage."""
+    work,archive=Path(work).resolve(),Path(archive).resolve()
+    archive.mkdir(exist_ok=True)
+    retained=[]
+    for f in work.rglob('*'):
+        relative=f.relative_to(work)
+        if relative.parts[0] in {'__pycache__','episodic_library'} or '__pycache__' in relative.parts:
+            continue
+        if not f.is_file() or f.is_symlink() or not f.resolve().is_relative_to(work):
+            continue
+        dest=archive/relative
+        if work!=archive:
+            dest.parent.mkdir(parents=True,exist_ok=True)
+            if dest.exists() and hashlib.sha256(f.read_bytes()).digest()!=hashlib.sha256(dest.read_bytes()).digest():
+                raise RuntimeError(f'Archive conflict; preserving both copies: {relative}')
+            shutil.move(str(f),str(dest))
+        if relative.parts[0]!='robot_data':retained.append(str(relative))
+    return retained
+
+
 def main():
     p=argparse.ArgumentParser();p.add_argument('--run',required=True);p.add_argument('--workspace',required=True)
     p.add_argument('--report')
@@ -34,17 +55,8 @@ def main():
     if protocol.get('learning_practice'):
         scope='Adaptive development practice in one agent session on one scene. Outcome feedback is limited to the official success boolean when enabled. These are learning attempts, not held-out transfer results.'
     episodes=evaluation['attempts']
-    archive=run/'agent-workspace';archive.mkdir(exist_ok=True)
-    retained=[]
-    for f in work.rglob('*'):
-        relative=f.relative_to(work)
-        # Small named request/reply files are cited by the learned methodology.
-        # Keep them so those evidence references survive workspace cleanup.
-        if relative.parts[0] in {'__pycache__','episodic_library'} or '__pycache__' in relative.parts:continue
-        if f.is_file() and not f.is_symlink():
-            dest=archive/relative;dest.parent.mkdir(parents=True,exist_ok=True)
-            shutil.copyfile(f,dest)
-            if relative.parts[0]!='robot_data':retained.append(str(relative))
+    archive=run/'agent-workspace'
+    retained=archive_workspace(work,archive)
     issued_audit=[]
     for episode in episodes:
         folder=run/f'attempt{episode["attempt"]:02d}'
@@ -106,8 +118,8 @@ def main():
             f'<td>{"ok" if response["ok"] else html.escape(response.get("error","error"))}</td>'
             f'<td>{row["wall_seconds"]:.2f}s</td><td><details><summary>Inputs / output</summary><pre>'
             f'{html.escape(json.dumps({"arguments":request.get("arguments",{}),"result":result},indent=2))}</pre></details></td></tr>')
-    findings=(work/'findings.txt').read_text() if (work/'findings.txt').exists() else 'No findings file was produced.'
-    guidelines=(work/'guidelines.json').read_text() if (work/'guidelines.json').exists() else 'No guidelines file was produced.'
+    findings=(archive/'findings.txt').read_text() if (archive/'findings.txt').exists() else 'No findings file was produced.'
+    guidelines=(archive/'guidelines.json').read_text() if (archive/'guidelines.json').exists() else 'No guidelines file was produced.'
     successful=sum(ep['official_task_success'] for ep in episodes)
     body=f'''<!doctype html><meta charset="utf-8"><title>Subscription Luna robotics pilot</title>
 <style>body{{font:17px system-ui;margin:36px auto;max-width:1100px;padding:0 24px;color:#183344;background:#f5f8fb}}article{{background:white;border:1px solid #d1dbe4;border-radius:12px;padding:20px;margin:18px 0}}video{{width:100%;max-height:600px;background:#152535}}pre{{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;max-height:500px;overflow:auto}}table{{width:100%;border-collapse:collapse}}td,th{{border-bottom:1px solid #ccd6df;padding:9px;text-align:left}}.note{{padding:16px;background:#e8eff8;border-radius:10px}}</style>

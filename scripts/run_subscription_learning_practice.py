@@ -274,7 +274,7 @@ def efficiency_metrics(events):
     """Measured tool costs; reasoning/waiting time is not inferred from RPC time."""
     rows={};current=None
     for event in events:
-        operation=event['request']['operation'];response=event['response']
+        operation=operation_name(event);response=event['response']
         result=response.get('result',{})
         if operation=='reset' and response['ok']:
             current=result.get('attempt')

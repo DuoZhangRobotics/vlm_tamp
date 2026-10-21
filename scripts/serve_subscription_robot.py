@@ -67,8 +67,8 @@ class RobotService:
         self.stop_on_success=bool(stop_on_success)
         self.persistent_episode=bool(persistent_episode)
         self.surface_contact_tools=bool(surface_contact_tools)
-        if self.persistent_episode and (not self.stop_on_success or attempts!=1 or learning_practice):
-            raise ValueError('Persistent evaluation requires one attempt and native-success termination')
+        if self.persistent_episode and (not self.stop_on_success or (attempts!=1 and not learning_practice)):
+            raise ValueError('Persistence requires native-success termination and declared attempt limits')
         self.episode_success=False
         self.practice_budget=None
         if initial_attempts is not None:
@@ -189,6 +189,16 @@ class RobotService:
             reference_camera=reference_camera,pixels_xy=pixels_xy)
 
     def reset(self):
+        persistent_practice=getattr(self,'persistent_episode',False) and getattr(self,'learning_practice',False)
+        if persistent_practice and self.sim is not None:
+            status=self.episode_status()
+            if not status['episode_done']:
+                raise ValueError('Continue the active episode until native success or its actual budget limit')
+            self.finish_attempt(status['termination_reason'])
+        if persistent_practice:
+            budget=read_json(self.output/'practice-deadline.json')
+            if time.monotonic()>=budget['session_deadline_monotonic']:
+                raise ValueError('Practice session wall budget exhausted')
         if self.attempt >= self.limit:
             if self.practice_budget and self.limit<self.practice_budget.maximum:
                 raise ValueError('Granted practice block exhausted; finish and request_attempts with findings and next experiments, or end practice')
@@ -198,6 +208,12 @@ class RobotService:
         self.episode_success=False
         self.contact_scene_kind='articulated'
         self.attempt_started_monotonic=time.perf_counter()
+        if persistent_practice:
+            deadline={'deadline_monotonic':min(budget['session_deadline_monotonic'],
+                time.monotonic()+budget['episode_seconds']),'wall_budget_seconds':budget['episode_seconds'],
+                'attempt':self.attempt}
+            write_json(self.output/'episode-deadline.json',deadline)
+            write_json(self.public/'episode-deadline.json',deadline)
         self.episode = self.output/f'attempt{self.attempt:02d}'
         self.episode.mkdir()
         self.sim = ProfiledClient(self.episode/'simulator.log')
@@ -745,6 +761,13 @@ class RobotService:
         write_json(self.output/'evaluation-private.json',{'attempts':self.results,
             'native_task_outcomes_sent_to_agent':self.stop_on_success,'all_attempts_in_denominator':True,
             'feedback_scope':'success boolean only' if self.stop_on_success else 'none'})
+        if self.practice_budget:self.practice_status()
+        if self.learning_practice:
+            # Preserve every observation and its path while compressing completed
+            # attempts before another reset can accumulate more sensor data.
+            from replay_subscription_episode import compress_observations
+            write_json(self.episode/'observation-compression.json',
+                compress_observations(self.public/f'attempt{self.attempt:02d}'))
         # Only this run's temporary generated proposal cache is disposable.
         if self.resources.cache.exists():
             shutil.rmtree(self.resources.cache)
@@ -763,7 +786,9 @@ class RobotService:
                         'feedback':'The episode is incomplete and budget remains. Continue useful investigation and manipulation in this same episode.'}
                 self.finish_attempt(status['termination_reason'])
                 return {'finished':True,**status}
-            if status['episode_done']:
+            practice_operation=getattr(self,'learning_practice',False) and operation in {
+                'reset','practice_status','request_attempts'}
+            if status['episode_done'] and not practice_operation:
                 if operation=='observe':return {**self.latest_observation,**status}
                 raise ValueError('The episode ended on simulator success or an actual budget limit')
         if getattr(self,'episode_success',False) and getattr(self,'stop_on_success',False):

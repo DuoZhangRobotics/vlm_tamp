@@ -29,17 +29,38 @@ Stop on native simulator success or an actual budget limit. Preserve findings
 and uncertainty; do not issue meaningless actions just to consume steps."""
 
 
-def run_persistent_agent(work,out,env,readonly,initial_prompt,seconds):
+def practice_continuation_decision(status, budget, summary, returncode, remaining_seconds):
+    """End practice only at its declared budget or a repeated, documented baseline."""
+    if remaining_seconds<=0:return 'practice_wall_budget_exhausted'
+    if returncode!=0:return 'agent_runtime_error'
+    if not status.get('episode_done'):
+        return 'continue_same_episode'
+    used=budget.get('attempts_started',0)
+    if used>=budget.get('maximum_attempts',20):return 'practice_attempt_budget_exhausted'
+    pair=budget.get('learning_phase',{}).get('verified_baseline_attempts',[])
+    if (used>=budget.get('initial_attempts',5) and len(pair)==2
+            and summary.get('stop_reason') and summary.get('best_supported_method')):
+        return 'practice_complete'
+    return 'continue_practice'
+
+
+def run_persistent_agent(work,out,env,readonly,initial_prompt,seconds,*,learning_practice=False,episode_seconds=1800):
     work,out=Path(work),Path(out)
     started=time.monotonic();deadline=started+seconds
     (out/'episode-deadline.json').write_text(json.dumps({'deadline_monotonic':deadline,
         'wall_budget_seconds':seconds,'scope':'one physical episode across all resumed agent turns'})+'\n')
     (work/'robot_data/episode-deadline.json').write_text(json.dumps({
         'deadline_monotonic':deadline,'wall_budget_seconds':seconds})+'\n')
+    if learning_practice:
+        (out/'practice-deadline.json').write_text(json.dumps({
+            'session_deadline_monotonic':deadline,'episode_seconds':episode_seconds,
+            'session_seconds':seconds})+'\n')
     thread_id=None;turns=[];prompt=initial_prompt;code=0;reason=None
     while True:
         remaining=deadline-time.monotonic()
-        if remaining<=0:reason='wall_budget_exhausted';break
+        if remaining<=0:
+            reason='practice_wall_budget_exhausted' if learning_practice else 'wall_budget_exhausted'
+            break
         number=len(turns)+1;last=out/f'agent-turn{number:03d}-last.txt'
         command=(codex_arguments(work,last,readonly_paths=readonly,ephemeral=False) if thread_id is None
                  else codex_resume_arguments(work,last,thread_id,readonly_paths=readonly))
@@ -87,18 +108,57 @@ def run_persistent_agent(work,out,env,readonly,initial_prompt,seconds):
             time.sleep(.2)
         status_path=out/'live-episode-status.json'
         status=json.loads(status_path.read_text()) if status_path.exists() else {}
-        reason=continuation_decision(status,code,deadline-time.monotonic())
+        if learning_practice:
+            episode_deadline=json.loads((out/'episode-deadline.json').read_text())['deadline_monotonic']
+            status['remaining_wall_seconds']=max(0.,episode_deadline-time.monotonic())
+            if not status.get('episode_done') and status['remaining_wall_seconds']<=0:
+                status.update(episode_done=True,termination_reason='wall_budget_exhausted')
+            budget_path=out/'practice-budget.json'
+            budget=json.loads(budget_path.read_text()) if budget_path.exists() else {}
+            summary_path=work/'practice-summary.json'
+            try:summary=json.loads(summary_path.read_text()) if summary_path.exists() else {}
+            except ValueError:summary={}
+            reason=practice_continuation_decision(status,budget,summary,code,deadline-time.monotonic())
+            if reason in {'practice_complete','practice_attempt_budget_exhausted'}:
+                from .recovery_memory import abstract_lessons
+                try:
+                    abstract_lessons(json.loads((work/'guidelines.json').read_text()))
+                except (OSError,ValueError,TypeError) as error:
+                    memory_error=str(error)
+                    reason='continue_memory_summary'
+        else:
+            reason=continuation_decision(status,code,deadline-time.monotonic())
         turns.append({'turn':number,'thread_id':thread_id,'returncode':code,
             'wall_seconds':time.monotonic()-begin,'status_at_turn_end':status,'decision':reason})
         (out/'continuation.json').write_text(json.dumps({'turns':turns,'wall_budget_seconds':seconds,
-            'single_physical_episode':True,'automatic_messages':'Budget/status reminders only; no task strategies',
+            'single_physical_episode':not learning_practice,'automatic_messages':'Budget/status reminders only; no task strategies',
             'termination_reason':reason},indent=2)+'\n')
-        if reason!='continue_same_episode':break
+        if reason not in {'continue_same_episode','continue_practice','continue_memory_summary'}:break
         if thread_id is None:raise RuntimeError('Agent session did not return a resumable thread ID')
-        prompt=continuation_prompt(status,deadline-time.monotonic())
+        if reason=='continue_memory_summary':
+            prompt=f"""Physical practice has reached its stopping condition.
+Do not reset or perform further robot actions. Finish your root-level
+guidelines.json and practice-summary.json from the evidence already collected.
+The generic memory format check reports: {memory_error}.
+Keep raw coordinates and paths in findings only. Preserve failures, uncertainty,
+applicability and conditional methods. This is a format repair, not a request
+for another attempt or a new strategy."""
+        elif reason=='continue_practice':
+            prompt="""The last physical episode is terminal, but this adaptive practice
+session is not complete. Preserve its findings, call practice_status and continue
+with a fresh reset. If the granted block is exhausted, request_attempts with your
+own findings and concrete next hypotheses. Start with five attempts and extend
+up to twenty if needed. Seek simulator success and verify repeatability first.
+No task strategy is supplied by this reminder. Write practice-summary.json with
+best_supported_method and stop_reason when the minimum block and repeatability
+requirements are met, or when the hard budget is exhausted."""
+        else:
+            remaining_episode=status.get('remaining_wall_seconds')
+            prompt=continuation_prompt(status,remaining_episode if remaining_episode is not None else deadline-time.monotonic())
     (out/'stop-service-reason.json').write_text(json.dumps({'reason':reason})+'\n')
     (out/'agent-exit.json').write_text(json.dumps({'returncode':code,
         'wall_seconds':time.monotonic()-started,'turns':len(turns),'thread_id':thread_id,
         'termination_reason':reason,'normal_terminal':reason in {
-            'simulator_success','control_budget_exhausted','wall_budget_exhausted'}},indent=2)+'\n')
+            'simulator_success','control_budget_exhausted','wall_budget_exhausted',
+            'practice_complete','practice_attempt_budget_exhausted','practice_wall_budget_exhausted'}},indent=2)+'\n')
     return code
