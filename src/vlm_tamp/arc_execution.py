@@ -1,5 +1,7 @@
 """Full-arc backend and explicit frozen-grasp diagnostic inputs."""
 import hashlib
+import copy
+import time
 from pathlib import Path
 
 import numpy as np
@@ -11,7 +13,13 @@ from .partial_pose_arc import full_arc_plan
 from .rekep_libero.geometry import pose_matrix
 
 
-def contact_arc(scene,record,metadata,start,goal,folder,config):
+def contact_arc(scene,record,metadata,start,goal,folder,config,*,ik=None):
+    started=time.perf_counter()
+    # Query tolerance must reach both the GPU-seed projection and native path
+    # constraint. Do not mutate the shared observed scene or collision geometry.
+    scene=copy.copy(scene)
+    scene.config={**scene.config,**{key:config[key] for key in
+        ['arc_position_tolerance_m','arc_orientation_tolerance_rad','environment_collision_policy','native_joint_reserve_rad'] if key in config}}
     folder=Path(folder);folder.mkdir(parents=True,exist_ok=False)
     preserve_scene(scene,folder)
     compact={key:metadata[key] for key in ['joint_positions','eef_pose_world_xyzw']}
@@ -21,22 +29,55 @@ def contact_arc(scene,record,metadata,start,goal,folder,config):
         'backend':'continuous_partial_pose_arc',
         'end_effector_quaternion_prescribed':config.get('grasp_constraint','point')=='rigid',
         'search_options':{'motion_policy':config.get('motion_policy'),
+            'arc_goal_backend':config.get('arc_goal_backend','scipy_partial_pose'),
+            'curobo_backend':config.get('curobo_backend','v1'),
             'grasp_constraint':config.get('grasp_constraint','point'),
             'hinge_refinement_accepted':bool(config.get('hinge_refinement_accepted',False)),
             'arc_search_seconds':float(config.get('arc_search_seconds',60.)),
+            'arc_position_tolerance_m':float(config.get('arc_position_tolerance_m',.003)),
+            'arc_orientation_tolerance_rad':float(config.get('arc_orientation_tolerance_rad',0.)),
+            'max_wrist_reorientation_deg':config.get('max_wrist_reorientation_deg'),
+            'maximum_local_joint_step_rad':config.get('maximum_local_joint_step_rad'),
+            'curobo_v2_arc_solver_mode':config.get('curobo_v2_arc_solver_mode','local_continuation'),
+            'curobo_v2_global_fallback':bool(config.get('curobo_v2_global_fallback',True)),
+            'arc_continuation_step_deg':float(config.get('arc_continuation_step_deg',3.)),
+            'arc_continuation_speed_deg_s':float(config.get('arc_continuation_speed_deg_s',15.)),
             'arc_goal_proposals':int(config.get('arc_goal_proposals',128)),
             'arc_seed':int(config.get('arc_seed',0))},
-        'refined_flag_semantics':'Selects wrist-excursion allowance; it does not perform a new hinge estimate.',
+        'refined_flag_semantics':'Deprecated compatibility argument; does not change constraints or estimate a hinge.',
         'reference_semantics':'Goal angle and moving-cloud rotation are relative to this query start; cloud pose must already correspond to that start.'})
     with NativeScene(scene,record,metadata,start,goal,aligned=False,
                      grasp_constraint=config.get('grasp_constraint','point')) as context:
         context.motion_options=config
-        path,result=full_arc_plan(context,goal,seconds=float(config.get('arc_search_seconds',60.)),
-            proposals=int(config.get('arc_goal_proposals',128)),seed=int(config.get('arc_seed',0)))
+        proposer=None
+        if config.get('arc_goal_backend')=='curobo_v2':
+            from .curobo_v2_arc import CuroboV2ArcProposer
+            if ik is None:raise ValueError('cuRobo v2 arc backend requires its shared IK worker')
+            proposer=CuroboV2ArcProposer(ik,context,folder,goal)
+        try:
+            path,result=full_arc_plan(context,goal,seconds=float(config.get('arc_search_seconds',60.)),
+                proposals=int(config.get('arc_goal_proposals',128)),seed=int(config.get('arc_seed',0)),
+                goal_proposer=proposer)
+        finally:
+            if proposer is not None:
+                proposer.close()
+        result['planning_seconds']=result.get('total_seconds',0.)
+        result['total_seconds']=time.perf_counter()-started
+        if proposer is not None:
+            result['curobo_v2']={'scene_setup_seconds':proposer.setup['total_setup_seconds'],
+                'queries':len(proposer.queries),
+                'gpu_ik_seconds':sum(q['gpu_seconds'] for q in proposer.queries),
+                'equality_polish_seconds':sum(row['equality_polish_seconds'] for q in proposer.queries for row in q['checks']),
+                'native_connection_seconds':result.get('native_connection_seconds',0.),
+                'fallback_setup_seconds':result.get('global_fallback',{}).get('setup',{}).get('total_setup_seconds',0.),
+                'solver_mode':proposer.solver_mode,'arc_id':proposer.arc_id,
+                'constraint_and_path_backend':'native MC-VAMP; unchanged contact permissions'}
         result['exact_solution']=bool(len(path)>1 and result['status']=='solved')
         write_json(folder/'result.json',result);write_json(folder/'native-scene.json',context.record)
         if not result['exact_solution']:
-            raise ValueError('Continuous partial-pose full-arc search: '+result['status'])
+            explanation=result.get('failure',{}).get('summary')
+            raise ValueError('Continuous partial-pose full-arc search: '+result['status']+
+                ('. '+explanation if explanation else ''))
         np.save(folder/'path.npy',path);np.save(folder/'door-progress.npy',[context.progress(q) for q in path])
         return path,result
 

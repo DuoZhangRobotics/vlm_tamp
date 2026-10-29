@@ -1,0 +1,114 @@
+Contact skills: choosing how to move an observed part
+
+You choose the target, desired motion, contact mode and experiments. Numerical
+tools compute robot poses, IK, collisions and timing. No TCP quaternion or joint
+configuration is required for push or hook_pull.
+
+- push(observation_id, camera, region_xyxy, target_region_xyxy=null,
+  direction_world=null, distance_m=0.03, joint_degrees=null,
+  joint_model_epoch=null, mode="controlled", contact_speed_m_s=0.03,
+  contact_surface="fingertips", preview=false, budget_seconds=120,
+  collision_policy="advisory", approach_speed_rad_s=0.6, stroke_length_m=null,
+  search_seconds=null, stroke_plan_seconds=null, max_ineffective_strokes=2):
+  Select the CURRENT contact region and, preferably, a larger region on the SAME
+  moving part for visual feedback. Boxes use original pixels. A world direction
+  specifies desired object motion; null uses the measured inward surface normal.
+  For a current, explicitly associated joint model, instead supply a signed
+  joint_degrees increment and its geometry_epoch as joint_model_epoch. A joint
+  sign is not synonymous with open or close. Check that it serves the task.
+  A positive increment follows the installed joint_axis_world. Grounding tries
+  to orient that axis toward its modeled task motion; this remains a hypothesis.
+  Controlled pushing defaults to 1 cm strokes at 0.03 m/s. You may request
+  another positive stroke_length_m or contact_speed_m_s; timing always respects
+  the controller's 1 rad/s joint-reference limit. Feedback occurs between strokes. Choose contact_surface="palm" explicitly
+  to plan palm contact with the chosen target patch. preview=true plans without motion.
+  This service operates in simulation. Through approach, contact and withdrawal, environmental
+  collision predictions are ADVISORY by default: they are reported, and the
+  bounded motion is tried with physical simulator contacts still enabled.
+  Joint validity and robot self-collision checks remain part of numerical IK.
+  Approach search prefers an observed clear route when one is found, and falls
+  back to a robot-valid route if that scene prediction/search fails. This is a
+  preference, not an added collision margin or an execution veto.
+  Advisory planning uses robot-valid kinematics and records environment predictions;
+  the physical simulator still decides what moves or makes contact. Use
+  collision_policy="veto" to request the observed-scene collision checks as vetoes.
+  Collision checking uses the configured robot surfaces with zero added padding.
+  Cartesian interpolation deviations are also reported without veto in advisory
+  mode; inspect achieved motion instead of assuming a perfectly straight stroke.
+  Incomplete depth and controller tracking error remain limits of the prediction.
+  The current gripper aperture is used for planning and held during execution.
+  A supported current contact posture can be reused; a new approach is not
+  mandatory for each call. Object-motion feedback still tests engagement.
+  Choose a different aperture with gripper before selecting a fresh observation.
+  If measured arm joints drift outside the planner's limits, gripper also makes
+  one bounded inward joint reference correction and reports it. This is physical
+  controller execution, not a simulator state reset.
+  mode="push_and_release" defaults to one pulse up to 3 cm, withdraws by
+  withdrawal_distance_m=0.015 (configurable), and allows one
+  second of simulated coasting. The stricter veto mode adds a slow contact test.
+  distance_m bounds the pulse length in this mode, not the uncertain total
+  object displacement. In veto mode a failed contact test prevents the faster pulse.
+  Momentum can
+  move the object after release; final displacement is unknown. This mode is
+  available for advisory simulation experiments. Validation is reported separately.
+  The 0.03, 0.06 and 0.12 m/s settings have matched replay data. Other positive
+  speed requests are allowed experiments; replies report achieved speed.
+  Larger signed joint requests are tracked through incremental observed rotations.
+  Search budgets default to one quarter and one twenty-fourth of budget_seconds
+  for initial and subsequent plans; you can override them explicitly.
+- hook_pull(observation_id, camera, region_xyxy, target_region_xyxy=null,
+  direction_world=null, distance_m=0.03, joint_degrees=null,
+  joint_model_epoch=null, contact_speed_m_s=0.03, preview=false,
+  budget_seconds=120, collision_policy="advisory", approach_speed_rad_s=0.6, stroke_length_m=null,
+  search_seconds=null, stroke_plan_seconds=null, max_ineffective_strokes=2): catch a visibly resolved retaining bar/lip without
+  pinching, test engagement with a small movement, then pull in bounded strokes.
+  Select a retaining feature and desired pulling direction. Hook planning
+  searches observed geometry for a retaining posture across candidates,
+  then permits an advisory fallback within the same contact-search budget.
+  It requires observed thickness and a rear contact surface; unseen openings and
+  arbitrary flat surfaces are not assumed hookable. no_hookable_feature means
+  this tool has no supported catch, not that grasping is impossible. Change the
+  aperture before calling when a wider opening is needed. A hook is distinct
+  from the existing closed-gripper handle grasp and arc manipulation.
+
+Replies distinguish search failure, insufficient budget, wrong-side contact,
+unresolved object motion, engagement loss and measured progress. Robot motion
+alone proves neither engagement nor task completion. Read native task_success
+for the episode outcome. Inspect overlays and measured feedback after each call.
+For joint requests, observed_joint_change_degrees uses the same signed axis and
+degree units as joint_degrees. It is a sensor estimate, not a native joint readout.
+After physical motion, old articulated geometry is stale: update its observed
+pose or refresh it before requesting a new joint-associated action.
+
+In practice, test relevant alternatives and record conditional lessons, actual
+settings, outcomes and uncertainty. Record both successes and failures. Supplied
+tool knowledge is not your discovery. Keep episode pixels, world poses and joint
+paths out of transferable guidelines; estimate geometry anew in each scene.
+
+Grasped manipulation now chooses approach postures by control cost, uses actual
+closure geometry for its manipulation plan, and returns recovery choices after
+lost engagement. Query motion_settings for effective bounds and defaults.
+An independent apply_joint_estimate can initialize a joint-linked part without
+a handle model: use a current registered mask (current_part_id), or valid tracks
+carrying the original part to the current capture. motion_sign sets the sign of
+the fitted unsigned axis; it does not certify the task's opening/closing direction.
+
+After unresolved tracking, the skill may refresh all current views and retry
+the same independent correspondence fit. If the fit remains unresolved, the
+result includes current observations and recovery options; it does not invent
+object motion from hand motion. Withdrawal replies report actual robot travel,
+not a physical detachment certificate. Inspect current geometry if contact may remain.
+
+Grasp sequences can calibrate a rough hinge through small physical increments:
+the fixed joint is fitted from RGB-D motion, verified against a later interval,
+and revised only with improved prediction support. This is a reported model
+revision, distinct from moving the part pose or assuming attachment. Set
+calibrate_joint=false on execute_sequence to retain the supplied fixed model.
+
+Pinch-grasp sequences default to jaw_axis retention: the measured closing
+direction follows the moving part while rotation about that line remains free.
+point and rigid remain explicit alternatives. Grasp candidates include multiple
+contact depths along the calibrated pad face; the selected offset is retained
+when planning from the actual closed aperture. Approach planning uses the open
+gripper reference. If the prior command closed it, execution opens and replans
+from the new observation before approaching.

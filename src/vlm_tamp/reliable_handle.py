@@ -5,18 +5,20 @@ from scipy import ndimage
 from scipy.optimize import least_squares
 from scipy.spatial import cKDTree
 from .handle_contact import ground_handle as original_ground_handle,upright_plane
+from .rigid_hinge_tracking import robot_mask
 from .rekep_libero.mechanism_geometry import project
 from .rekep_libero.scene_state_v7 import observed_points,voxel_points
 
 
-def ground_handle(cameras,choices,template,metadata=None):
-    original=original_ground_handle(cameras,choices,template,metadata)
+def ground_handle(cameras,choices,template,metadata=None,*,fixed_joint=None):
+    original=original_ground_handle(cameras,choices,template,metadata,fixed_joint=fixed_joint)
     mech,cloud,mask,anchors,evidence=original
     adequate=np.ptp(cloud[:,2])>.065 and evidence['cylinder_robust_residual_m']<.0035
     if adequate:return refine_bar(original)
     camera=cameras[choices['camera']];world=np.asarray(camera['world_points'])
     box=np.asarray(choices['moving_panel_box_xyxy']);yy,xx=np.indices(world.shape[:2])
     region=(xx>=box[0])&(xx<=box[2])&(yy>=box[1])&(yy<=box[3])&np.isfinite(world).all(2)
+    region &= ~robot_mask(camera)
     face=upright_plane(world[region],np.asarray(camera['camera_to_world'])[:3,3]);center,normal=face['point'],face['normal']
     zlo,zhi=np.quantile(world[region][face['inliers'],2],[.05,.95])
     occupied,_=observed_points(cameras,metadata,spacing=.0015,robot_depth_tolerance=.0001)
@@ -51,25 +53,22 @@ def ground_handle(cameras,choices,template,metadata=None):
             if coverage<.75:continue
             candidates.append((np.ptp(cylinder[:,2])*coverage,len(cylinder),sign,fit.x,cylinder,float(np.median(error))))
     if not candidates:raise ValueError('RGB handle fit invalid and no supported vertical bar in observed door region')
-    _,_,sign,fit,cylinder,error=max(candidates,key=lambda row:(row[0],row[1]))
-    # Reproject only the recovered measured bar to the existing RGB interface.
-    # Hinge pixels and task identity are untouched; no hand-selected pixels.
-    pixels=project(cylinder,camera);lo,hi=np.quantile(pixels,[.01,.99],axis=0)
-    repaired=copy.deepcopy(choices)
-    h,w=world.shape[:2];lo=np.maximum([0,0],np.floor(lo-3));hi=np.minimum([w-1,h-1],np.ceil(hi+3))
-    repaired['contact_box_xyxy']=[int(lo[0]),int(lo[1]),int(hi[0]),int(hi[1])]
-    repaired['grasp_pixel_xy']=np.rint(project([np.r_[fit[:2],np.median(cylinder[:,2])]],camera)[0]).astype(int).tolist()
-    # Existing grounding supplies direction, hinge-ray projection and panel mask.
-    # Its new contact box is now supported by a continuous depth bar.
-    new=original_ground_handle(cameras,repaired,template,metadata)
-    m,c,pm,a,e=new
-    if np.ptp(c[:,2])<.065 or e['cylinder_robust_residual_m']>.0035:
-        raise ValueError('Recovered RGB-D handle did not survive geometric refitting')
-    e['handle_recovery']={'source':'continuous vertical cylinder inside the VLM door region',
-        'original_contact_box_xyxy':choices['contact_box_xyxy'],'recovered_contact_box_xyxy':repaired['contact_box_xyxy'],
-        'original_height_m':float(np.ptp(cloud[:,2])),'original_radial_residual_m':evidence['cylinder_robust_residual_m'],
-        'observed_candidates':len(candidates),'observed_bar_fit_residual_m':error,'simulator_geometry_used':False}
-    return refine_bar((m,c,pm,a,e))
+    # A cylinder elsewhere in the door box may be a hinge or cabinet edge.
+    # Geometric regularity cannot authorize changing the selected semantic part.
+    proposals=[]
+    for _,_,sign,fit,cylinder,error in sorted(candidates,key=lambda row:(row[0],row[1]),reverse=True)[:4]:
+        pixels=project(cylinder,camera);lo,hi=np.quantile(pixels,[.01,.99],axis=0)
+        proposals.append({'camera':choices['camera'],'box_xyxy':np.r_[lo,hi].tolist(),
+            'cylinder_residual_m':error,'semantic_identity_verified':False})
+    failure=ValueError('Selected contact region does not support the vertical-handle model. '
+        'No replacement region was installed. Inspect another view and explicitly select the intended contact.')
+    failure.planning_diagnostic={'status':'contact_region_unresolved','module':'reliable_handle.contact_identity',
+        'selected_region':choices['contact_box_xyxy'],'height_m':float(np.ptp(cloud[:,2])),
+        'radial_residual_m':evidence['cylinder_robust_residual_m'],'allowed_radial_residual_m':.0035,
+        'minimum_height_m':.065,'unconfirmed_vertical_features':proposals,
+        'physical_motion_issued':False,'model_changed':False,
+        'interpretation':'A different vertical feature is not a verified handle. Use the camera overview and select a visible contact in original pixels.'}
+    raise failure
 
 
 def refine_bar(result):

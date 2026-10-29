@@ -197,8 +197,8 @@ class SimulatorWorkerV3(SimulatorWorker):
         target = pose_matrix(target_pose_world_xyzw)
         # Validate optional gain before a single physical simulator step.
         scaled_osc_action(self._eef_pose(), target_pose_world_xyzw, gripper, servo_scale)
-        if not 1 <= int(max_steps) <= MAX_CONTROL_STEPS:
-            raise ValueError("Action max_steps must be in [1,600]")
+        if not 1 <= int(max_steps) <= self.maximum_control_steps:
+            raise ValueError(f"Action max_steps must be in [1,{self.maximum_control_steps}]")
         thresholds = completion_tolerances(position_tolerance, orientation_tolerance, posture_tolerance)
         gain = checked_nullspace_kp(nullspace_kp)
         nullspace_target = self._set_nullspace_joints(nullspace_joint_target)
@@ -207,7 +207,7 @@ class SimulatorWorkerV3(SimulatorWorker):
         criterion = f"tcp_position_lt_{thresholds['position_tolerance']}m_and_orientation_lt_{thresholds['orientation_tolerance']}rad"
         if nullspace_target is not None:
             criterion += f"_and_max_joint_error_lt_{thresholds['posture_tolerance']}rad"
-        for _ in range(min(int(max_steps), MAX_CONTROL_STEPS - self.control_steps)):
+        for _ in range(min(int(max_steps), self.maximum_control_steps - self.control_steps)):
             control = scaled_osc_action(self._eef_pose(), target_pose_world_xyzw, gripper, servo_scale)
             self.latest_obs, _, _, _ = self.env.step(control)
             self.control_steps += 1

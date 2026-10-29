@@ -4,8 +4,12 @@ import argparse
 import hashlib
 import json
 import shutil
+import sys
 
 ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT/'src'))
+from vlm_tamp.robot_contracts import GROUND_HELP
+from vlm_tamp.subscription_tasks import DEFAULT_TASK, TASKS, task_spec
 
 CLIENT=r'''"""Client for the numerical service; transport coordination only."""
 import json
@@ -40,6 +44,7 @@ def await_reply(root,request_id):
 def _call(operation, **arguments):
     root=Path(__file__).resolve().parent
     if operation=='episode_status':
+        if arguments:return {'ok':False,'error_type':'ValueError','error':'episode_status takes no arguments'}
         path=root/'robot_data/episode-status.json'
         result=json.loads(path.read_text()) if path.exists() else {'needs_initial_reset':True,'control_steps':0,'remaining_control_steps':600,'task_success':False}
         deadline=root/'robot_data/episode-deadline.json'
@@ -49,7 +54,9 @@ def _call(operation, **arguments):
             result.update(episode_done=True,termination_reason='wall_budget_exhausted')
         result['control_state_is_last_completed_request']=True
         return {'ok':True,'result':result}
-    if operation=='await_request':return await_reply(root,arguments.get('request_id'))
+    if operation=='await_request':
+        if set(arguments)!={'request_id'}:return {'ok':False,'error_type':'ValueError','error':'await_request requires only request_id'}
+        return await_reply(root,arguments['request_id'])
     with (root/'rpc.lock').open('a') as lock:
         try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
         except BlockingIOError:
@@ -79,14 +86,29 @@ def call(operation, **arguments):
     return result
 
 
+def brief(operation, **arguments):
+    response=call(operation,**arguments)
+    root=Path(__file__).resolve().parent
+    if (root/'robot_interface.py').exists():
+        from robot_interface import present
+        return present(root,operation,arguments,response)
+    return response
+
+
 if __name__=='__main__':
-    print(json.dumps(call(sys.argv[1],**(json.loads(sys.argv[2]) if len(sys.argv)>2 else {})),indent=2))
+    root=Path(__file__).resolve().parent
+    if (root/'robot_interface.py').exists():
+        from robot_interface import main
+        main(call,root)
+    else:
+        print(json.dumps(call(sys.argv[1],**(json.loads(sys.argv[2]) if len(sys.argv)>2 else {})),indent=2))
 '''
 
 DOC='''Your task is to open the microwave using physical robot interaction.
 This is a development pilot on one case, with at most two resets and 600 control
 steps per attempt. You may write and run arbitrary analysis/experiment code in
-this workspace. Python provides numpy, scipy and Pillow. Inspect images with
+this workspace. Use python3 for analysis; numpy, scipy and Pillow are checked
+before the session starts. Versions are in analysis-environment.json. Inspect images with
 your image-viewing tool; save diagnostic images with Pillow if useful.
 
 The local numerical service is called through robot.py:
@@ -110,25 +132,27 @@ Tool interfaces (all coordinate conventions are explicit):
   sensors.npz contains <camera>_rgb, _depth (metres), _world_points (HxWx3, metres),
   and _known_robot_depth_prior. Calibration maps optical camera coordinates into
   world. Robot TCP poses are [x,y,z,qx,qy,qz,qw]. Joint angles are radians.
-- ground(regions): numerical initial geometry fit from your current RGB choices.
-  regions={"camera": a name returned by observe, "contact_box_xyxy":[l,t,r,b],
-  "moving_panel_box_xyxy":[l,t,r,b], "hinge_pixels_xy":[[x,y],[x,y]],
-  "initial_image_direction_xy":[dx,dy]}. Pixel coordinates are local to the
-  original 512x512 camera. The contact box selects the handle; moving panel box
-  selects the door. Fits an upright panel/vertical handle model to depth. Returns
-  estimated geometry and observed point clouds. You can revise the regions.
+''' + GROUND_HELP + '''
 - start_tracking(): select RGB features on current selected moving geometry and
   save a reference. This does not move the robot or refine its model.
 - measure_tracking(): match the reference against the latest observation and
   return measured 3D point pairs, robust upright rigid-motion fit and an estimated
   hinge if observable. Does NOT update the planner's model or moving cloud.
   You can also write your own estimator using the saved correspondences.
+  Requires start_tracking BEFORE the motion being measured. The automatic
+  per-execution motion fit uses a separate reference and does not initialize
+  this explicit tracker. Starting a reference now cannot measure past motion.
 - apply_tracking(hinge_world_m=null): transport selected geometry by the latest
   measured rigid motion. Optionally set the pivot to the value YOU supply.
   The pivot otherwise stays unchanged. Repeat start_tracking when you choose
   to establish a new reference; no automatic reference renewal occurs.
 - set_model(hinge_world_m=null, axis_world=null): set your numerical hypothesis.
   Updating geometry makes previously planned trajectories stale.
+- refresh_contact(camera, contact_box_xyxy, moving_panel_box_xyxy): refit the
+  currently visible handle and panel from original-pixel boxes while retaining
+  the established fixed-world hinge and signed direction. Use this when the part
+  moved or contact geometry needs refresh; no hinge reannotation is required.
+  Ordinary ground creates a new joint hypothesis instead. Neither certifies a grasp.
 - inspect_scene(camera=null): compare the current predicted moving/contact
   points with current calibrated depth and save a coloured overlay. Green points
   have depth support in at least one view; red points conflict with measured
@@ -136,54 +160,73 @@ Tool interfaces (all coordinate conventions are explicit):
   This is geometric evidence, not a semantic or contact guarantee. It changes
   neither the model nor the robot. Failed arc queries also report depth-support
   summaries. Use the images and diagnostics when investigating a scene mismatch.
-- plan_grasp(probe_degrees=3, max_candidates=24, seed=0): generate GraspGen proposals,
-  search robot IK/approach and a contact probe of your chosen angle. Returns an
-  approach plan id and pose. Makes no motion; the probe is planning admission.
-  seed selects a new diffusion candidate sample; it is included in cache identity.
-  A different sample does not establish that a better grasp exists.
+- motion_settings(): read the effective control budget, speed settings,
+  numerical tolerances and environment-collision policy. No motion.
+- plan_grasp(probe_degrees=3, max_candidates=24, seed=0, speed=0.6,
+  hold=6, close_steps=40, budget_seconds=30, collision_policy="advisory"):
+  select a reachable grasp approach by scheduled control cost across IK/posture
+  alternatives. Direct and short standoff approaches are considered. Returns an
+  approach plan ID; no object motion or grasp retention is assumed. Manipulation
+  is planned after actual closure. The search returns its best feasible candidate
+  when its computation budget expires; incomplete search does not prove infeasibility.
 - execute(plan_id, gripper=1, speed=0.35, hold=6): execute that complete joint
   trajectory; gripper=-1 opens, 0 holds, +1 closes. Speed is maximum joint rad/s.
   For an approach you can request open fingers. Returns new sensor observation.
 - gripper(close=true, steps=40): physically close/open while holding the current
-  arm joints. Steps can be 1..60. No virtual attachment is made.
-- plan_arc(degrees, refined=false, grasp_constraint="point"): plan a relative
-  positive angle up to 90 degrees around your current pivot/axis using MC-VAMP.
+  arm joints. Steps are a positive count within the episode budget. If measured
+  joints have overshot their bounds, a bounded inward reference recovers them.
+  No virtual attachment or simulator state assignment is made.
+- plan_arc(degrees, grasp_constraint="point", position_tolerance_m=null,
+  orientation_tolerance_deg=null, max_wrist_reorientation_deg=null): plan a relative
+  signed nonzero angle around your current pivot/axis. Larger requests use
+  multiple planning reference frames internally, without wrapping progress.
   "point" keeps the contact midpoint on its arc with bounded jaw tilt.
   "rigid" transports the measured hand orientation with the moving handle.
   "jaw_axis" transports the line between the fingers, allowing rotation about
   that line. These are different grasp assumptions, not guarantees of retention.
-  refined only changes the old point-mode wrist allowance; it estimates no hinge
-  and has no effect in the rigid or jaw_axis modes.
+  Position tolerance defaults to 6 mm and is explicit in the reply. It bounds
+  contact-path error, not collision clearance. Wrist rotation is free unless you
+  explicitly request a limit; physical joint bounds and path checks still apply.
+  Rigid/jaw-axis orientation error defaults to 3 degrees; this differs from total
+  wrist reorientation. You can request another tolerance (0 uses legacy exact).
+  The legacy refined argument is ignored; it estimates no hinge.
   Returns a plan id and joint path, or numerical failure; makes no motion.
   The requested arc is planned in full or fails; it is not silently shortened.
   Failed arc requests include planning_diagnostic with endpoint-projection,
   collision and search-budget evidence plus a readable full_diagnostic JSON.
   These describe the attempted numerical search, not proof of infeasibility.
-  After an executed arc, the moving cloud is synchronized for the next query:
-  RGB-D rigid tracking is preferred, otherwise measured hand motion predicts
-  the transform assuming retained contact. The returned scene_pose_update
-  labels its source and fit. This update does not refine the hinge or certify
-  that the handle actually followed the hand. Explicit tracking/model tools
-  remain available. No update vetoes an executing trajectory.
+  After any motion with a grounded articulated scene, accepted RGB-D rigid
+  tracking updates the moving cloud for the next query. For contact arcs only,
+  visual motion and hand motion are reported separately. Unresolved visual
+  motion never becomes an observed part pose through a hand-motion fallback:
+  scene_pose_observation reports unconfirmed motion without changing the model.
+  scene_pose_update labels an applied estimate's source and fit. It does not
+  refine the hinge or certify attachment. Explicit tracking/model tools remain
+  available. No update vetoes an executing trajectory.
 - ik(pose_world_xyzw): return robot-valid IK proposals for a chosen TCP pose.
-- plan_joint(joints): collision-aware free-motion plan to seven arm joint angles.
-- plan_sequence(degrees, max_candidates=24, seed=0, grasp_constraint="point"):
-  plan an approach and the complete requested relative manipulation together,
-  using the current observations and predicted closed-gripper geometry. Angle
-  is positive and at most 90 degrees. There is no separate legacy wrist limit:
-  the chosen grasp constraint determines orientation freedom. No robot moves.
-  A full motion must be admitted before a sequence plan_id is returned.
-- execute_sequence(plan_id, close_steps=40, speed=0.35, hold=6,
-  manipulation_gripper=1): execute the prepared approach with open fingers,
-  physical closure, then the admitted manipulation path. Use 0 to hold the
-  gripper command during manipulation or 1 to continue closing. Timing uses
-  the same limits as execute. The entire sequence must fit the remaining
-  control-step budget before it starts. It does not replan or run collision
-  checks after closure. Native success ends all remaining stages immediately.
-  This tool requires the native-success termination policy enabled for practice.
-  If the sequence finishes without success, use the returned observation to
-  decide what to do next. A planned contact relationship does not establish
-  that the physical grasp was retained.
+- plan_joint(joints, collision_policy="advisory"): free-motion plan to seven
+  arm joint angles. Environment predictions are advisory in simulation by default;
+  veto can be explicitly requested. Real joint limits and self checks remain.
+- plan_sequence(degrees, max_candidates=24, seed=0, grasp_constraint="jaw_axis",
+  speed=0.35, approach_speed=0.6, hold=6, close_steps=40, budget_seconds=30,
+  collision_policy="advisory"): plan and price a low-cost approach and retain
+  the signed manipulation intent. The exact manipulation cost remains unknown
+  until real closure is observed. Both motion directions and requests above 90
+  degrees are supported; physical reachability and the episode budget still apply.
+- execute_sequence(plan_id, close_steps=40, speed=0.35, approach_speed=null,
+  hold=6, manipulation_gripper=1, feedback_degrees=15, calibrate_joint=true, open_steps=20): approach with open
+  fingers (opening and replanning first when needed), hold the approach reference
+  while closing, then replan manipulation
+  with the measured aperture and current robot geometry. speed controls
+  manipulation; approach_speed defaults to the approach plan's setting.
+  With calibrate_joint=true, small initial increments collect RGB-D motion.
+  A fitted joint can replace the previous hypothesis only after support from a
+  separate later interval and improved prediction error. The revision is reported.
+  The signed motion is executed in complete feedback increments, with fresh
+  planning between them. Native success terminates immediately. A collapsed pad
+  gap or a part that does not follow returns actionable recovery evidence and the
+  remaining budget; the episode remains available for local regrasp or push.
+  Physical grasp retention is uncertain and reported separately from plan success.
 Successful arc/sequence responses are concise. planning_details names a JSON
 file with the full numerical evidence when deeper inspection is useful.
 Cloud synchronization applies to both continuing-close and neutral-hold
@@ -209,8 +252,8 @@ experiments, observed results, limitations, and reusable conditional guidelines.
 For each guideline, include its supporting tool-event numbers or filenames.
 Clearly distinguish the supplied example from anything you discovered. Preserve
 useful analysis code and images. Avoid storing repeated full point-cloud copies.
-Do not request another language model or use network services. All reasoning is
-performed by this Codex session; external model API calls are unavailable.
+Do not request another language model or use network services. Reason within
+this actor session; additional model services are unavailable to its tools.
 '''
 
 EXAMPLE='''Worked example supplied by the human researcher: refine a hinge from motion.
@@ -343,7 +386,7 @@ def completion_document(advisory=False):
     if not advisory:return COMPLETION_DOC
     interfaces=COMPLETION_DOC.split('- declare_completion',1)[1].split('- finish(',1)[0]
     return '''
-Optional observation-based completion measurements (advisory during practice):
+Optional observation-based completion measurements (advisory):
 Interpret the instruction and judge progress from fresh observations. Record the
 evidence and uncertainty behind your judgment. Geometry tools can supplement
 visual assessment; unavailable feature matches do not imply physical failure.
@@ -361,29 +404,86 @@ require you to end practice. Write your evidence and limitations in findings.txt
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--workspace',required=True);p.add_argument('--output',required=True)
+    p.add_argument('--control-steps',type=int,default=600)
+    p.add_argument('--reference-mode',choices=['measured_delta','slew_limited'],default='slew_limited')
     p.add_argument('--state',type=int,default=21);p.add_argument('--dino-tools',action='store_true')
+    p.add_argument('--task',choices=sorted(TASKS),default=DEFAULT_TASK)
+    p.add_argument('--landmark-evidence',action='store_true')
+    p.add_argument('--multiview-grounding',action='store_true')
+    p.add_argument('--part-motion-tools',action='store_true')
     p.add_argument('--guidelines-source');p.add_argument('--evaluation-case',action='store_true')
     p.add_argument('--attempts',type=int,choices=range(1,21),default=2)
     p.add_argument('--learning-practice',action='store_true')
+    p.add_argument('--practice-cases')
     p.add_argument('--initial-attempts',type=int)
     p.add_argument('--stop-on-success',action='store_true')
     p.add_argument('--persistent-episode',action='store_true')
     p.add_argument('--surface-contact-tools',action='store_true')
+    p.add_argument('--compact-interface',action='store_true')
+    p.add_argument('--visual-inspection',action='store_true',help='Local retrieval/cropping of already captured public observations')
     p.add_argument('--successful-method-file')
     p.add_argument('--memory-store')
     p.add_argument('--completion-checks',action='store_true')
     p.add_argument('--abstract-experience',action='store_true')
+    p.add_argument('--no-example',action='store_true',help='Supply tool contracts without a worked example or example images')
     a=p.parse_args();work=Path(a.workspace);out=Path(a.output)
     import sys
     sys.path.insert(0,str(ROOT/'src'))
     from vlm_tamp.subscription_agent import validate_attempt_budget
     validate_attempt_budget(a.attempts,learning_practice=a.learning_practice,evaluation_case=a.evaluation_case,initial_attempts=a.initial_attempts)
     work.mkdir(parents=True,exist_ok=True);out.mkdir(parents=True,exist_ok=True)
-    document=DOC+(DINO_DOC if a.dino_tools else '')
+    from vlm_tamp.public_analysis import prepare_workspace
+    prepare_workspace(work)
+    selected_task = task_spec(a.task)
+    part_motion_introduction=None
+    document=DOC.replace('Your task is to open the microwave', 'Your task is to '+selected_task['instruction'])+(DINO_DOC if a.dino_tools else '')
+    if a.no_example:
+        document=document.replace('The example/ folder is the one human-supplied worked example. It demonstrates\nsensor-based hinge refinement. Do not assume its metric coordinates apply here.',
+            'No worked example or prior solution is supplied.')
+        document=document.replace('Clearly distinguish the supplied example from anything you discovered.',
+            'Distinguish supplied tool contracts from anything you discovered.')
+    document+='\nUse the current instruction returned by reset. Earlier examples or experience may describe a different task or motion direction.\n'
+    if a.multiview_grounding or a.part_motion_tools:
+        from vlm_tamp.robot_contracts import MULTIVIEW_GROUND_HELP
+        document+='\nOptional calibrated multiview geometry:\n'+MULTIVIEW_GROUND_HELP
+    if a.part_motion_tools:
+        from vlm_tamp.robot_contracts import PART_MOTION_HELP
+        part_motion_introduction=(ROOT/'prompts/part_motion_introduction.txt').read_text()
+        (work/'pipeline-introduction.txt').write_text(part_motion_introduction)
+        (out/'pipeline-introduction.txt').write_text(part_motion_introduction)
+        document=part_motion_introduction+'\n'+document
+        document+='\nOptional part masks, cross-view correspondence and measured articulation:\n'+PART_MOTION_HELP
+    if a.landmark_evidence:
+        document+='''
+Optional measured landmark feedback:
+Motion fits include landmark_displacements from the same public RGB-D matches
+BEFORE the hinge estimator filters near-stationary points. It reports finite
+pair count, count at or below 1.5 mm XY displacement, displacement quantiles,
+vertical-drift count and the pairs entering the existing hinge fit. These are
+point measurements, not a motion class or contact certificate. Selection may
+include background and matches can be wrong. Compare with the images and fit
+provenance. This feedback does not change fitting, planning or execution.
+'''
     if a.completion_checks:
-        document=document.replace('- finish(): end the current physical attempt and retain the experiment evidence.',
-            '- finish: use the observation-based completion interface documented below.')
-        document+=completion_document(advisory=a.learning_practice)
+        if a.stop_on_success:
+            # Keep the ordinary native-success/persistence finish contract.
+            # Measurements add evidence, not a second termination authority.
+            document+=completion_document(advisory=True).split('- finish(',1)[0]
+        else:
+            document=document.replace('- finish(): end the current physical attempt and retain the experiment evidence.',
+                '- finish: use the observation-based completion interface documented below.')
+            document+=completion_document(advisory=a.learning_practice)
+        document+='''\n- compare_surface_geometry(first_id, second_id): compare two current measure_surface
+  results, which may name DIFFERENT parts. Returns relative plane angle and
+  centroid-to-plane offsets without assuming material correspondence or object
+  motion. Both selections must be from the current physical state. Use the
+  values, current images and your goal interpretation to assess progress;
+  no native goal threshold is provided. A false task_success means not yet
+  complete; it does not mean the last action failed or moved in the wrong direction.\n'''
+        document+='''Choose material surface patches for depth measurements. Depth
+through a window or opening can belong to background rather than the intended
+surface. Inspect the returned support, residuals and overlays; a good plane fit
+alone does not establish part identity.\n'''
     if a.attempts==1:
         document=document.replace('at most two resets','exactly one reset')
         document+='\nThis run permits ONE physical attempt only. No reset retry is available.\n'
@@ -435,7 +535,7 @@ Memory procedures may describe other attempt budgets; the current documented
 attempt limit takes precedence. Record memory-use.json with retrieved entry ids,
 what you reused or changed, evidence for applicability, and limitations.\n'''
     if a.evaluation_case:document=document.replace('This is a development pilot on one case','This is a frozen initial-state evaluation on one case')
-    if a.abstract_experience:
+    if a.abstract_experience and not a.no_example:
         document+='''\nThis condition supplies only abstract prior context. The common guide and
 approved example contain method descriptions without historical numerical
 examples. If episodic memory is present, only its conditional prose and
@@ -485,6 +585,7 @@ Use the remaining budget purposefully; do not issue idle or meaningless actions
 merely to consume control steps. Runtime/account failures are reported separately
 from simulator outcomes and do not become fabricated budget exhaustion.\n'''
     if a.surface_contact_tools:
+        document+='\n'+(ROOT/'prompts/contact_skills_introduction.txt').read_text()+'\n'
         document+='''\nGeneral multi-stage manipulation:
 A task may require several stages and different contacts. A continuous grasp is
 not mandatory. Grasping, releasing, regrasping, pushing, pulling and sliding are
@@ -519,62 +620,113 @@ progress. The simulator's success signal remains the stopping criterion.\n'''
     if a.persistent_episode and a.learning_practice:
         document=document.replace('No reset retry is allowed.',
             'Reset for another granted practice attempt only after the current episode is terminal.')
-        document+='''\nPersistent adaptive practice: an active physical episode must reach
+        document+=f'''\nPersistent adaptive practice: an active physical episode must reach
 simulator success or its 600-step / 30-minute budget before another reset.
 Each reset renews the episode budget, within the total session limit. After a
 terminal episode, practice_status, request_attempts and reset remain available.
 A final response before practice completion resumes this same learning context.
-Complete at least the initial five attempts. After two consecutive successes,
+Complete at least the initial {a.initial_attempts or a.attempts} attempts. After two consecutive successes,
 you may stop with a documented method and limitations; efficiency experiments
 are optional in this recovery study. If repeatability is not established, extend
-in blocks up to the twenty-attempt cap. A final practice-summary.json must include
+in blocks up to the {a.attempts}-attempt cap. A final practice-summary.json must include
 best_supported_method and stop_reason. These are learning claims, not native
 success evidence. All earlier failures remain in the study.\n'''
-    (work/'robot.py').write_text(CLIENT);(work/'tools.txt').write_text(document)
+    from vlm_tamp.execution_limits import checked_control_steps
+    checked_control_steps(a.control_steps)
+    if a.practice_cases:
+        if not a.learning_practice or a.evaluation_case:raise ValueError('Curriculum is practice-only')
+        import re
+        document=re.sub(r'Each reset restores the same supplied[^.]*\.',
+            'Each reset selects a declared training case; task and starting configuration may change.',document)
+        document='Practice curriculum: follow the instruction and current observations returned by every reset. Notes persist across cases; success in one case does not establish success in another. Complete the initial grant and record applicability separately.\n\n'+document
+    document+=f'\nController reference mode: {a.reference_mode}. motion_settings reports the effective limits.\n'
+    document=document.replace('600 control',f'{a.control_steps} control').replace('600 recorded control',f'{a.control_steps} recorded control').replace('600-step',f'{a.control_steps}-step')
+    client=CLIENT.replace("'remaining_control_steps':600",f"'remaining_control_steps':{a.control_steps}")
+    (work/'robot.py').write_text(client);(work/'tools.txt').write_text(document)
+    interface=None
+    if a.compact_interface:
+        from vlm_tamp.compact_robot_interface import install
+        interface=install(work,document,attempts=a.attempts,
+            initial_attempts=a.initial_attempts or a.attempts,practice_mode=a.learning_practice,control_steps=a.control_steps)
+    else:
+        import re
+        from vlm_tamp.robot_contracts import export_schemas
+        names=re.findall(r'(?m)^- ([a-z][a-z_]+)(?:\(|:)',document)
+        registry=export_schemas(work/'tools/schemas',[*names,'episode_status','await_request'])
+        (work/'tools/schema-index.json').write_text(json.dumps(registry,indent=2)+'\n')
+    if a.landmark_evidence:
+        with (work/'tools.txt').open('a') as index:
+            index.write('\nMotion-fit feedback includes landmark_displacements: measured tracked-point counts and displacement quantiles before hinge-fit filtering. These do not certify object identity or retained contact.\n')
+    if interface and part_motion_introduction is not None:
+        index=work/'tools.txt'
+        index.write_text(part_motion_introduction+'\n'+index.read_text())
+        interface['index_bytes']=index.stat().st_size
+    visual_interface=None
+    if a.visual_inspection:
+        from vlm_tamp.visual_inspection import install as install_visual_inspection
+        visual_interface=install_visual_inspection(work)
     if a.guidelines_source:
         experience=work/'experience';experience.mkdir(exist_ok=True)
         shutil.copyfile(a.guidelines_source,experience/'guidelines.json')
+        with (work/'tools.txt').open('a') as index:
+            index.write('\nFrozen learner experience is available at experience/guidelines.json. Read it before acting, check applicability to the current observations, and re-estimate geometry. Its claims are prior experience, not current state or guaranteed outcomes. Do not update this frozen input during evaluation.\n')
     if a.successful_method_file:
         experience=work/'experience';experience.mkdir(exist_ok=True)
         shutil.copyfile(a.successful_method_file,experience/'successful-method.json')
-    example=work/'example';example.mkdir(exist_ok=True)
-    (example/'readme.txt').write_text(EXAMPLE)
-    if a.abstract_experience:(example/'readme.txt').write_text(ABSTRACT_EXAMPLE)
+    example=work/'example'
+    if a.no_example:
+        if example.exists():raise ValueError('No-example preparation requires a workspace without an existing example directory')
+    else:
+        example.mkdir(exist_ok=True)
+        (example/'readme.txt').write_text(ABSTRACT_EXAMPLE if a.abstract_experience else EXAMPLE)
     source=ROOT/'results/state11-observed-contact-recovery-20261015/open_microwave-state011'
     mapping={'closure-landmark-matches.npz':'matches.npz','closure-rigid-tracking.json':'sensor-fit.json',
         'opened/frontview.png':'before.png','closed/frontview.png':'after.png'}
     provenance={}
     for name,dest in mapping.items():
-        if a.abstract_experience:continue
+        if a.abstract_experience or a.no_example:continue
         origin=source/name
         if origin.exists():
             shutil.copyfile(origin,example/dest)
             provenance[dest]={'source':str(origin),'sha256':hashlib.sha256(origin.read_bytes()).hexdigest()}
     write={'model':'gpt-6-luna','reasoning_effort':'high','authentication':'ChatGPT subscription',
         'separately_billed_model_calls':False,'development_only':not a.evaluation_case,
-        'case':{'task':'open_microwave','state_index':a.state,'seed':0},
+        'case':{'task':a.task,'task_name':selected_task['task_name'],'suite':selected_task['suite'],'state_index':a.state,'seed':0},
         'case_previously_used_in_project':None if a.evaluation_case else a.state==21,
         'held_out_initial_state_evaluation':bool(a.evaluation_case),'held_out_generalization_claim':False,
         'optional_dino_tools_available':bool(a.dino_tools),
         'frozen_agent_guidelines_sha256':hashlib.sha256(Path(a.guidelines_source).read_bytes()).hexdigest() if a.guidelines_source else None,
-        'maximum_attempts':a.attempts,'maximum_control_steps_per_attempt':600,
+        'maximum_attempts':a.attempts,'maximum_control_steps_per_attempt':a.control_steps,'controller_reference_mode':a.reference_mode,
         'human_supplied_example':provenance,'agent_source_access':False,
         'agent_recovery_policy_supplied':False,'inherited_numerical_tool_implementations':True,
         'workspace':str(work.resolve()),'current_conversation_inherited':False}
     write['completion_checks']=bool(a.completion_checks)
     write['learning_practice']=bool(a.learning_practice)
+    if a.practice_cases:write['private_practice_curriculum']=json.loads(Path(a.practice_cases).read_text())
     write['same_agent_session_across_attempts']=bool(a.learning_practice)
-    write['completion_policy']='advisory' if a.learning_practice and a.completion_checks else 'required_measurement' if a.completion_checks else 'not_enabled'
+    write['completion_policy']='advisory' if (a.learning_practice or a.stop_on_success) and a.completion_checks else 'required_measurement' if a.completion_checks else 'not_enabled'
     write['initial_attempts_granted']=a.initial_attempts if a.initial_attempts is not None else a.attempts
     write['adaptive_attempt_budget']=a.initial_attempts is not None
     write['stop_on_simulator_success']=bool(a.stop_on_success)
     write['persistent_episode']=bool(a.persistent_episode)
     write['surface_contact_tools']=bool(a.surface_contact_tools)
+    write['public_interface']=interface or {'mode':'full'}
+    write['visual_inspection']=visual_interface or {'enabled':False}
+    write['landmark_evidence']=bool(a.landmark_evidence)
+    write['multiview_grounding']=bool(a.multiview_grounding or a.part_motion_tools)
+    write['part_motion_tools']=bool(a.part_motion_tools)
+    write['part_motion_introduction']={
+        'file':'pipeline-introduction.txt','included_in':'tools.txt',
+        'sha256':hashlib.sha256(part_motion_introduction.encode()).hexdigest(),
+        'word_count':len(part_motion_introduction.split()),
+        'scope':'Generic tool onboarding; not task-specific answers or learner-authored memory',
+    } if part_motion_introduction is not None else None
     write['task_outcome_feedback']='success_boolean' if a.stop_on_success else 'none'
     write['successful_method_sha256']=hashlib.sha256(Path(a.successful_method_file).read_bytes()).hexdigest() if a.successful_method_file else None
     write['delayed_efficiency_instructions']=bool(a.learning_practice and a.initial_attempts is not None)
     write['abstract_experience']=bool(a.abstract_experience)
-    write['human_example_representation']='method-only prose' if a.abstract_experience else 'worked RGB-D example'
+    write['example_supplied']=not a.no_example
+    write['human_example_representation']='none' if a.no_example else 'method-only prose' if a.abstract_experience else 'worked RGB-D example'
     if a.memory_store:
         write['episodic_memory']={'store':str(store),'files_sha256':store_hashes(store),
             'staged_path':str(staged_memory),'read_only':True,'automatic_cross_case_updates':False}
@@ -585,8 +737,16 @@ success evidence. All earlier failures remain in the study.\n'''
     initial=out/'public-inputs';initial.mkdir(exist_ok=True)
     for name in ['robot.py','tools.txt']:
         shutil.copyfile(work/name,initial/name)
+    if interface:
+        shutil.copyfile(work/'robot_interface.py',initial/'robot_interface.py')
+        shutil.copytree(work/'tools',initial/'tools',dirs_exist_ok=True)
     if (work/'memory.py').exists():shutil.copyfile(work/'memory.py',initial/'memory.py')
-    shutil.copytree(example,initial/'example',dirs_exist_ok=True)
+    if visual_interface:
+        shutil.copyfile(work/'visual.py',initial/'visual.py')
+        if not interface:
+            (initial/'tools').mkdir(exist_ok=True)
+            shutil.copyfile(work/'tools/visual_inspection.txt',initial/'tools/visual_inspection.txt')
+    if example.exists():shutil.copytree(example,initial/'example',dirs_exist_ok=True)
     if (work/'experience').exists():shutil.copytree(work/'experience',initial/'experience',dirs_exist_ok=True)
     sources=out/'source-snapshot';sources.mkdir(exist_ok=True)
     for name in ['scripts/prepare_subscription_pilot.py','scripts/serve_subscription_robot.py','src/vlm_tamp/subscription_agent.py']:

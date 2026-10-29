@@ -52,7 +52,7 @@
   "drawer_line_tolerance_m": 0.015,
   "transport_sampling_m": 0.015,
   "preflight_sampling_m": 0.025,
-  "ik_position_tolerance_m": 0.001,
+  "ik_position_tolerance_m": 0.003,
   "ik_orientation_tolerance_rad": 0.01,
   "ik_maximum_evaluations": 70,
   "ik_seed_count": 4,
@@ -97,7 +97,7 @@
   "curobo_num_seeds": 64,
   "curobo_return_seeds": 32,
   "maximum_ik_postures_per_grasp": 16,
-  "command_joint_reserve_rad": 0.025,
+  "command_joint_reserve_rad": 0.0,
   "curobo_revision": "d64c4b005459db10c5dd867d8b30a87d5bda9bdb",
   "curobo_tag": "v0.7.8",
   "curobo_internal_scene_checks": false,
@@ -120,5 +120,16 @@
   "scene_mode": "strict",
   "pilot_protocol": "five new tasks, one official state each, strict admission and paired physics diagnostic",
   "admission_horizon_policy": "3 cm or 0.2 rad; replan from measured RGB-D feedback",
-  "grasp_search_order": "one IK rank across all eligible grasp poses before additional redundancy ranks"
+  "grasp_search_order": "one IK rank across all eligible grasp poses before additional redundancy ranks",
+  "native_joint_reserve_rad": 0.0,
+  "environment_collision_policy": "advisory",
+  "grasp_approach_speed_rad_s": 0.6,
+  "grasp_standoff_distances_m": [
+    0.0,
+    0.03,
+    0.07
+  ],
+  "maximum_grasp_search_seconds": 30.0,
+  "restriction_policy_version": "2026-10-29",
+  "joint_reference_mode": "slew_limited"
 }

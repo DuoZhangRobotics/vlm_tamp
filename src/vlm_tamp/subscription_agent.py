@@ -37,6 +37,32 @@ def clean_environment():
     return env
 
 
+def private_home_denials(home, runtime_paths):
+    """Deny private siblings without masking an installed runtime's ancestors.
+
+    Standalone Codex may live below CODEX_HOME/packages. A parent deny can
+    prevent bubblewrap from starting that binary even with a child read grant.
+    Descend only along the runtime paths; all other entries remain denied.
+    """
+    allowed = {Path(path).resolve() for path in runtime_paths}
+    pending = [Path(home).resolve()]
+    visited, denied = set(), {}
+    while pending:
+        parent = pending.pop()
+        if parent in visited or not parent.is_dir():
+            continue
+        visited.add(parent)
+        for child in parent.iterdir():
+            resolved = child.resolve()
+            if resolved in allowed:
+                continue
+            if any(path.is_relative_to(resolved) for path in allowed):
+                pending.append(resolved)
+            else:
+                denied[str(child)] = 'deny'
+    return denied
+
+
 def permission_arguments(*, readonly_paths=()):
     # No :root read grant, no inherited workspace profile and no /tmp grant.
     # The session's one public working directory is the only writable subtree.
@@ -48,12 +74,7 @@ def permission_arguments(*, readonly_paths=()):
           str(binary.parent): 'read', str(home/'tmp/arg0-linux'): 'read'}
     # Codex's platform-minimal reads can include its own home. Exclude each
     # history/credential/plugin entry while retaining only runtime binaries.
-    for child in home.iterdir():
-        if child.name not in {'bin', 'tmp'}:
-            fs[str(child)] = 'deny'
-    for child in (home/'tmp').iterdir():
-        if child.name != 'arg0-linux':
-            fs[str(child)] = 'deny'
+    fs.update(private_home_denials(home, [binary.parent, home/'bin', home/'tmp/arg0-linux']))
     for path in readonly_paths:
         fs[str(Path(path).resolve())] = 'read'
     table = '{'+','.join(json.dumps(k)+'='+json.dumps(v) for k,v in fs.items())+'}'
@@ -64,13 +85,16 @@ def permission_arguments(*, readonly_paths=()):
     ]
 
 
-def codex_arguments(workspace, output, *, model='gpt-6-luna', readonly_paths=(), ephemeral=True):
+def codex_arguments(workspace, output, *, model='gpt-6-luna', reasoning='high', readonly_paths=(), ephemeral=True):
+    from .public_analysis import configuration_arguments, readonly_paths as analysis_readonly
+    readonly_paths = [*readonly_paths, *analysis_readonly(workspace)]
     return [shutil.which('codex') or 'codex', 'exec', '--ignore-user-config',
             *(['--ephemeral'] if ephemeral else []), '--skip-git-repo-check', '--json', '--color', 'never',
             '-C', str(Path(workspace).resolve()), '-m', model,
-            '-c', 'model_reasoning_effort="high"', '-c', 'approval_policy="never"',
+            '-c', 'model_reasoning_effort='+json.dumps(reasoning), '-c', 'approval_policy="never"',
             '-c', 'forced_login_method="chatgpt"', '-c', 'project_doc_max_bytes=0',
             '-c', 'web_search="disabled"',
+            *configuration_arguments(workspace),
             '--disable', 'memories', '--disable', 'plugins', '--disable', 'apps',
             '--disable', 'multi_agent', '--disable', 'in_app_browser',
             '--disable', 'browser_use', '--disable', 'image_generation',
@@ -79,11 +103,11 @@ def codex_arguments(workspace, output, *, model='gpt-6-luna', readonly_paths=(),
             '-o', str(Path(output).resolve()), '-']
 
 
-def codex_resume_arguments(workspace,output,thread_id,*,readonly_paths=()):
+def codex_resume_arguments(workspace,output,thread_id,*,model='gpt-6-luna',reasoning='high',readonly_paths=()):
     """Resume the same model context with the same restricted read profile."""
     import uuid
     uuid.UUID(thread_id)
-    initial=codex_arguments(workspace,output,readonly_paths=readonly_paths,ephemeral=False)
+    initial=codex_arguments(workspace,output,model=model,reasoning=reasoning,readonly_paths=readonly_paths,ephemeral=False)
     options=initial[2:-1];filtered=[];i=0
     while i<len(options):
         if options[i] in {'-C','--color'}:i+=2;continue
@@ -91,11 +115,17 @@ def codex_resume_arguments(workspace,output,thread_id,*,readonly_paths=()):
     return [initial[0],'exec','resume',*filtered,thread_id,'-']
 
 def verify_isolation(workspace, forbidden_paths, *, readonly_paths=()):
-    """Exercise the same OS profile with harmless reads before model access."""
+    """Check documented analysis capabilities and private reads before any model call."""
+    from .public_analysis import (
+        PROBE_CODE, command_environment, prepare_workspace,
+        readonly_paths as analysis_readonly,
+    )
     workspace = Path(workspace).resolve()
+    analysis_environment = prepare_workspace(workspace)
+    readonly_paths = [*readonly_paths, *analysis_readonly(workspace)]
     canary = workspace/'allowed-canary.txt'
     canary.write_text('public workspace is readable\n')
-    code = '''import json,pathlib,socket
+    code = PROBE_CODE + '''\nimport json,pathlib
 paths=json.loads(__import__('sys').argv[1]); rows=[]
 for p in paths:
  try:
@@ -103,16 +133,19 @@ for p in paths:
   rows.append({'path':p,'readable':True})
  except (PermissionError,FileNotFoundError,NotADirectoryError):
   rows.append({'path':p,'readable':False})
-print(json.dumps({'reads':rows,'canary':pathlib.Path('allowed-canary.txt').read_text().strip()}))
+print(json.dumps({'reads':rows,'canary':pathlib.Path('allowed-canary.txt').read_text().strip(),
+                  'analysis_runtime':analysis_probe}))
 '''
     command = [shutil.which('codex') or 'codex', 'sandbox', '-P', 'research-agent',
                *permission_arguments(readonly_paths=readonly_paths), '-C', str(workspace),
                '/usr/bin/python3', '-c', code, json.dumps([str(p) for p in forbidden_paths])]
-    run = subprocess.run(command, env=clean_environment(), text=True, capture_output=True, timeout=30)
+    run = subprocess.run(command, env=command_environment(workspace,clean_environment()),
+                         text=True, capture_output=True, timeout=30)
     if run.returncode:
         raise RuntimeError('Isolation probe failed: '+run.stderr[-2000:])
     result = json.loads(run.stdout.strip().splitlines()[-1])
     if any(r['readable'] for r in result['reads']):
         raise RuntimeError('Restricted read unexpectedly succeeded: '+json.dumps(result))
     result['passed'] = True
+    result['public_analysis_environment'] = analysis_environment
     return result

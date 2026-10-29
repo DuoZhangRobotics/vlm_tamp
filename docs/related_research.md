@@ -1,5 +1,32 @@
 # Methodological references and comparison boundaries
 
+For a controlled test of VISTA-inspired access to saved visual observations,
+see the [Luna visual-inspection pilot](luna_visual_inspection_ab_20261025.md).
+It adds an optional retrieval/cropping helper while freezing Luna, its guide,
+planning code and budgets, and reports both task outcomes and actual tool use.
+
+The [recorded-evidence loop diagnostic](luna_evidence_loop_20261026.md) then
+tests explicit prediction and revision with identical before/after images.
+Its [landmark-feedback follow-up](luna_landmark_feedback_20261026.md) tests a
+compact summary of measured point displacements that the hinge-fit filter
+otherwise omits. These are development diagnostics, not physical transfer tests.
+
+The [full LIBERO comparison](luna_landmark_libero_20261026.md) then tests the
+optional summary in complete opening/closing episodes. The
+[visual-interface walkthrough](luna_visual_interface_walkthrough.md) explains
+what is saved, what Luna actually receives, how `visual.py` works, and the
+difference between a verbal expectation and the numerical hand-motion fallback.
+
+For pretrained point-cloud/RGB-D methods that could replace free-form hinge
+proposals, see the [articulation perception tools review (25 October 2026)](articulated_perception_tools_20261025.md).
+It audits code/checkpoint availability and separates initial estimation,
+motion-based verification and full reconstruction.
+
+For planning with uncertain grasps, collisions, articulation and action outcomes,
+see the [focused uncertainty-planning review (22 October 2026)](uncertainty_planning_review_20261022.md).
+It also covers belief-space TAMP, plan ensembles and autonomous skill practice,
+and separates the proposed cuRobo v2 backend from uncertainty estimation.
+
 The initial sources were inspected on 2026-10-11. On 2026-10-12, released RoboPoint weights were evaluated through an RGB-role adapter, and public ReKep/ViLaIn grounding components were tried. See [the measured first runs](external_baselines_first_runs.md). Full published robot systems are not reproduced, and their reported success rates cannot be compared directly with this module-level LIBERO pilot. The other entries below remain representation/evaluation references.
 
 | Work | Verified source / available implementation | Relevant design choice | Compatibility limit |
@@ -16,3 +43,5 @@ The initial sources were inspected on 2026-10-11. On 2026-10-12, released RoboPo
 The current architecture borrows the distinction between semantic declarations, geometric instantiation, and execution from these directions. A3VLM motivates explicit part/joint frames; RoboPoint motivates pixel metrics; formal-specification work motivates preserving logical structure and reporting unsupported constructs. ReKep/CoPa motivate stage-scoped goal/path constraints, but their complete planners are outside Stage 1.
 
 Cloud adapters follow [OpenAI Responses](https://developers.openai.com/api/reference/python/resources/responses), [Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=responses), and [image inputs](https://developers.openai.com/api/docs/guides/images-vision). The pinned pilot model and configurable rates were checked against the [GPT-4.1 Mini model page](https://developers.openai.com/api/docs/models/gpt-4.1-mini). Gemini uses the official SDK and [structured-output guidance](https://ai.google.dev/gemini-api/docs/structured-output); its live API access and accuracy are not yet tested.
+
+For implemented Luna-selected part masks, calibrated associations, CoTracker/LK tracking and independently initialized motion estimates, see [the part/motion tools and replay validation](part_motion_tools_20261027.md). That report distinguishes tool consistency, measured-motion support, native grading and physical task success.

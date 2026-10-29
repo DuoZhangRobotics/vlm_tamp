@@ -18,16 +18,20 @@ def service(tmp_path):
     robot.attempt=1;robot.calls=1;robot.epoch=0;robot.plans={}
     robot.state={'control_steps':0,'metadata':{'joint_positions':[0.]*7}}
     robot.stop_on_success=True
+    robot.config={};robot.spec={}
+    robot.ik=SimpleNamespace(chain=SimpleNamespace(limits=np.tile([-3.,3.],(7,1))))
+    robot.state['metadata']['gripper_qpos']=[.04,-.04]
+    robot.episode_status=lambda:{'episode_done':False}
     return module,robot
 
 
 def install_sequence(robot):
     path=np.array([[0.]*7,[.01]*7])
     robot.plans['test']={'kind':'sequence','path':path,'control_steps':0,'epoch':0,
-        'extra':{'grasp_joints':path[-1],'manipulation':path+.01}}
+        'extra':{'grasp_joints':path[-1],'goal_degrees':30.,'grasp_constraint':'point','approach_speed':.6}}
 
 
-def test_sequence_stops_immediately_on_success_and_does_not_revalidate_between_stages(tmp_path):
+def test_sequence_native_success_stops_before_postclosure_planning(tmp_path):
     _,robot=service(tmp_path);install_sequence(robot);calls=[]
     def issue(refs,gripper,label,**kwargs):
         calls.append((label,gripper))
@@ -37,15 +41,15 @@ def test_sequence_stops_immediately_on_success_and_does_not_revalidate_between_s
     robot.issue=issue
     result=robot.execute_sequence('test',close_steps=3,hold=0)
     assert len(calls)==2 and result['task_success']
-    assert result['remaining_stages_discarded_on_success']==1
+    assert not result['post_closure_replanning']
     assert [r['stage'] for r in result['stages']]==['approach','closure']
 
 
-def test_sequence_checks_full_budget_before_issuing_any_stage(tmp_path):
+def test_sequence_checks_approach_and_closure_budget_before_motion(tmp_path):
     _,robot=service(tmp_path);install_sequence(robot)
     robot.state['control_steps']=599;robot.plans['test']['control_steps']=599
     robot.issue=lambda *a,**k:pytest.fail('An over-budget sequence must not begin')
-    with pytest.raises(ValueError,match='Complete sequence needs'):
+    with pytest.raises(ValueError,match='approach and closure'):
         robot.execute_sequence('test')
 
 
@@ -60,7 +64,7 @@ def test_neutral_and_closing_arc_commands_both_synchronize_geometry(tmp_path,mon
         return {'control_steps':5,'metadata':{'joint_positions':[0.]*7}},{
             'issued_commands':5,'planned_commands':5,'all_commands_issued':True}
     monkeypatch.setattr(module,'execute_batch',execute)
-    monkeypatch.setattr(module,'hand_motion',lambda *a:(np.eye(4),.1))
+    monkeypatch.setattr(module,'hand_motion',lambda *a,**k:(np.eye(4),.1))
     monkeypatch.setattr(module,'transport_scene',lambda *a,**k:SimpleNamespace(
         spec={},contact_reference=np.zeros((3,3)),pose_update={'source':k['source']}))
     result=robot.issue(np.zeros((5,7)),gripper,'arc')

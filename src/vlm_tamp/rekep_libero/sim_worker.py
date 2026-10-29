@@ -24,7 +24,9 @@ from .kinematics import PandaIK, matrix_pose, osc_action, rotation_error, pose_m
 
 
 IMAGE_SIZE = 512
-MAX_CONTROL_STEPS = 600
+from vlm_tamp.execution_limits import DEFAULT_CONTROL_STEPS
+
+MAX_CONTROL_STEPS = DEFAULT_CONTROL_STEPS
 FRONTVIEW_POLICY = {
     "position_world_m": [0.04, 0.55, 1.55],
     "look_at_world_m": [0.04, -0.23, 0.96], "up_world": [0, 0, 1],
@@ -44,6 +46,7 @@ def frontview_rotation(policy=None):
 
 
 class SimulatorWorker:
+    maximum_control_steps = DEFAULT_CONTROL_STEPS
     def __init__(self):
         self.env = None
         self.control_steps = 0
@@ -225,7 +228,7 @@ class SimulatorWorker:
     def _response_state(self):
         return {"metadata": self._state_metadata(), "control_steps": self.control_steps,
                 "evaluation": {"task_success": bool(self.env.check_success())},
-                "step_limit_reached": self.control_steps >= MAX_CONTROL_STEPS}
+                "maximum_control_steps": self.maximum_control_steps, "step_limit_reached": self.control_steps >= self.maximum_control_steps}
 
     def observe(self, output_dir):
         self._require_env()
@@ -245,7 +248,7 @@ class SimulatorWorker:
         (output / "metadata.json").write_text(json.dumps(metadata, indent=2) + "\n")
         return {"observation_dir": str(output), "metadata": metadata,
                 "evaluation": {"task_success": bool(self.env.check_success())},
-                "control_steps": self.control_steps, "step_limit_reached": self.control_steps >= MAX_CONTROL_STEPS}
+                "control_steps": self.control_steps, "maximum_control_steps": self.maximum_control_steps, "step_limit_reached": self.control_steps >= self.maximum_control_steps}
 
     def ik(self, target_pose_world_xyzw, seed_joints=None, max_iterations=120):
         self._require_env()
@@ -272,10 +275,10 @@ class SimulatorWorker:
         target = pose_matrix(target_pose_world_xyzw)
         if gripper not in (-1, 0, 1):
             raise ValueError("Gripper must be -1 open, 0 hold, or +1 close")
-        if not 1 <= int(max_steps) <= MAX_CONTROL_STEPS:
-            raise ValueError("Action max_steps must be in [1,600]")
+        if not 1 <= int(max_steps) <= self.maximum_control_steps:
+            raise ValueError(f"Action max_steps must be in [1,{self.maximum_control_steps}]")
         executed, reached, task_success = 0, False, False
-        for _ in range(min(int(max_steps), MAX_CONTROL_STEPS - self.control_steps)):
+        for _ in range(min(int(max_steps), self.maximum_control_steps - self.control_steps)):
             current = self._eef_pose()
             control = osc_action(current, target_pose_world_xyzw, gripper)
             self.latest_obs, _, _, _ = self.env.step(control)

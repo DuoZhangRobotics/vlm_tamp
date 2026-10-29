@@ -13,6 +13,8 @@ from .rekep_libero.scene_state_v7 import voxel_points
 from .rekep_libero.scene_state_v7 import observed_points, bounded_points
 from .rekep_libero.object_motion_v3 import observed_object_cloud
 from .rekep_libero.robot_chain_v4 import fixed_orientation_residual
+from .robot_contracts import GROUND_FIELDS, RequestValidationError, observed_image_sizes, validate_ground_regions
+from .rigid_hinge_tracking import robot_mask
 
 
 def upright_plane(points, camera_position, seed=0):
@@ -63,19 +65,70 @@ def axis_from_bulk(anchor, pivot, bulk, motion):
     return np.array([0., 0., sign]), score
 
 
-def ground_handle(cameras, choices, previous_spec, metadata=None):
+def image_motion_axis(anchor, pivot, camera, hint):
+    """Resolve an upright axis sign only when the projected hint distinguishes it."""
+    if hint is None:
+        return None, []
+    direction=np.asarray(hint,float)
+    if not np.isfinite(direction).all() or not np.any(direction):
+        raise ValueError('A supplied image-motion hint must be finite and nonzero')
+    # Scale before normalizing so any finite, nonzero magnitude has the same
+    # meaning, including subnormal or near-maximum floating-point inputs.
+    direction=direction/np.max(np.abs(direction))
+    direction=direction/np.linalg.norm(direction)
+    scores=[]
+    for sign in [1.,-1.]:
+        moved=pivot+Rotation.from_rotvec([0.,0.,.1*sign]).apply(anchor-pivot)
+        delta=project([moved],camera)[0]-project([anchor],camera)[0]
+        scores.append(float(delta@direction/max(np.linalg.norm(delta),1e-8)))
+    if abs(scores[0]-scores[1])<=1e-8:
+        return None,scores
+    return np.array([0.,0.,1. if scores[0]>scores[1] else -1.]),scores
+
+
+def require_direction_agreement(evidence):
+    direction=evidence.get('motion_direction_check',{})
+    if not direction.get('direction_conflict'):return
+    error=ValueError('Image-motion intent and adjacent-depth direction disagree. '
+        'No direction was installed. Inspect the attachment/contact geometry in another view; '
+        'use an explicit unknown image hint only when you intend to delegate direction to the depth prior.')
+    error.planning_diagnostic={'status':'direction_evidence_conflict','module':'handle_contact.direction',
+        'caller_hint_axis':direction.get('vlm_image_axis'),
+        'depth_prior_axis':direction.get('depth_prior_axis'),
+        'positive_axis_toward_bulk_score_m':direction.get('positive_axis_toward_bulk_score_m'),
+        'model_changed':False,'physical_motion_issued':False,
+        'interpretation':'A depth heuristic is not allowed to silently override image intent. Neither source alone verifies task direction.'}
+    raise error
+
+
+def ground_handle(cameras, choices, previous_spec, metadata=None,*,fixed_joint=None):
+    if fixed_joint is None:
+        validate_ground_regions({key:choices[key] for key in GROUND_FIELDS if key in choices},
+                                image_sizes=observed_image_sizes(cameras))
+    else:
+        from .robot_contracts import validate_operation
+        validate_operation('refresh_contact',{key:choices[key] for key in
+            ['camera','contact_box_xyxy','moving_panel_box_xyxy']},observed_image_sizes(cameras))
+    hint = choices.get('initial_image_direction_xy')
+    if hint is None and metadata is None and fixed_joint is None:
+        raise RequestValidationError('ground','regions.initial_image_direction_xy','unresolved_direction',
+            'The image direction is unresolved and adjacent stationary depth geometry is unavailable. Select another view or supply a supported image-motion hint.')
     camera = cameras[choices['camera']]
     world = np.asarray(camera['world_points'])
     yy, xx = np.indices(world.shape[:2])
     x0, y0, x1, y1 = choices['moving_panel_box_xyxy']
     box = (xx>=x0)&(xx<=x1)&(yy>=y0)&(yy<=y1)&np.isfinite(world).all(2)
+    excluded_panel_robot_points=int((box&robot_mask(camera)).sum())
+    box &= ~robot_mask(camera)
+    if box.sum()<100:
+        raise ValueError(f'Panel fit has only {int(box.sum())} non-robot depth samples after excluding {excluded_panel_robot_points} robot samples; inspect another visible view')
     face = upright_plane(world[box], np.asarray(camera['camera_to_world'])[:3, 3])
     centre, normal = face['point'], face['normal']
     mask = box & (np.abs((world-centre)@normal)<.006)
     x0, y0, x1, y1 = choices['contact_box_xyxy']
     clouds, opposite = [], []
     for view in cameras.values():
-        points = np.asarray(view['world_points']).reshape(-1, 3)
+        points = np.asarray(view['world_points'])[~robot_mask(view)].reshape(-1, 3)
         points = points[np.isfinite(points).all(1)]
         signed = (points-centre)@normal
         points = points[(signed>-.09)&(signed<.075)]
@@ -125,17 +178,22 @@ def ground_handle(cameras, choices, previous_spec, metadata=None):
         if selected.sum()>=75 and np.ptp(cylinder[selected, 2])>.035:
             cylinder = cylinder[selected]
     anchors = [np.r_[fit.x[:2], np.quantile(cylinder[:, 2], fraction)] for fraction in [.85, .70, .93]]
-    hinge_points = np.asarray([ray_plane(p, camera, centre, normal) for p in choices['hinge_pixels_xy']])
-    pivot = hinge_points.mean(0)
-    axis = np.array([0., 0., 1.])
-    initial_direction = np.asarray(choices['initial_image_direction_xy'])
-    directions = []
-    for sign in [1., -1.]:
-        moved = pivot + Rotation.from_rotvec(.1*sign*axis).apply(anchors[0]-pivot)
-        delta = project([moved], camera)[0]-project([anchors[0]], camera)[0]
-        directions.append(delta@initial_direction/max(np.linalg.norm(delta), 1e-8))
-    axis *= 1 if directions[0] > directions[1] else -1
-    direction_record = {'vlm_image_axis': axis.tolist()}
+    pivot=(np.asarray(fixed_joint['joint_origin_world_m'],float) if fixed_joint is not None else
+        np.asarray([ray_plane(p,camera,centre,normal) for p in choices['hinge_pixels_xy']]).mean(0))
+    axis=np.asarray(fixed_joint['joint_axis_world'],float) if fixed_joint is not None else None
+    direction_record = {'vlm_image_axis': None, 'image_hint_status': 'unresolved',
+                        'image_direction_xy': hint}
+    if fixed_joint is not None:
+        direction_record.update(source='retained fixed-world joint hypothesis; current contact geometry refreshed',
+            task_direction_verified=False,fixed_joint_preserved=True)
+    if hint is not None and fixed_joint is None:
+        axis,directions=image_motion_axis(anchors[0],pivot,camera,hint)
+        direction_record['image_projection_scores'] = directions
+        if axis is not None:
+            direction_record.update(vlm_image_axis=axis.tolist(),image_hint_status='resolved',
+                                    source='projected image-motion hint')
+        elif metadata is None:
+            raise ValueError('Image motion direction is unresolved in this camera; no axis sign was selected.')
     panel_band=.032
     panel_band_measured=False
     if metadata is not None:
@@ -147,16 +205,26 @@ def ground_handle(cameras, choices, previous_spec, metadata=None):
         if near.sum()>100:
             panel_band=float(np.clip(np.quantile(np.abs(signed[near]),.98)+.006,.012,.040))
             panel_band_measured=True
-        stationary = ((np.linalg.norm(occupied[:, :2]-pivot[:2], axis=1)<.40)
-                      & (occupied[:, 2]>height[0]) & (occupied[:, 2]<height[1])
-                      & (np.abs((occupied-centre)@normal)>.035))
-        if stationary.sum()<150:
-            raise ValueError('Insufficient adjacent stationary RGB-D geometry for direction check')
-        bulk = np.median(occupied[stationary], axis=0)
-        axis, score = axis_from_bulk(anchors[0], pivot, bulk, choices['motion'])
-        direction_record.update(observed_bulk_world_m=bulk.tolist(),
-            positive_axis_toward_bulk_score_m=score, selected_axis=axis.tolist(),
-            source='upright-door prior: close toward adjacent stationary depth geometry, open away')
+        if fixed_joint is None:
+            stationary = ((np.linalg.norm(occupied[:, :2]-pivot[:2], axis=1)<.40)
+                          & (occupied[:, 2]>height[0]) & (occupied[:, 2]<height[1])
+                          & (np.abs((occupied-centre)@normal)>.035))
+            if stationary.sum()<150:
+                raise ValueError('Insufficient adjacent stationary RGB-D geometry for direction check')
+            bulk = np.median(occupied[stationary], axis=0)
+            depth_axis, score = axis_from_bulk(anchors[0], pivot, bulk, choices['motion'])
+            # This is a geometry heuristic, not authority to change the caller's
+            # requested image direction. Keep disagreement visible to the caller.
+            if axis is None:axis=depth_axis
+            direction_record.update(observed_bulk_world_m=bulk.tolist(),
+                positive_axis_toward_bulk_score_m=score, depth_prior_axis=depth_axis.tolist(),selected_axis=axis.tolist(),
+                direction_conflict=bool(not np.allclose(axis,depth_axis)),
+                task_direction_verified=False,
+                source=('caller image-motion hint; adjacent-depth prior is a separate check' if hint is not None else
+                        'upright-door prior: close toward adjacent stationary depth geometry, open away'))
+    direction_record['selected_axis'] = axis.tolist()
+    direction_record['image_hint_overridden_by_depth'] = bool(metadata is not None and
+        direction_record['vlm_image_axis'] is not None and direction_record['vlm_image_axis'] != axis.tolist())
     spec = copy.deepcopy(previous_spec)
     spec.update(joint_origin_world_m=pivot.tolist(), joint_axis_world=axis.tolist(),
                 panel_normal_world=normal.tolist(), pull_axis_world=normal.tolist(),
@@ -170,6 +238,8 @@ def ground_handle(cameras, choices, previous_spec, metadata=None):
                 simulator_scene_state_used=False)
     return Mechanism(spec), cylinder, mask, anchors, {
         'upright_face_normal': normal.tolist(), 'upright_face_rms_m': face['rms'],
+        'panel_robot_points_excluded':excluded_panel_robot_points,
+        'robot_depth_excluded_from_handle_fit':True,
         'cylinder_radius_m': radius, 'cylinder_points': len(cylinder),
         'initial_rgb_box_cylinder_points':initial_cylinder_points,
         'metric_cylinder_extended_from_observed_depth':metadata is not None,
@@ -183,7 +253,11 @@ def ground_handle(cameras, choices, previous_spec, metadata=None):
 
 
 def frontal_poses(normal, anchors, pad_local):
-    """Tool approach follows the measured face normal; jaws close across handle."""
+    """Observed-contact proposals spanning frontal and oblique approaches.
+
+    These are search seeds, not a whitelist of admissible grasps. Every pose
+    still needs IK, collision checking and a complete contact-motion path.
+    """
     poses = []
     z = -unit(normal)
     y = np.array([0., 0., 1.])
@@ -191,14 +265,19 @@ def frontal_poses(normal, anchors, pad_local):
     y = unit(np.cross(z, x))
     reference = np.column_stack([x, y, z])
     for anchor_index, anchor in enumerate(anchors):
-        for tilt in [0., -.20, .20]:
-            rotation = Rotation.from_rotvec(tilt*x).as_matrix()@reference
+        choices=[(0.,t) for t in [0.,-.20,.20,-.50,.50]]
+        choices += [(yaw,tilt) for yaw in [-np.pi/6,np.pi/6,-np.pi/3,np.pi/3]
+                    for tilt in [0.,-.20,.20]]
+        for yaw,tilt in choices:
+            rotation = Rotation.from_rotvec([0.,0.,yaw]).as_matrix()@Rotation.from_rotvec(tilt*x).as_matrix()@reference
             for flip in [False, True]:
                 matrix = np.eye(4)
                 matrix[:3, :3] = rotation@np.diag([-1., -1., 1.]) if flip else rotation
                 matrix[:3, 3] = anchor-matrix[:3, :3]@pad_local
-                poses.append({'pose': matrix_pose(matrix), 'source': 'RGB-D frontal handle refinement',
-                              'anchor_index': anchor_index, 'tilt_rad': tilt, 'half_turn': flip})
+                poses.append({'pose': matrix_pose(matrix), 'source': 'RGB-D observed handle proposal',
+                              'orientation_family':'frontal' if yaw==0 else 'oblique',
+                              'anchor_index': anchor_index, 'tilt_rad': tilt,
+                              'yaw_rad':yaw,'half_turn': flip})
     return poses
 
 

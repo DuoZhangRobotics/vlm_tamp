@@ -1,0 +1,17 @@
+# Core versions validated on the server's Blackwell GPU. The full receipt is
+# results/curobo-v2-migration-20261022/environment-freeze.txt.
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.7.1+cu128
+warp-lang==1.18.0
+numpy==1.26.4
+scipy==1.14.1
+numpy-quaternion==2024.0.13
+cuda-core[cu12]==1.2.2
+cuda-bindings==12.9.10
+cuda-pathfinder==1.8.3
+cuda-toolkit==12.9.2.0
+yourdfpy==0.0.58
+trimesh==5.1.1
+viser==1.1.1
+setuptools-scm==8.2.0
+wheel

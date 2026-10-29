@@ -1,5 +1,14 @@
 # cuRobo IK adaptation on LIBERO
 
+This document records the historical v1 adapter. The shared robot service now
+defaults to the [v2 migration](curobo_v2_migration_20261022.md), whose report
+records the current server environment, validation and remaining regressions.
+The v1 environment and explicit legacy backend remain available.
+The latest implementation and successful fresh-physics test are documented in
+[integrated cuRobo continuation](curobo_v2_continuation_20261022.md).
+[Adaptive Luna practice](luna_curobo_continuation_practice_20261022.md) subsequently
+succeeded on all five same-scene attempts and produced a candidate memory bundle.
+
 This experiment changes the grasp IK backend and adds a 0.025 rad command joint
 reserve. It retains the v11 RGB-D reconstruction, task contact permissions,
 physical Panda controller, and native LIBERO success predicate. Contact-rich

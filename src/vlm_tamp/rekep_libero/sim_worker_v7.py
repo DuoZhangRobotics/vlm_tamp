@@ -26,7 +26,9 @@ class SimulatorWorkerV7(SimulatorWorkerV4):
         sim = self.env.sim
         sim.forward()
         arrays, cameras = {}, {}
+        selected=getattr(self,'selected_capture_cameras',None)
         for logical, actual in [('agentview', 'agentview'), ('wrist', 'robot0_eye_in_hand')]:
+            if selected is not None and logical not in selected:continue
             rgb, raw = sim.render(camera_name=actual, width=IMAGE_SIZE, height=IMAGE_SIZE, depth=True)
             calibration = self._camera_calibration(actual)
             depth = metric_depth(raw[::-1], calibration['near_m'], calibration['far_m'])
@@ -35,6 +37,7 @@ class SimulatorWorkerV7(SimulatorWorkerV4):
             arrays[logical + '_world_points'] = world_points(depth, calibration['intrinsic'], calibration['camera_to_world']).astype(np.float32)
             cameras[logical] = calibration
         for name in ['frontview', *ARM_VIEW_POLICIES]:
+            if selected is not None and name not in selected:continue
             rgb, raw, calibration = self._frontview() if name == 'frontview' else self._fixed_view(ARM_VIEW_POLICIES[name])
             depth = metric_depth(raw, calibration['near_m'], calibration['far_m'])
             arrays[name + '_rgb'] = rgb

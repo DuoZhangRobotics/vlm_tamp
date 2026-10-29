@@ -9,7 +9,7 @@ import numpy as np
 from .rekep_libero.geometry import pose_matrix, transform_points
 
 
-def hand_motion(scene, chain, before, after):
+def hand_motion(scene, chain, before, after,*,pad_depth_offset=0.):
     tcp = pose_matrix(before['eef_pose_world_xyzw'])
     pads = [np.asarray(v['vertices_world']).mean(0)
             for v in before['robot_collision_volumes_world']
@@ -17,6 +17,7 @@ def hand_motion(scene, chain, before, after):
     if len(pads) != 2:
         raise ValueError('Exactly two finger pads are needed to locate the grip point')
     local = transform_points([np.mean(pads, axis=0)], np.linalg.inv(tcp))[0]
+    local[2]+=float(pad_depth_offset)
     first = tcp[:3, 3] + tcp[:3, :3] @ local - scene.origin
     current_tcp = pose_matrix(chain.forward(after['joint_positions']))
     last = current_tcp[:3, 3] + current_tcp[:3, :3] @ local - scene.origin

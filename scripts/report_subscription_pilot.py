@@ -25,7 +25,7 @@ def archive_workspace(work,archive):
     retained=[]
     for f in work.rglob('*'):
         relative=f.relative_to(work)
-        if relative.parts[0] in {'__pycache__','episodic_library'} or '__pycache__' in relative.parts:
+        if relative.parts[0] in {'__pycache__','episodic_library','.analysis_site'} or '__pycache__' in relative.parts:
             continue
         if not f.is_file() or f.is_symlink() or not f.resolve().is_relative_to(work):
             continue
@@ -43,7 +43,9 @@ def main():
     p=argparse.ArgumentParser();p.add_argument('--run',required=True);p.add_argument('--workspace',required=True)
     p.add_argument('--report')
     a=p.parse_args();run=Path(a.run).resolve();work=Path(a.workspace).resolve()
-    if not (run/'agent-exit.json').exists():raise ValueError('Agent is still running')
+    interruption=read(run/'operator-interruption.json',{})
+    if not (run/'agent-exit.json').exists() and not interruption.get('shutdown_verified'):
+        raise ValueError('Agent is still running or its shutdown has not been verified')
     rows=[json.loads(x) for x in (run/'tool-events.jsonl').read_text().splitlines()] if (run/'tool-events.jsonl').exists() else []
     evaluation=read(run/'evaluation-private.json',{'attempts':[]})
     protocol=read(run/'protocol.json',{})
@@ -54,6 +56,8 @@ def main():
         scope='One physical attempt in the episodic-memory study; see the study manifest for same-case versus transfer membership. Explicit public memory is allowed; implementation and private evaluation remain blocked.'
     if protocol.get('learning_practice'):
         scope='Adaptive development practice in one agent session on one scene. Outcome feedback is limited to the official success boolean when enabled. These are learning attempts, not held-out transfer results.'
+        if protocol.get('private_practice_curriculum'):
+            scope='Adaptive practice across declared training cases in one persistent agent session. Only task instructions, current public observations and native success are supplied; these are learning attempts, not held-out transfer results.'
     episodes=evaluation['attempts']
     archive=run/'agent-workspace'
     retained=archive_workspace(work,archive)
@@ -95,7 +99,7 @@ def main():
         'optional_dino_tool_calls':[{'event':r['sequence'],'operation':r['request']['operation'],
             'ok':r['response']['ok'],'wall_seconds':r['wall_seconds']} for r in rows
             if operation_name(r).startswith('dino_')],
-        'agent_exit':read(run/'agent-exit.json'),
+        'agent_exit':read(run/'agent-exit.json'),'operator_interruption':interruption or None,
         'scope':scope}
     (run/'audit.json').write_text(json.dumps(audit,indent=2)+'\n')
     report=Path(a.report).resolve() if a.report else run/'report'
@@ -121,10 +125,11 @@ def main():
     findings=(archive/'findings.txt').read_text() if (archive/'findings.txt').exists() else 'No findings file was produced.'
     guidelines=(archive/'guidelines.json').read_text() if (archive/'guidelines.json').exists() else 'No guidelines file was produced.'
     successful=sum(ep['official_task_success'] for ep in episodes)
+    task_label=protocol.get('case',{}).get('task','open_microwave').replace('_',' ')
     body=f'''<!doctype html><meta charset="utf-8"><title>Subscription Luna robotics pilot</title>
 <style>body{{font:17px system-ui;margin:36px auto;max-width:1100px;padding:0 24px;color:#183344;background:#f5f8fb}}article{{background:white;border:1px solid #d1dbe4;border-radius:12px;padding:20px;margin:18px 0}}video{{width:100%;max-height:600px;background:#152535}}pre{{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;max-height:500px;overflow:auto}}table{{width:100%;border-collapse:collapse}}td,th{{border-bottom:1px solid #ccd6df;padding:9px;text-align:left}}.note{{padding:16px;background:#e8eff8;border-radius:10px}}</style>
 <h1>Luna through ChatGPT: autonomous robot-tool pilot</h1>
-<p>{successful}/{len(episodes)} physical attempts succeeded on one microwave opening case.</p>
+<p>{successful}/{len(episodes)} physical attempts succeeded on one {html.escape(task_label)} case.</p>
 <p class="note">Luna high reasoning used the ChatGPT login. The agent had a coding workspace,
 live RGB-D observations and numerical robot tools. Implementation source, private evaluation,
 and credentials were blocked. The protocol records the explicitly supplied memory and examples.

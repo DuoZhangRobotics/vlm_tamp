@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def record():
     # Robot-only calibration from a preserved episode, no object geometry.
-    return json.loads((ROOT/'results/physical-tasks-v11-eval/goal00-state011/robot-chain.json').read_text())
+    return json.loads((ROOT/'tests/fixtures/calibrated_panda.json').read_text())
 
 
 def urdf_forward(path, q):
@@ -51,10 +51,21 @@ def test_exported_urdf_matches_calibrated_chain_across_seven_joints(tmp_path):
         assert float(joint.find('limit').attrib['upper']) == pytest.approx(high[index]-.025)
 
 
-@pytest.mark.parametrize('margin', [0, -.1, .3])
+@pytest.mark.parametrize('margin', [-.1, .3])
 def test_invalid_reserve_rejected(tmp_path, margin):
     with pytest.raises(ValueError):
         export_model(record(), tmp_path, margin)
+
+
+def test_failed_optimizer_flag_does_not_veto_independently_valid_ik():
+    solver=object.__new__(TaskIK);solver.chain=RobotChain(record());q=solver.chain.reference_joints.copy()
+    solver.reserve=0.;solver.events=[]
+    solver.config={'ik_position_tolerance_m':.003,'ik_orientation_tolerance_rad':.01}
+    solver.self_valid=lambda joints:True
+    solver.client=SimpleNamespace(solve=lambda *a:{'solutions':[q.tolist()],'success':[False],
+        'elapsed_seconds':.01,'peak_gpu_allocated_bytes':0})
+    found=solver.solve_many(solver.chain.forward(q),q)
+    assert len(found)==1 and not found[0]['solver_reported_success']
 
 
 def test_ik_proposals_filtered_by_exact_fk_reserve_and_self_collision():
@@ -73,7 +84,7 @@ def test_ik_proposals_filtered_by_exact_fk_reserve_and_self_collision():
         'success': [True]*4, 'elapsed_seconds': .01, 'peak_gpu_allocated_bytes': 10})
     candidates = solver.solve_many(solver.chain.forward(q), q)
     assert len(candidates) == 1
-    assert solver.events[-1]['rejected'] == {'solver': 0, 'bounds': 1, 'residual': 1, 'duplicate': 1, 'self_collision': 0}
+    assert solver.events[-1]['rejected'] == {'solver': 0, 'bounds': 0, 'residual': 2, 'duplicate': 1, 'self_collision': 0}
     solver.self_valid = lambda value: False
     assert solver.solve_many(solver.chain.forward(q), q) == []
 

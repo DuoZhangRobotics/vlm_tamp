@@ -107,7 +107,7 @@ class CompletionEvidence:
         if np.any(poly<0) or np.any(poly[:,0]>=w) or np.any(poly[:,1]>=h):raise ValueError('Polygon outside original image')
         selection=Image.new('1',(w,h));ImageDraw.Draw(selection).polygon([tuple(x) for x in poly],fill=1)
         valid=np.asarray(selection)&np.isfinite(xyz).all(-1)&np.isfinite(depth)&(depth>0)
-        if prior is not None:valid&=~(np.isfinite(prior)&(prior>0)&(np.abs(depth-prior)<.012))
+        if prior is not None:valid&=~(np.isfinite(prior)&(prior>0)&(np.abs(depth-prior)<.0003))
         ys,xs=np.where(valid);fit,mask=plane_fit(xyz[valid])
         token=f'm{len(self.measurements)+1:03d}'
         overlay=Image.fromarray(rgb).convert('RGB');draw=ImageDraw.Draw(overlay)
@@ -118,8 +118,44 @@ class CompletionEvidence:
         result={**fit,'measurement_id':token,'kind':'surface','observation_ids':[observation_id],
                 'control_steps':record['control_steps'],'camera':camera,'polygon_xy':poly.tolist(),
                 'overlay':str(self.folder/(token+'.png'))}
+        if record.get('calibration'):
+            calibration_path=Path(record['calibration']);raw=calibration_path.read_bytes()
+            expected=record.get('calibration_sha256')
+            if expected is not None and hashlib.sha256(raw).hexdigest()!=expected:
+                raise ValueError('Camera calibration changed since capture')
+            calibration=json.loads(raw)[camera]
+            normal=np.asarray(fit['normal_world']).copy()
+            origin=np.asarray(calibration['camera_to_world'])[:3,3]
+            if normal@(origin-np.asarray(fit['centroid_world_m']))<0:normal=-normal
+            result['normal_toward_camera_world']=normal.tolist()
         self.measurements[token]=result
         self.surface_records[token]=copy.deepcopy(record)
+        return self.save(token,result)
+
+    def geometry_relation(self,first_id,second_id,control_steps):
+        """Compare current surfaces, including different parts, without claiming motion."""
+        first=self.measurements[first_id];second=self.measurements[second_id]
+        if first['kind']!='surface' or second['kind']!='surface':raise ValueError('Choose two surface measurements')
+        if first['control_steps']!=control_steps or second['control_steps']!=control_steps:
+            raise ValueError('Select both surfaces from the current physical state')
+        comparison=compare_planes(first,second)
+        normal=np.asarray(second.get('normal_toward_camera_world',second['normal_world']))
+        offset=float((np.asarray(first['centroid_world_m'])-second['centroid_world_m'])@normal)
+        values={**comparison['values'],'signed_centroid_to_reference_plane_m':offset,
+            'absolute_centroid_to_reference_plane_m':abs(offset)}
+        if 'normal_toward_camera_world' in first and 'normal_toward_camera_world' in second:
+            dot=float(np.clip(np.asarray(first['normal_toward_camera_world'])@normal,-1,1))
+            values['visible_normal_angle_deg']=float(np.degrees(np.arccos(dot)))
+        token=f'm{len(self.measurements)+1:03d}'
+        result={'measurement_id':token,'kind':'surface_geometry','sources':[first_id,second_id],
+            'control_steps':control_steps,'observation_ids':first['observation_ids']+second['observation_ids'],
+            'same_capture':first['observation_ids']==second['observation_ids'],
+            'supported':comparison['supported'],'values':values,'intervals':comparison['intervals'],
+            'semantic_identity_verified':False,'object_motion_claimed':False,
+            'limitations':['Selections may be different parts; their goal relationship is the caller interpretation.',
+                'Unsigned plane angle is 0..90 degrees. Visible-normal angle depends on which faces/cameras were selected.',
+                'Centroid distances depend on the selected patches. These measurements do not replace native task success.']}
+        self.measurements[token]=result
         return self.save(token,result)
 
     def association_path(self,first_id,second_id):

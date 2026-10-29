@@ -7,11 +7,12 @@ import subprocess
 import sys
 import threading
 import queue
+from ..runtime_paths import simulator_python
 
 
 class SimClient:
     def __init__(self, python=None, timeout=180, log_path=None):
-        self.python = str(python or "/home/duo/miniforge3/envs/vlm-tamp/bin/python")
+        self.python = simulator_python(python)
         self.timeout = float(timeout)
         self.log_handle = open(log_path, "a") if log_path else None
         root = Path(__file__).resolve().parents[3]

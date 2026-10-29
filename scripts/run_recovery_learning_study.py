@@ -42,11 +42,11 @@ def diagnostic(source):
             'interpretation':'Distinguish rejected plans from ineffective or poorly tracked physical motion. No change to the numerical tools is made from this audit.'}
 
 
-def base_command(folder,state,prompt,seconds):
+def base_command(folder,state,prompt,seconds,*,dino_tools=True):
     return [sys.executable,str(ROOT/'scripts/run_subscription_agent_pilot.py'),
         '--output',str(folder),'--state',str(state),'--scene-variant','nominal',
         '--prompt-file',str(prompt),'--agent-seconds',str(seconds),
-        '--fit-diagnostics','--dino-tools','--abstract-experience',
+        '--fit-diagnostics',*(['--dino-tools'] if dino_tools else []),'--abstract-experience',
         '--stop-on-success','--persistent-episode','--surface-contact-tools']
 
 
@@ -68,7 +68,16 @@ def run_logged(command,path):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output',required=True)
+    parser.add_argument('--transfer-states',type=int,nargs='+',default=[2,12,32,44])
+    parser.add_argument('--practice-session-seconds',type=int,default=36000)
+    parser.add_argument('--disable-dino',action='store_true',help='Declare the same reduced optional tool set for every condition')
     args=parser.parse_args()
+    if (not args.transfer_states or len(set(args.transfer_states))!=len(args.transfer_states)
+            or any(not 0<=s<50 or s==1 for s in args.transfer_states)):
+        raise ValueError('Transfer needs distinct official states outside the practice state')
+    if args.practice_session_seconds<1800:
+        raise ValueError('Practice session must permit at least one complete episode budget')
+    planned=2*len(args.transfer_states)
     out=(ROOT/args.output).resolve()
     if out.exists() or not out.is_relative_to(ROOT/'results'):raise ValueError('Use a new results directory')
     require_storage_headroom(ROOT)
@@ -89,9 +98,10 @@ def main():
         assert all(sha(ROOT/p)==h for p,h in hashes.items()),'Study tools changed'
         assert all(sha(ROOT/p)==h for p,h in input_hashes.items()),'Frozen study inputs changed'
     protocol={'development_state':1,'initial_practice_attempts':5,'maximum_practice_attempts':20,
-        'practice_session_seconds':36000,'seconds_per_episode':1800,'control_steps_per_episode':600,
-        'transfer_states':[2,12,32,44],'conditions':['without_learned_memory','with_learned_memory'],
-        'transfer_attempts_each':1,'planned_transfer_episodes':8,'seed':0,
+        'practice_session_seconds':args.practice_session_seconds,'seconds_per_episode':1800,'control_steps_per_episode':600,
+        'transfer_states':args.transfer_states,'conditions':['without_learned_memory','with_learned_memory'],
+        'transfer_attempts_each':1,'planned_transfer_episodes':planned,'seed':0,
+        'optional_dino_tools_available':not args.disable_dino,
         'source_sha256':hashes,'input_sha256':input_hashes,
         'model':'gpt-6-luna','reasoning_effort':'high','authentication':'ChatGPT subscription',
         'paid_api_requests_allowed':False,'numerical_algorithms_unchanged':True,
@@ -105,7 +115,8 @@ def main():
     write_json(out/'diagnostic-private.json',diagnostic(ROOT/'results/persistent-contact-transfer-v2-20261020/state001'))
     write_json(out/'status.json',{'phase':'practice','active':True})
     practice=out/'practice'
-    command=base_command(practice,1,inputs/'practice-prompt.txt',36000)+[
+    command=base_command(practice,1,inputs/'practice-prompt.txt',args.practice_session_seconds,
+        dino_tools=not args.disable_dino)+[
         '--attempts','20','--initial-attempts','5','--learning-practice','--episode-seconds','1800',
         '--guidelines-source',str(inputs/'common_guide.json'),
         '--successful-method-file',str(inputs/'successful_method.json'),
@@ -120,9 +131,12 @@ def main():
     verify()
     print(json.dumps({'event':'practice_completed','returncode':code,'attempts':summary['attempts_used'],
         'successes':summary['native_goal_reached_attempts']}),flush=True)
-    if code:
+    termination=read_json(practice/'agent-exit.json') if (practice/'agent-exit.json').exists() else {}
+    normal_budget_exit=(termination.get('normal_terminal') and
+        termination.get('termination_reason')=='practice_wall_budget_exhausted')
+    if code and not normal_budget_exit:
         write_json(out/'status.json',{'phase':'practice_infrastructure_failure','active':False,'returncode':code,
-            'transfer_planned':8,'transfer_started':0})
+            'transfer_planned':planned,'transfer_started':0})
         raise SystemExit(code)
     frozen=freeze_lessons(practice)
     memory=inputs/'learned-guidelines.json'
@@ -139,8 +153,9 @@ def main():
             folder=out/'transfer'/f'state{state:03d}-{condition}'
             folder.parent.mkdir(exist_ok=True)
             write_json(out/'status.json',{'phase':'transfer','active':True,'state':state,
-                'condition':condition,'completed':len(rows),'planned':8})
-            command=base_command(folder,state,inputs/'transfer-prompt.txt',1800)+['--attempts','1','--evaluation-case']
+                'condition':condition,'completed':len(rows),'planned':planned})
+            command=base_command(folder,state,inputs/'transfer-prompt.txt',1800,
+                dino_tools=not args.disable_dino)+['--attempts','1','--evaluation-case']
             if condition=='with_learned_memory':command+=['--guidelines-source',str(memory)]
             print(json.dumps({'event':'transfer_started','state':state,'condition':condition}),flush=True)
             code,elapsed=run_logged(command,out/f'state{state:03d}-{condition}.log')
@@ -155,9 +170,9 @@ def main():
                 'cleanup':cleanup}
             assert row['physical_attempts']<=1
             rows.append(row)
-            write_json(out/'transfer-summary.json',{'planned':8,'completed':len(rows),'cases':rows,
+            write_json(out/'transfer-summary.json',{'planned':planned,'completed':len(rows),'cases':rows,
                 'scores':{c:{'native_successes':sum(r['native_success'] for r in rows if r['condition']==c),
-                             'planned':4,'completed':sum(r['condition']==c for r in rows)} for c in protocol['conditions']},
+                             'planned':len(protocol['transfer_states']),'completed':sum(r['condition']==c for r in rows)} for c in protocol['conditions']},
                 'all_planned_cases_in_denominator':True})
             print(json.dumps({'event':'transfer_completed','state':state,'condition':condition,
                 'native_success':outcome['native_success'],'steps':episodes[0]['control_steps'] if episodes else None,

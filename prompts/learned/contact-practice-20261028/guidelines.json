@@ -1,0 +1,70 @@
+{
+  "principles": [
+    {
+      "name": "Select an opaque door patch and preserve the cavity relationship",
+      "applicability": "Closing a hinged panel when a camera view shows both the microwave cavity and the door attachment edge.",
+      "observable_failure_signals": [
+        "The selected region's fitted normal points vertically despite the door being upright.",
+        "The surface fit has a large residual or the preview overlay falls in the window opening.",
+        "A push disturbs nearby tabletop objects while the cavity-door alignment does not improve."
+      ],
+      "conditional_actions": [
+        "Choose a smaller patch on the opaque frame or solid door surface, away from the transparent opening.",
+        "Use a larger target region on the same visible door to assess the door-cavity relationship.",
+        "Preview the new geometry and inspect the measured point, normal, and overlay before acting."
+      ],
+      "supporting_attempts": "Attempts 1 through 6",
+      "limits": "Supported by six attempts in one scene. A visually plausible patch can still select background through a window; a horizontal normal alone does not prove that a region belongs to the door. A solid patch also may fail when the current door orientation makes the approach or direction unsuitable."
+    },
+    {
+      "name": "Choose push direction from the current door orientation",
+      "applicability": "A door remains visibly open after a physical push and its face or edge orientation has changed.",
+      "observable_failure_signals": [
+        "The door swings farther away from covering the cavity after a push.",
+        "The robot reaches the selected surface but native task success remains false.",
+        "Repeated same-direction actions produce no closing relationship or continue the wrong swing."
+      ],
+      "conditional_actions": [
+        "Reobserve the current panel and cavity from a view that exposes the attachment edge.",
+        "Estimate the current face normal again and select the inward push direction relative to the cavity.",
+        "If the observed panel moves away from closure, change the direction for the next bounded physical experiment instead of repeating the old sign.",
+        "Use the native task result and image relationship after every executed push; motion-tracker failure alone is inconclusive."
+      ],
+      "supporting_attempts": "Attempts 1 through 6",
+      "limits": "Successful actions used different observed faces and directions. Attempts 3, 4, 5, and 6 each needed direction or contact changes after an unsuccessful motion. These outcomes do not provide a universal world direction or prove the same rule for other hinges."
+    },
+    {
+      "name": "Treat motion-tracker failure as unresolved motion",
+      "applicability": "A contact skill returns without task success and reports too few RGB-D feature correspondences.",
+      "observable_failure_signals": [
+        "The tracker reports insufficient visible matches.",
+        "The action executed, but the returned measurement is not accepted."
+      ],
+      "conditional_actions": [
+        "Compare fresh images of the door, cavity, and nearby objects to judge actual direction and progress.",
+        "If the door relationship improved, select fresh geometry and continue toward closure.",
+        "If it worsened or stayed open, change the contact region or direction based on the current view.",
+        "Keep native task success as the completion test."
+      ],
+      "supporting_attempts": "Attempts 1 through 6",
+      "limits": "The tracker was unresolved on multiple physical pushes, including some followed by visible scene changes. Image interpretation is qualitative and can be obscured by the robot; it does not substitute for a native success result."
+    },
+    {
+      "name": "Replan on the current solid side frame after the door swings",
+      "applicability": "A bounded action changes the door angle but leaves the cavity visibly uncovered, exposing a new opaque side or edge of the door.",
+      "observable_failure_signals": [
+        "The task remains incomplete after a push and the door has visibly changed angle.",
+        "The current contact preview lands in the window opening or fits the tabletop.",
+        "A push along an estimated door-to-cavity vector moves the door but does not reduce the visible opening."
+      ],
+      "conditional_actions": [
+        "Capture a fresh view and select a solid side border on the door's current orientation.",
+        "Check that the selected surface normal is consistent with the visible upright panel and that the overlay covers the door frame.",
+        "Use a new bounded push directed into the current face, then judge the updated door-cavity relationship and native task result.",
+        "If the door moves away from closure, change direction based on the new view rather than reusing the prior world vector."
+      ],
+      "supporting_attempts": "Attempts 4 through 6",
+      "limits": "Attempts 4 and 5 succeeded from a changed door orientation after earlier actions; attempt 6 succeeded after one unsuccessful initial side-frame push. This supports fresh replanning after motion, not a one-push reset method or a general hinge rule."
+    }
+  ]
+}

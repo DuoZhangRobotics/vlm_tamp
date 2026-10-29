@@ -7,6 +7,9 @@ inconsistent matches are rejected. No simulator articulation enters this code.
 import numpy as np
 from scipy.spatial import cKDTree
 import cv2
+import time
+
+from .landmark_evidence import summarize_pairs
 
 
 def fit_se2(first,second):
@@ -18,7 +21,9 @@ def fit_se2(first,second):
     return R,b-R@a
 
 
-def estimate_rigid_hinge(first,second,*,prior=None,seed=0):
+def estimate_rigid_hinge(first,second,*,prior=None,seed=0,minimum_radius_m=.06):
+    if not np.isfinite(minimum_radius_m) or not 0<=minimum_radius_m<.70:
+        raise ValueError('Minimum visible-point radius must be finite and in [0,0.70) metres')
     first=np.asarray(first,float).reshape(-1,3);second=np.asarray(second,float).reshape(-1,3)
     valid=np.isfinite(first).all(1)&np.isfinite(second).all(1)
     movement=np.linalg.norm(second[:,:2]-first[:,:2],axis=1)
@@ -56,7 +61,7 @@ def estimate_rigid_hinge(first,second,*,prior=None,seed=0):
     result.update(hinge_world_m=[*origin.tolist(),float(np.mean(first[best,2]))],
         bootstrap_spread90_m=spread,bootstrap_is_geometric_stability_not_calibrated_uncertainty=True,
         radius_m=radius)
-    okay=(spread<.015 and .06<radius<.70 and abs(angle)<np.radians(70) and result['rms_m']<.002)
+    okay=(spread<.015 and minimum_radius_m<radius<.70 and abs(angle)<np.radians(70) and result['rms_m']<.002)
     if prior is not None:okay=okay and np.linalg.norm(origin-np.asarray(prior)[:2])<.10
     result.update(accepted=bool(okay),reason='accepted' if okay else 'unstable_or_inconsistent_hinge')
     return result
@@ -70,6 +75,28 @@ def measured_pose(result):
     return transform
 
 
+def stationary_pose_evidence(first,second):
+    """Recognize stationary selected geometry without pretending to fit a hinge."""
+    a=np.asarray(first,float).reshape(-1,3);b=np.asarray(second,float).reshape(-1,3)
+    valid=np.isfinite(a).all(1)&np.isfinite(b).all(1)
+    a,b=a[valid],b[valid]
+    if len(a)<12:return None
+    quiet=np.linalg.norm(b-a,axis=1)<=.0015
+    if np.mean(quiet)<.90:return None
+    span=float(np.linalg.norm(np.ptp(a[quiet,:2],axis=0)))
+    if span<.06:return None
+    rotation,translation=fit_se2(a[quiet,:2],b[quiet,:2])
+    error=np.linalg.norm(a[quiet,:2]@rotation.T+translation-b[quiet,:2],axis=1)
+    return {'accepted':False,'pose_accepted':True,'reason':'selected_region_stationary; hinge_not_observable',
+        'source':'measured stationary RGB-D landmarks; no attachment assumption',
+        'rotation_xy':rotation.tolist(),'translation_xy_m':translation.tolist(),
+        'rotation_rad':float(np.arctan2(rotation[1,0],rotation[0,0])),
+        'rms_m':float(np.sqrt(np.mean(error**2))),'landmark_span_m':span,
+        'inliers':int(quiet.sum()),'correspondences':len(a),
+        'observed_motion_status':'stationary','stationary_fraction':float(np.mean(quiet)),
+        'stationary_threshold_m':.0015,'simulator_geometry_used':False}
+
+
 def robot_mask(camera):
     depth=np.asarray(camera['depth']).squeeze();prior=camera.get('known_robot_depth_prior')
     if prior is None:return np.zeros(depth.shape,bool)
@@ -78,13 +105,13 @@ def robot_mask(camera):
 
 
 class RGBDHingeTracker:
-    def __init__(self,cameras,moving_points,*,prior,reference_step=0,output=None):
+    def __init__(self,cameras,moving_points,*,prior,reference_step=0,output=None,camera_names=None):
         self.prior=np.asarray(prior,float);self.references={};self.reference_step=reference_step
         tree=cKDTree(np.asarray(moving_points,float))
-        for name in ['agentview','frontview','arm_side','arm_back','arm_top']:
+        for name in (camera_names if camera_names is not None else ['agentview','frontview','arm_side','arm_back','arm_top']):
             if name not in cameras:continue
             view=cameras[name];xyz=np.asarray(view['world_points']);finite=np.isfinite(xyz).all(2)
-            mask=np.zeros(finite.shape,bool);mask[finite]=tree.query(xyz[finite])[0]<.004
+            mask=np.zeros(finite.shape,bool);mask[finite]=tree.query(xyz[finite],distance_upper_bound=.004)[0]<.004
             mask&=~robot_mask(view)
             mask=cv2.erode(mask.astype(np.uint8),np.ones((3,3),np.uint8))
             gray=cv2.cvtColor(view['rgb'],cv2.COLOR_RGB2GRAY)
@@ -97,9 +124,10 @@ class RGBDHingeTracker:
                 for key,value in view.items():data[name+'_'+key]=value
             np.savez_compressed(output,**data)
 
-    def observe(self,cameras,*,control_step,output=None):
+    def observe(self,cameras,*,control_step,output=None,include_displacement_evidence=False):
         first=[];second=[];views=[]
         for name,reference in self.references.items():
+            if name not in cameras:continue
             view=cameras[name];gray=cv2.cvtColor(view['rgb'],cv2.COLOR_RGB2GRAY)
             original=reference['pixels']
             tracked,status,_=cv2.calcOpticalFlowPyrLK(reference['gray'],gray,original,None,winSize=(25,25),maxLevel=3,
@@ -117,7 +145,26 @@ class RGBDHingeTracker:
                 if np.isfinite(old).all() and np.isfinite(new).all():p0.append(old);p1.append(new)
             first.extend(p0);second.extend(p1);views.append({'camera':name,'tracked_pairs':len(p0)})
         a=np.asarray(first,float).reshape(-1,3);b=np.asarray(second,float).reshape(-1,3)
+        self.last_pairs=(a,b)
         result=estimate_rigid_hinge(a,b,prior=self.prior)
+        stationary=stationary_pose_evidence(a,b)
+        if stationary is not None:result=stationary
         result.update(camera_counts=views,reference_control_step=self.reference_step,control_step=int(control_step))
+        self.last_displacement_evidence_seconds = 0.
+        if include_displacement_evidence:
+            began = time.perf_counter()
+            try:
+                result['landmark_displacements'] = {
+                    **summarize_pairs(a, b), 'reference_control_step': self.reference_step,
+                    'control_step': int(control_step),
+                }
+            except Exception as error:
+                # A reporting error must not invalidate an otherwise valid fit
+                # or change the existing scene-transport decision.
+                result['landmark_displacements'] = {
+                    'available': False, 'error_type': type(error).__name__,
+                    'error': str(error), 'simulator_object_state_used': False,
+                }
+            self.last_displacement_evidence_seconds = time.perf_counter() - began
         if output is not None:np.savez_compressed(output,reference_world=a,current_world=b)
         return result

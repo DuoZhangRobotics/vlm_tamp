@@ -68,7 +68,7 @@ class ArticulatedWorker(SimulatorWorkerV8):
         self.env = OffScreenRenderEnv(bddl_file_name=suite.get_task_bddl_file_path(index),
             camera_names=['agentview', 'robot0_eye_in_hand'], camera_heights=IMAGE_SIZE,
             camera_widths=IMAGE_SIZE, camera_depths=True, camera_segmentations=None,
-            control_freq=20, horizon=1000, ignore_done=True)
+            control_freq=20, horizon=max(1000,self.maximum_control_steps), ignore_done=True)
         self.env.seed(seed)
         self.env.reset()
         self.latest_obs = self.env.set_init_state(np.asarray(states[state_index]))

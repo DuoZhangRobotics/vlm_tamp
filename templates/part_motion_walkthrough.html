@@ -1,0 +1,296 @@
+<div id="part-motion-walkthrough">
+  <h3 id="pm-title">From a selected surface to a checked joint hypothesis</h3>
+  <div class="viz-controls">
+    <label class="form-label" id="pm-case-label">Recording
+      <select class="form-select" id="pm-case" aria-label="Recording and sampling density"></select>
+    </label>
+    <label class="form-label">Camera
+      <select class="form-select" id="pm-camera" aria-label="Camera"></select>
+    </label>
+  </div>
+  <div class="viz-row pm-stages" role="group" aria-label="Perception pipeline stage">
+    <button class="btn" type="button" data-stage="rgb" aria-pressed="false">RGB</button>
+    <span aria-hidden="true">→</span>
+    <button class="btn" type="button" data-stage="mask" aria-pressed="true">Mask</button>
+    <span aria-hidden="true">→</span>
+    <button class="btn" type="button" data-stage="associate" aria-pressed="false">Other views</button>
+    <span aria-hidden="true">→</span>
+    <button class="btn" type="button" data-stage="features" aria-pressed="false">Features</button>
+    <span aria-hidden="true">→</span>
+    <button class="btn" type="button" data-stage="depth" aria-pressed="false">Depth</button>
+    <span aria-hidden="true">→</span>
+    <button class="btn" type="button" data-stage="track" aria-pressed="false">Tracks</button>
+    <span aria-hidden="true">→</span>
+    <button class="btn" type="button" data-stage="fit" aria-pressed="false">Rigid fit</button>
+    <span aria-hidden="true">→</span>
+    <button class="btn" type="button" data-stage="check" aria-pressed="false">Check</button>
+  </div>
+  <div class="viz-controls pm-secondary">
+    <label class="form-label" id="pm-interval-label">Fitting interval
+      <select class="form-select" id="pm-interval" aria-label="Fitting interval"></select>
+    </label>
+    <label class="form-check">
+      <input class="form-check-input" id="pm-crop" type="checkbox" checked>
+      <span class="form-check-label">Zoom to observed part</span>
+    </label>
+  </div>
+  <div class="viz-row tabular-nums" id="pm-context" aria-live="polite"></div>
+  <figure class="pm-figure">
+    <div class="pm-image-wrap"><canvas id="pm-image" role="img" aria-label="Recorded image with measured perception evidence"></canvas></div>
+    <figcaption class="text-small" id="pm-legend"></figcaption>
+  </figure>
+  <div id="pm-timeline">
+    <label class="form-label" for="pm-frame">Capture <span class="tabular-nums" id="pm-frame-value"></span></label>
+    <input class="form-range" id="pm-frame" type="range" min="0" max="4" value="4" step="1" aria-label="Capture in chronological order">
+  </div>
+  <div class="tabular-nums" id="pm-evidence" aria-live="polite"></div>
+  <div class="text-small" id="pm-origin"></div>
+</div>
+<style>
+  #part-motion-walkthrough .pm-stages { margin-block: 12px; }
+  #part-motion-walkthrough [hidden] { display: none !important; }
+  #part-motion-walkthrough .pm-secondary { margin-block: 10px; }
+  #part-motion-walkthrough .pm-figure { margin: 10px 0; }
+  #part-motion-walkthrough .pm-image-wrap { width: 100%; }
+  #part-motion-walkthrough canvas { display: block; width: 100%; height: auto; }
+  #part-motion-walkthrough figcaption { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 8px; }
+  #part-motion-walkthrough .pm-key { display: inline-flex; align-items: center; gap: 6px; }
+  #part-motion-walkthrough .pm-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--viz-series-1); }
+  #part-motion-walkthrough .pm-outlier { color: var(--viz-series-2); }
+  #part-motion-walkthrough .pm-muted { color: var(--muted-foreground); }
+  #part-motion-walkthrough .pm-axis { color: var(--viz-series-3); }
+  #part-motion-walkthrough .pm-residual { color: var(--viz-series-4); }
+  #part-motion-walkthrough .pm-rgb-only { color: var(--viz-series-1); }
+  #part-motion-walkthrough #pm-evidence { margin-block: 10px 4px; }
+  #part-motion-walkthrough .pm-image-wrap:empty { display: none; }
+</style>
+<script type="application/json" id="pm-data">__PIPELINE_DATA__</script>
+<script>
+(() => {
+  const root = document.getElementById('part-motion-walkthrough');
+  const data = JSON.parse(document.getElementById('pm-data').textContent);
+  const get = id => root.querySelector('#' + id);
+  const caseControl = get('pm-case'), cameraControl = get('pm-camera');
+  const intervalControl = get('pm-interval'), frameControl = get('pm-frame');
+  const cropControl = get('pm-crop'), canvas = get('pm-image');
+  const context = get('pm-context'), legend = get('pm-legend'), evidence = get('pm-evidence');
+  const origin = get('pm-origin'), wrap = root.querySelector('.pm-image-wrap');
+  const stages = ['rgb','mask','associate','features','depth','track','fit','check'];
+  const defaults = { caseIndex: 0, camera: 'agentview', stage: 'mask', frame: 4, interval: 0, crop: true, ...(data.default_state||{}) };
+  let state = { ...defaults }, revision = 0, lastWidth = 0;
+  const imageCache = new Map();
+  const number = (n,d=2) => n == null || !Number.isFinite(n) ? '—' : Number(n).toFixed(d);
+  const selected = () => data.cases[state.caseIndex];
+  const usable = p => p && p[0] != null && p[1] != null && p.every(Number.isFinite);
+  const names = {agentview:'Agent view',frontview:'Front view',arm_side:'Side view'};
+  for (let i=0;i<data.cases.length;i++) caseControl.add(new Option(data.cases[i].name,String(i)));
+  for (const c of data.cameras) cameraControl.add(new Option(names[c] || c,c));
+  get('pm-case-label').hidden = data.cases.length === 1;
+  if(data.title)get('pm-title').textContent=data.title;
+  if(data.cameras.length===1){
+    cameraControl.closest('label').hidden=true;
+    const association=root.querySelector('[data-stage="associate"]');
+    association.hidden=true;association.nextElementSibling.hidden=true;
+  }
+
+  function normalize(value) {
+    const next = {...defaults,...value};
+    if (!Number.isInteger(next.caseIndex) || !data.cases[next.caseIndex]) next.caseIndex=0;
+    if (!data.cameras.includes(next.camera)) next.camera='agentview';
+    if (!stages.includes(next.stage)) next.stage='mask';
+    if (next.stage==='associate' && data.cameras.length===1)next.stage='features';
+    const c=data.cases[next.caseIndex];
+    next.frame=Math.max(0,Math.min(c.steps.length-1,Number(next.frame)||0));
+    next.interval=Math.max(0,Math.min(next.stage==='check'?2:3,Number(next.interval)||0));
+    next.crop=Boolean(next.crop);
+    if (next.stage==='mask') next.camera='agentview';
+    return next;
+  }
+  async function remember() {
+    if (!window.openai?.setWidgetState) return;
+    try {
+      await window.openai.setWidgetState({
+        modelContent:{recording:selected().name,stage:state.stage,camera:state.camera,
+          captureControlStep:selected().steps[state.frame],fittingInterval:state.interval},
+        privateContent:{...state}
+      });
+    } catch (_) {}
+  }
+  function applyStored(value) {
+    if (value?.privateContent) state=normalize(value.privateContent);
+  }
+  applyStored(window.openai?.widgetState);
+  window.addEventListener('openai:set_globals', event => {
+    if (event.detail?.globals?.widgetState) {applyStored(event.detail.globals.widgetState);render();}
+  });
+  function themeColor(variable) {
+    const swatch=document.createElement('span');
+    swatch.style.color='var('+variable+')';root.appendChild(swatch);
+    const color=getComputedStyle(swatch).color;swatch.remove();return color;
+  }
+  function colors() {
+    return {good:themeColor('--viz-series-1'),outlier:themeColor('--viz-series-2'),
+      axis:themeColor('--viz-series-3'),residual:themeColor('--viz-series-4'),
+      muted:themeColor('--muted-foreground'),foreground:themeColor('--foreground')};
+  }
+  function imageFor(asset,mode) {
+    const key=asset+'-'+mode;
+    if (!imageCache.has(key)) imageCache.set(key,new Promise((resolve,reject) => {
+      const image=new Image();image.onload=()=>resolve(image);image.onerror=reject;image.src=data.images[asset][mode];
+    }));
+    return imageCache.get(key);
+  }
+  function key(kind,text) {
+    const item=document.createElement('span');item.className='pm-key';
+    const mark=document.createElement('span');mark.setAttribute('aria-hidden','true');
+    if(kind==='good')mark.className='pm-dot';
+    else {mark.className='pm-'+kind;mark.textContent=kind==='axis'?'│':kind==='residual'?'→':kind==='rgb-only'?'○':'×';}
+    item.append(mark,document.createTextNode(text));legend.append(item);
+  }
+  function frameFor(c) {
+    if(['mask','associate','features'].includes(state.stage))return c.reference;
+    if(state.stage==='fit')return c.fit_pairs[state.interval][1];
+    if(state.stage==='check')return c.checks[state.interval].end;
+    return state.frame;
+  }
+  async function render() {
+    state=normalize(state);const current=++revision,c=selected(),camera=c.cameras[state.camera];
+    const frame=frameFor(c);caseControl.value=String(state.caseIndex);cameraControl.value=state.camera;
+    const hasDepth=camera.depth_available?Boolean(camera.depth_available[frame]):true;
+    cameraControl.disabled=state.stage==='mask';cropControl.checked=state.crop;
+    root.querySelectorAll('[data-stage]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.stage===state.stage)));
+    const isFit=['fit','check'].includes(state.stage);
+    get('pm-interval-label').hidden=!isFit;intervalControl.replaceChildren();
+    const intervalCount=state.stage==='check'?3:4;
+    for(let i=0;i<intervalCount;i++) {
+      const pair=c.fit_pairs[i];intervalControl.add(new Option('Controls '+c.steps[pair[0]]+' → '+c.steps[pair[1]],String(i)));
+    }
+    intervalControl.value=String(state.interval);
+    get('pm-timeline').hidden=!['rgb','depth','track'].includes(state.stage);
+    frameControl.max=String(c.steps.length-1);frameControl.value=String(state.frame);
+    get('pm-frame-value').textContent=(state.frame+1)+' / '+c.steps.length+' · control step '+c.steps[state.frame];
+    context.textContent=(names[state.camera]||state.camera)+' · capture '+(frame+1)+' / '+c.steps.length+' · control step '+c.steps[frame];
+    if(c.sparse_depth)context.textContent+=' · '+(hasDepth?'measured depth':'RGB only');
+    legend.replaceChildren();evidence.textContent='';origin.textContent='';
+    const validCount=camera.valid[frame].filter(Boolean).length;
+    if(state.stage==='rgb') {
+      evidence.textContent=c.rgb_source==='mp4'?'Decoded RGB video frame':'Recorded RGB observation';
+      origin.textContent='Public sensor image; no hidden object geometry.';
+    } else if(state.stage==='mask') {
+      key('good','Selected MobileSAM surface');key('axis','Luna’s coarse box');
+      evidence.textContent='Luna selected part001-0 · mask score 0.961 · 14,034 usable pixels';
+      origin.textContent=c.selection_scope||'Original mask held fixed for the sampling comparison; a mask score does not verify part identity.';
+    } else if(state.stage==='associate') {
+      key('good',state.camera==='agentview'?'Reference mask':'Depth-supported projection');
+      const pixels=camera.mask.reduce((a,r)=>a+r[2],0);
+      evidence.textContent=pixels.toLocaleString()+' supported pixels in this view';
+      origin.textContent='Same capture, calibrated projection; occluded surface is not filled in.';
+    } else if(state.stage==='features') {
+      key('good','Query feature');evidence.textContent=camera.query_count+' image features in this camera';
+      origin.textContent='Corner features plus spaced grid points inside the usable mask; not semantic landmarks.';
+    } else if(state.stage==='depth') {
+      key(hasDepth?'good':'rgb-only',hasDepth?'Tracked pixel with usable measured depth':'RGB track; no depth at this timestamp');
+      evidence.textContent=hasDepth?'Near / bright: '+number(camera.depth_range_m[0])+' m · far / dark: '+number(camera.depth_range_m[1])+' m':'No measured depth at control step '+c.steps[frame];
+      origin.textContent=hasDepth?'Metric depth plus camera calibration lifts image tracks into world coordinates.':'Depth snapshots: '+c.depth_steps.join(', ')+'. No depth is interpolated.';
+    } else if(state.stage==='track') {
+      key('good','Depth-backed track');if(c.sparse_depth)key('rgb-only','RGB-only track');key('muted','Tracker-visible, unusable depth');
+      const visibleCount=camera.tracker_visible[frame].filter(Boolean).length;
+      evidence.textContent=hasDepth?validCount+' / '+camera.query_count+' queries have usable depth at this capture':visibleCount+' / '+camera.query_count+' RGB tracks · no depth captured here';
+      origin.textContent=c.sparse_depth?'Trails connect observed RGB samples. 3D fitting uses only the five measured-depth timestamps.':'Lines connect recorded samples only; tracking and depth validity do not prove rigid-part membership.';
+      if(c.tracking_wall_seconds!=null)context.textContent+=' · tracking '+number(c.tracking_wall_seconds)+' s';
+    } else if(state.stage==='fit') {
+      const fit=c.fits[state.interval];
+      key('good','Rigid-motion inlier');key('outlier','Eligible, inconsistent match');key('muted','Motion/depth filter excluded');key('axis','Estimated upright axis');
+      evidence.textContent=fit.inliers+' / '+fit.eligible+' filtered matches support the fit '+(Object.keys(c.cameras).length===1?'in this camera':'across all cameras')+' · RMS '+number(fit.rms_mm)+' mm · rotation '+number(fit.rotation_deg)+'°';
+      origin.textContent=(fit.accepted?'Single-interval fit accepted; later motion has not been checked at this stage.':'Fit not admitted: '+fit.reason.replaceAll('_',' '))+' Straight connectors show endpoint displacement.';
+      if(fit.axis_error_mm!=null)evidence.textContent+=' · grader-only axis error '+number(fit.axis_error_mm)+' mm';
+    } else {
+      const check=c.checks[state.interval];
+      key('good','Measured checking points');key('residual','Predicted → measured');key('axis','Candidate axis');
+      evidence.textContent=check.status==='insufficient_evidence'?'No admitted fit; verification was not performed':check.rms_mm==null?
+        'Inconclusive · '+(check.reason||'insufficient evidence').replaceAll('_',' ')+' · measured rotation '+number(check.rotation_deg)+'°':
+        (check.status==='motion_supported'?'Motion-supported':'Disagrees')+' · RMS '+number(check.rms_mm)+' / 3.00 mm limit · P90 '+number(check.p90_mm)+' / 5.00 mm limit';
+      origin.textContent=c.origin_kind==='numerical_comparison'?'Fixed-input numerical comparison; no new Luna decision or task-success claim.':state.caseIndex===0 && state.interval===2?'Diagnostic candidate; Luna did not request this final fit/check pair.':
+        (state.caseIndex===0?'Original Luna request; later interval from the same offline-tracked clip.':'Numerical sampling comparison; no new Luna decision or independent trial.');
+    }
+    canvas.setAttribute('aria-label',context.textContent+'. '+evidence.textContent+'. '+origin.textContent);
+    const mode=state.stage==='depth' && hasDepth?'depth':'rgb';
+    let image;
+    try {image=await imageFor(c.frame_assets[frame][state.camera],mode);} catch (_) {
+      evidence.textContent='Recorded preview could not be loaded.';evidence.setAttribute('role','alert');return;
+    }
+    if(current!==revision)return;
+    const roi=state.crop?camera.crop:[0,0,data.source_size,data.source_size];
+    const width=wrap.getBoundingClientRect().width;if(width<1)return;
+    const height=width*(roi[3]-roi[1])/(roi[2]-roi[0]),dpr=window.devicePixelRatio||1;
+    canvas.width=Math.round(width*dpr);canvas.height=Math.round(height*dpr);
+    const ctx=canvas.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);
+    if(state.stage==='depth' && !hasDepth)ctx.globalAlpha=.3;
+    ctx.drawImage(image,roi[0]/512*image.width,roi[1]/512*image.height,
+      (roi[2]-roi[0])/512*image.width,(roi[3]-roi[1])/512*image.height,0,0,width,height);
+    ctx.globalAlpha=1;
+    const col=colors();
+    const xy=p=>[(p[0]-roi[0])*width/(roi[2]-roi[0]),(p[1]-roi[1])*height/(roi[3]-roi[1])];
+    function line(a,b,color,alpha=1,dashed=false) {
+      if(!usable(a)||!usable(b))return;a=xy(a);b=xy(b);ctx.globalAlpha=alpha;ctx.strokeStyle=color;
+      ctx.lineWidth=1.25;ctx.setLineDash(dashed?[4,3]:[]);ctx.beginPath();ctx.moveTo(...a);ctx.lineTo(...b);ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1;
+    }
+    function point(p,color,cross=false,alpha=1,hollow=false) {
+      if(!usable(p))return;p=xy(p);ctx.globalAlpha=alpha;ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=1.3;
+      ctx.beginPath();if(cross){ctx.moveTo(p[0]-2.5,p[1]-2.5);ctx.lineTo(p[0]+2.5,p[1]+2.5);ctx.moveTo(p[0]-2.5,p[1]+2.5);ctx.lineTo(p[0]+2.5,p[1]-2.5);ctx.stroke();}
+      else {ctx.arc(p[0],p[1],2.4,0,2*Math.PI);if(hollow)ctx.stroke();else ctx.fill();}ctx.globalAlpha=1;
+    }
+    if(['mask','associate'].includes(state.stage)) {
+      ctx.fillStyle=col.good;ctx.globalAlpha=.28;
+      for(const [y,x,length] of camera.mask){const p=xy([x,y]);ctx.fillRect(p[0],p[1],length*width/(roi[2]-roi[0]),height/(roi[3]-roi[1])+.2);}
+      ctx.globalAlpha=1;
+      if(state.stage==='mask') {const [x0,y0,x1,y1]=c.box;line([x0,y0],[x1,y0],col.axis);line([x1,y0],[x1,y1],col.axis);line([x1,y1],[x0,y1],col.axis);line([x0,y1],[x0,y0],col.axis);}
+    } else if(state.stage==='features') {
+      camera.queries.forEach(p=>point(p,col.good));
+    } else if(['depth','track'].includes(state.stage)) {
+      const trailValid=c.sparse_depth?camera.tracker_visible:camera.valid;
+      if(state.stage==='track')for(let f=1;f<=frame;f++)for(let q=0;q<camera.query_count;q++)
+        if(trailValid[f-1][q]&&trailValid[f][q])line(camera.pixels[f-1][q],camera.pixels[f][q],col.good,.3);
+      camera.pixels[frame].forEach((p,q)=>{
+        if(camera.valid[frame][q])point(p,col.good);
+        else if(camera.tracker_visible[frame][q]){
+          if(!hasDepth)point(p,col.good,false,1,true);
+          else point(p,col.muted,true,.8);
+        }
+      });
+    } else if(state.stage==='fit') {
+      const [a,b]=c.fit_pairs[state.interval];
+      camera.classes[state.interval].forEach((cls,q)=>{
+        if(!cls)return;const color=cls===3?col.good:cls===2?col.outlier:col.muted;
+        if(cls>=2)line(camera.pixels[a][q],camera.pixels[b][q],color,cls===3?.6:.25);
+        point(camera.pixels[b][q],color,cls!==3,cls===1?.5:1);
+      });
+      const axis=camera.axes[state.interval];if(axis)line(axis[0],axis[1],col.axis,1,true);
+    } else if(state.stage==='check') {
+      const v=camera.verifications[state.interval];
+      v.support.forEach((yes,q)=>{if(yes){line(v.predicted_pixels[q],camera.pixels[frame][q],col.residual,1);point(camera.pixels[frame][q],col.good);point(v.predicted_pixels[q],col.residual,true);}});
+      const axis=v.axis;if(axis)line(axis[0],axis[1],col.axis,1,true);
+    }
+    root.dataset.ready='true';root.dataset.stage=state.stage;root.dataset.capture=String(frame+1);root.dataset.case=String(state.caseIndex);
+    root.dataset.camera=state.camera;root.dataset.interval=String(state.interval);
+    root.dataset.depthAvailable=String(hasDepth);
+  }
+  root.querySelectorAll('[data-stage]').forEach(button=>button.addEventListener('click',()=>{
+    state.stage=button.dataset.stage;render();remember();
+  }));
+  caseControl.addEventListener('change',()=>{
+    const step=selected().steps[state.frame];state.caseIndex=Number(caseControl.value);
+    const steps=selected().steps;state.frame=steps.reduce((best,s,i)=>Math.abs(s-step)<Math.abs(steps[best]-step)?i:best,0);
+    render();remember();
+  });
+  cameraControl.addEventListener('change',()=>{state.camera=cameraControl.value;render();remember();});
+  intervalControl.addEventListener('change',()=>{state.interval=Number(intervalControl.value);render();remember();});
+  frameControl.addEventListener('input',()=>{state.frame=Number(frameControl.value);render();});
+  frameControl.addEventListener('change',remember);
+  cropControl.addEventListener('change',()=>{state.crop=cropControl.checked;render();remember();});
+  new ResizeObserver(entries=>{const width=entries[0].contentRect.width;if(Math.abs(width-lastWidth)>.5){lastWidth=width;render();}}).observe(wrap);
+  new MutationObserver(()=>render()).observe(document.documentElement,{attributes:true,attributeFilter:['class','style','data-theme']});
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>render());
+  render();
+})();
+</script>

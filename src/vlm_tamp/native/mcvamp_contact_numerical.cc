@@ -2,6 +2,7 @@
 // Upstream CRRTC, projection, FK, self collision and CAPT are used without edits.
 #include <chrono>
 #include <memory>
+#include <limits>
 #include <array>
 #include <vector>
 #include <cmath>
@@ -19,6 +20,10 @@ using CAPT = vamp::collision::CAPT;
 using Point = vamp::collision::Point;
 using Clock = std::chrono::steady_clock;
 constexpr size_t lanes = vamp::FloatVectorWidth;
+// Upstream uses this threshold for both its convergence metric and joint-step
+// stagnation check. Keep it unchanged and adapt only our task acceptance metric.
+constexpr float constraint_metric_threshold = 1e-6F;
+constexpr float angular_weighted_tolerance = 1e-6F;
 using Block = Panda::ConfigurationBlock<lanes>;
 struct CellHash {
     size_t operator()(const std::array<int,3>& key) const noexcept {
@@ -61,6 +66,8 @@ struct Scene {
     float point_radius=.0025F;
     float gripper_point_padding=0.F;
     float existing_palm_tolerance=0.F;
+    float position_tolerance=.003F;
+    float orientation_tolerance=0.F; // radians; zero preserves legacy exact constraint
     std::array<float, 7> lower, upper;
     bool articulated = false;
     bool allow_contact = true;
@@ -229,6 +236,8 @@ public:
         geometry.goal_angle=s.goal_angle;geometry.aligned_jaws=s.aligned_jaws;
         geometry.reference_rotation=s.reference_rotation;
         geometry.grasp_constraint=s.grasp_constraint;
+        geometry.position_tolerance=s.position_tolerance;
+        geometry.orientation_tolerance=s.orientation_tolerance;
     }
     Task(const Task& other): Task(other.geometry) {}
     using Residual = Eigen::Matrix<float,6,1>;
@@ -263,12 +272,28 @@ public:
         result[4]=.15F*std::max(0.F,cone-float(M_PI/2));
         return result;
     }
+    float acceptanceMetric(const Residual& residual) const {
+        // The radial/height pair is the Euclidean distance to the hinge circle.
+        // Orientation and progress bounds have separate tolerances. This metric
+        // must not be interpreted as a distance in metres. Keep error() and its
+        // Jacobian in their original scale to preserve projection conditioning.
+        if(!residual.allFinite()) return std::numeric_limits<float>::infinity();
+        float angular_ratio=residual.tail<4>().norm()/angular_weighted_tolerance;
+        if(geometry.grasp_constraint && geometry.orientation_tolerance>0.F) {
+            const float tolerance=.15F*(geometry.grasp_constraint==1 ? geometry.orientation_tolerance
+                : 2.F*std::sin(geometry.orientation_tolerance/2.F));
+            angular_ratio=std::max(residual.segment<3>(2).norm()/tolerance,
+                                  std::abs(residual[5])/angular_weighted_tolerance);
+        }
+        const float ratio=std::max(residual.head<2>().norm()/geometry.position_tolerance,angular_ratio);
+        return constraint_metric_threshold*ratio;
+    }
     vamp::FloatVector<lanes,1> distanceToConstraint(const Block& q) const {
         alignas(32) std::array<float,lanes> result{};
         for(size_t lane=0;lane<lanes;++lane) {
             std::array<float,7> scalar;
             for(size_t j=0;j<7;++j) scalar[j]=q[{j,lane}];
-            result[lane]=error(scalar).norm();
+            result[lane]=acceptanceMetric(error(scalar));
         }
         return vamp::FloatVector<lanes,1>(result);
     }
@@ -279,7 +304,7 @@ public:
             std::array<float,7> scalar;
             for(size_t j=0;j<7;++j) scalar[j]=q[{j,lane}];
             const Residual residual=error(scalar);
-            if(residual.norm()<=1e-6F) continue;
+            if(acceptanceMetric(residual)<=constraint_metric_threshold) continue;
             Eigen::Matrix<float,6,7> jacobian;
             // Float FK needs a milliradian difference. This is planning-only
             // projection; expose the adapter cost separately in timing reports.
@@ -401,6 +426,24 @@ int mcvamp_set_existing_palm_tolerance(void* p,float tolerance) {
     if(!std::isfinite(tolerance) || tolerance<0.F || tolerance>.0005F) return 0;
     static_cast<Scene*>(p)->existing_palm_tolerance=tolerance;return 1;
 }
+int mcvamp_set_position_tolerance(void* p,float tolerance) {
+    if(!std::isfinite(tolerance) || tolerance<=0.F) return 0;
+    static_cast<Scene*>(p)->position_tolerance=tolerance;return 1;
+}
+int mcvamp_set_orientation_tolerance(void* p,float tolerance) {
+    if(!std::isfinite(tolerance) || tolerance<0.F || tolerance>float(M_PI)) return 0;
+    static_cast<Scene*>(p)->orientation_tolerance=tolerance;return 1;
+}
+// Return physical residual components independently of the scaled acceptance
+// metric, so callers can report millimetres without conflating angular terms.
+int mcvamp_constraint_error(void* p,const float* q,float* error,double* metric) {
+    Task task(*static_cast<Scene*>(p));
+    std::array<float,7> scalar;std::copy_n(q,7,scalar.begin());
+    const auto residual=task.error(scalar);
+    std::copy_n(residual.data(),6,error);
+    *metric=task.acceptanceMetric(residual);
+    return std::isfinite(*metric) && *metric<=constraint_metric_threshold;
+}
 int mcvamp_validate(void* p,const float* q,double* stats) {
     auto& s=*static_cast<Scene*>(p); active=&s; s.deadline=Clock::now()+std::chrono::seconds(60);
     const vamp::collision::Environment<vamp::FloatVector<lanes>> empty;
@@ -414,7 +457,7 @@ int mcvamp_project(void* p,const float* tsr,const float* q,float* result,double*
     c->projectConfiguration(b,projected,vamp::planning::constraint::InnerLM,.5F,1.F,100,false);
     for(size_t j=0;j<7;++j) result[j]=projected[{j,0}];
     *residual=c->distanceToConstraint(projected)[{0,0}];
-    return std::isfinite(*residual) && *residual<=1e-6;
+    return std::isfinite(*residual) && *residual<=constraint_metric_threshold;
 }
 // Solve and perform constraint-aware dense resampling before returning a plan.
 // stats[8:]: solve seconds, resample seconds, iterations, sparse count, dense count.
@@ -452,6 +495,10 @@ int mcvamp_plan(void* p,const float* start,const float* goal,const float* tsr,in
         stats[10]=solved.iterations; stats[11]=solved.path.size(); stats[12]=0;
         if(solved.path.size()<2) { statistics(s,stats); return 0; }
         int n=0;
+        auto finish_dense=[&](int code) {
+            stats[9]=std::chrono::duration<double>(Clock::now()-resample).count();
+            stats[12]=n;statistics(s,stats);return code;
+        };
         alignas(32) std::array<float,8> qa{},qb{};
         // Resampling is a planning operation. Reject invalid dense solutions
         // before execution; the executor subsequently sends every reference.
@@ -461,21 +508,47 @@ int mcvamp_plan(void* p,const float* start,const float* goal,const float* tsr,in
             for(size_t j=0;j<7;++j) gap=std::max(gap,std::abs(qb[j]-qa[j]));
             const int subdivisions=std::max(1,int(std::ceil(gap/.006F)));
             for(int i=0;i<subdivisions;++i) {
-                if(n>=capacity) return -2;
+                if(n>=capacity) return finish_dense(-2);
                 std::array<float,7> raw{};
                 for(size_t j=0;j<7;++j) raw[j]=qa[j]+float(i)/subdivisions*(qb[j]-qa[j]);
                 auto x=block(raw.data()), projected=x;
                 if(c) {
                     c->projectConfiguration(x,projected,vamp::planning::constraint::InnerLM,.2F,1.F,100,false);
-                    if(c->distanceToConstraint(projected)[{0,0}]>1e-6F) { statistics(s,stats); return -3; }
+                    float residual=c->distanceToConstraint(projected)[{0,0}];
+                    // Upstream can stop when the squared joint update is <=1e-6,
+                    // before the independently scaled task metric is accepted.
+                    // Resume a few times without relaxing its tolerances or the
+                    // original 2*.2-radian cumulative projection distance cap.
+                    for(int retry=0;retry<3 && std::isfinite(residual) && residual>constraint_metric_threshold;++retry) {
+                        auto retry_start=projected,next=projected;
+                        c->projectConfiguration(retry_start,next,vamp::planning::constraint::InnerLM,.2F,1.F,100,false);
+                        const float next_residual=c->distanceToConstraint(next)[{0,0}];
+                        float displacement_squared=0.F;
+                        for(size_t j=0;j<7;++j) {
+                            const float delta=next[{j,0}]-x[{j,0}];
+                            displacement_squared+=delta*delta;
+                        }
+                        if(!std::isfinite(next_residual) || !std::isfinite(displacement_squared) ||
+                           displacement_squared>4.F*.2F*.2F || next_residual>=residual) break;
+                        projected=next;residual=next_residual;
+                    }
+                    if(!std::isfinite(residual) || residual>constraint_metric_threshold) return finish_dense(-3);
                 }
-                if(!ObservedPanda::fkcc<lanes>(empty,projected)) { statistics(s,stats); return -4; }
+                if(!ObservedPanda::fkcc<lanes>(empty,projected)) return finish_dense(-4);
                 for(size_t j=0;j<7;++j) output[n*7+j]=projected[{j,0}];
                 ++n;
             }
         }
-        if(n>=capacity) return -2;
-        if(!ObservedPanda::fkcc<lanes>(empty,block(goal))) { statistics(s,stats); return -5; }
+        if(n>=capacity) return finish_dense(-2);
+        // The exact requested endpoint is appended below, so it must itself
+        // satisfy the tube, not merely have a nearby admissible projection.
+        if(c) {
+            const float residual=c->distanceToConstraint(block(goal))[{0,0}];
+            if(!std::isfinite(residual) || residual>constraint_metric_threshold) {
+                return finish_dense(-3);
+            }
+        }
+        if(!ObservedPanda::fkcc<lanes>(empty,block(goal))) return finish_dense(-5);
         std::copy_n(goal,7,output+n*7); ++n;
         stats[9]=std::chrono::duration<double>(Clock::now()-resample).count();
         stats[12]=n; statistics(s,stats); return n;

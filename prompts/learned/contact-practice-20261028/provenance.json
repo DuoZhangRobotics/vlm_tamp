@@ -1,0 +1,21 @@
+{
+  "learner": "gpt-6-luna",
+  "source": "/common/users/dz323/vlm_tamp/results/contact-skills-20261028/trials/advisory-v4-practice-close17/agent-workspace/guidelines.json",
+  "sha256": "58f8817207de1e2b1936a9cd02037e857dd03be414aff1fa83166599195dba1b",
+  "verbatim_learner_authored": true,
+  "teacher_or_reflection_model": false,
+  "held_out_updates": false,
+  "native_attempt_outcomes": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true
+  ],
+  "successes": 6,
+  "attempts": 6,
+  "has_successful_attempt": true,
+  "consecutive_successes_observed": true,
+  "note": "Historical learner practice memory, frozen for the 2026-10-29 comparison. Supplied tool documentation is separate. Re-estimate geometry per episode."
+}

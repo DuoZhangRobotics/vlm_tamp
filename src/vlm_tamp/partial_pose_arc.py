@@ -17,8 +17,8 @@ from .rekep_libero.robot_chain_v4 import fixed_orientation_residual
 
 
 class PartialPoseArc:
-    def __init__(self,chain,origin,axis,reference_q,pad_local,*,jaw_tilt=np.pi/3,margin=.025,
-                 grasp_constraint='point'):
+    def __init__(self,chain,origin,axis,reference_q,pad_local,*,jaw_tilt=np.pi/3,margin=0.,
+                 grasp_constraint='point',position_tolerance_m=.003,orientation_tolerance_rad=0.):
         self.chain=chain;self.origin=np.asarray(origin,float)
         self.axis=np.asarray(axis,float);self.axis/=np.linalg.norm(self.axis)
         self.pad=np.asarray(pad_local,float)
@@ -26,11 +26,21 @@ class PartialPoseArc:
         tcp=pose_matrix(chain.forward(self.reference))
         self.reference_rotation=tcp[:3,:3].copy()
         self.anchor=tcp[:3,3]+tcp[:3,:3]@self.pad
+        # Project within the actual robot bounds, without another joint inset.
         self.bounds=np.asarray(chain.limits,float)+[margin,-margin]
         self.jaw_limit=float(np.sin(jaw_tilt))
         if grasp_constraint not in {'point','rigid','jaw_axis'}:
             raise ValueError('Unknown grasp constraint')
         self.grasp_constraint=grasp_constraint
+        self.position_tolerance_m=float(position_tolerance_m)
+        self.orientation_tolerance_rad=float(orientation_tolerance_rad)
+        if not np.isfinite(self.orientation_tolerance_rad) or not 0<=self.orientation_tolerance_rad<=np.pi:
+            raise ValueError('Orientation tolerance must be finite and in [0, pi]')
+        self.angular_weighted_tolerance=(.15*(self.orientation_tolerance_rad if grasp_constraint=='rigid'
+            else 2*np.sin(self.orientation_tolerance_rad/2))
+            if grasp_constraint!='point' and self.orientation_tolerance_rad else 1e-6)
+        if not np.isfinite(self.position_tolerance_m) or self.position_tolerance_m<=0:
+            raise ValueError('Position tolerance must be finite and positive')
 
     def point(self,angle):
         return self.origin+Rotation.from_rotvec(angle*self.axis).apply(self.anchor-self.origin)
@@ -84,8 +94,16 @@ class PartialPoseArc:
         if avoidance is not None:
             candidate,polish=self.project(candidate,angle,evaluations=50)
         residual=self.residual(candidate,angle)
-        return candidate,{'accepted':bool(np.linalg.norm(residual[:3])<2e-5 and np.linalg.norm(residual[3:])<1e-6),
+        orientation_norm=float(np.linalg.norm(residual[3:]))/.15
+        orientation_error=(orientation_norm if self.grasp_constraint=='rigid' else
+            2*np.arcsin(min(1.,orientation_norm/2))) if self.grasp_constraint!='point' else None
+        return candidate,{'accepted':bool(np.linalg.norm(residual[:3])<=self.position_tolerance_m and np.linalg.norm(residual[3:])<=self.angular_weighted_tolerance),
             'position_error_m':float(np.linalg.norm(residual[:3])),
+            'position_tolerance_m':self.position_tolerance_m,
+            'orientation_tolerance_rad':self.orientation_tolerance_rad,
+            'orientation_error_deg':float(np.degrees(orientation_error)) if orientation_error is not None else None,
+            'orientation_tolerance_applied':self.grasp_constraint!='point',
+            'angular_weighted_tolerance':self.angular_weighted_tolerance,
             'jaw_inequality_error':float(np.linalg.norm(residual[3:])), 'evaluations':solved.nfev,
             'grasp_constraint':self.grasp_constraint,
             'wrist_orientation_prescribed':self.grasp_constraint=='rigid','palm_clearance_objective_used':avoidance is not None,
@@ -162,10 +180,17 @@ class PalmClearanceObjective:
 
 
 def short_wrist_limit(context,goal):
+    """Optional caller constraint, independent of horizon or hinge confidence.
+
+    SO(3) rotation distance cannot exceed pi. Returning pi removes only this
+    heuristic veto; joint limits, contact constraints and path checks still apply.
+    """
     options=getattr(context,'motion_options',context.scene.config)
-    if getattr(context,'grasp_constraint','point')!='point':return np.pi
-    if options.get('motion_policy')!='short':return np.pi
-    return np.radians(max(10.,2*np.degrees(goal)+3.) if options.get('hinge_refinement_accepted') else 8.)
+    limit=options.get('max_wrist_reorientation_deg')
+    if limit is None:return np.pi
+    if not np.isfinite(limit) or not 0<float(limit)<=180:
+        raise ValueError('max_wrist_reorientation_deg must be null or in (0, 180]')
+    return float(np.radians(limit))
 
 
 def wrist_excursion(context,q):
@@ -182,7 +207,9 @@ def path_wrist_admitted(context,path,goal):
 
 def partial_goals(context,goal,*,proposals=160,maximum=8,seed=0,deadline=None):
     model=PartialPoseArc(context.chain,context.origin,context.axis,context.reference_q,context.pad_local,
-                        grasp_constraint=getattr(context,'grasp_constraint','point'))
+                        grasp_constraint=getattr(context,'grasp_constraint','point'),
+                        position_tolerance_m=context.scene.config.get('arc_position_tolerance_m',.003),
+                        orientation_tolerance_rad=context.scene.config.get('arc_orientation_tolerance_rad',0.))
     rng=np.random.default_rng(seed);start=context.reference_q
     avoidance=PalmClearanceObjective(context)
     seeds=[start]
@@ -210,8 +237,19 @@ def partial_goals(context,goal,*,proposals=160,maximum=8,seed=0,deadline=None):
     return model,valid,records
 
 
-def full_arc_plan(context,goal,*,seconds=40.,proposals=160,beam_width=5,seed=0):
+def full_arc_plan(context,goal,*,seconds=40.,proposals=160,beam_width=5,seed=0,goal_proposer=None):
     """Try global C-RRTC, then free-wrist arc waypoints with C-RRTC connectors."""
+    if goal_proposer is not None and getattr(goal_proposer,'solver_mode',None)=='local_continuation':
+        started=time.perf_counter()
+        try:
+            path,result=goal_proposer.plan(goal,seconds=seconds)
+            remaining=seconds-(time.perf_counter()-started)
+            if (result['status'] in {'continuation_no_admissible_goal','continuation_connection_failed'}
+                    and getattr(goal_proposer,'global_fallback_enabled',False) and remaining>=3.):
+                return goal_proposer.global_fallback(result,deadline=started+seconds,started=started)
+            return path,result
+        finally:
+            goal_proposer.close()
     before=time.perf_counter();start=context.reference_q
     wrist_limit=short_wrist_limit(context,goal)
     if hasattr(context,'record'):
@@ -222,11 +260,16 @@ def full_arc_plan(context,goal,*,seconds=40.,proposals=160,beam_width=5,seed=0):
         'end_effector_quaternion_prescribed':getattr(context,'grasp_constraint','point')=='rigid',
         'grasp_constraint':getattr(context,'grasp_constraint','point'),'complete_arc_required':True,
         'execution_during_search':False,'global_queries':[],'continuation_layers':[]}
+    report['goal_backend']='curobo_v2' if goal_proposer is not None else 'scipy_partial_pose'
     if not initial['accepted']:return np.empty((0,7)),{**report,'status':'invalid_start'}
-    model,goals,goal_records=partial_goals(context,goal,proposals=proposals,seed=seed,
-                                        deadline=before+.65*seconds)
+    if goal_proposer is None:
+        model,goals,goal_records=partial_goals(context,goal,proposals=proposals,seed=seed,
+                                            deadline=before+.65*seconds)
+    else:
+        model,goals,goal_records=goal_proposer.generate(goal,deadline=before+.65*seconds)
+    report['goal_generation_seconds']=time.perf_counter()-before
     report.update(goal_proposals=goal_records,admissible_goals=len(goals))
-    for number,target in enumerate(goals[:3]):
+    for number,target in enumerate(goals if goal_proposer is not None else goals[:3]):
         remaining=seconds-(time.perf_counter()-before)
         if remaining<=0:break
         path,result=context.plan(start,target,seconds=min(5.,remaining),iterations=5000)
@@ -240,7 +283,7 @@ def full_arc_plan(context,goal,*,seconds=40.,proposals=160,beam_width=5,seed=0):
     # This is a search over the entire arc before motion, not execution-time
     # segmentation/replanning. Every accepted edge is an upstream C-RRTC path.
     rng=np.random.default_rng(seed)
-    avoidance=PalmClearanceObjective(context)
+    avoidance=PalmClearanceObjective(context) if goal_proposer is None else None
     beam=[{'q':start,'path':start[None].copy(),'cost':0.}]
     count=max(1,int(np.ceil(goal/np.deg2rad(3.))))
     for angle in np.linspace(0,goal,count+1)[1:]:
@@ -256,7 +299,11 @@ def full_arc_plan(context,goal,*,seconds=40.,proposals=160,beam_width=5,seed=0):
                 if time.perf_counter()-before>seconds:
                     return np.empty((0,7)),{**report,'status':'search_budget_exhausted','last_progress_rad':float(angle),
                         'total_seconds':time.perf_counter()-before}
-                q,projection=model.project(initial_q,float(angle),avoidance=avoidance);attempted+=1
+                if goal_proposer is None:
+                    q,projection=model.project(initial_q,float(angle),avoidance=avoidance)
+                else:
+                    q,projection=goal_proposer.project(initial_q,float(angle))
+                attempted+=1
                 if not projection['accepted']:continue
                 q,native_projection=context.project(q)
                 if not native_projection['accepted'] or abs(context.progress(q)-angle)>.002:continue

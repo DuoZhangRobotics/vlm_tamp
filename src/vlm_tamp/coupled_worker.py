@@ -19,6 +19,15 @@ from .rekep_libero.sim_worker_articulated import ArticulatedWorker
 
 
 JOINT_DELTA_SCALE_RAD = .05
+REFERENCE_MODES = {'measured_delta','slew_limited'}
+
+
+def slew_limited_reference(target, previous, limits, maximum_speed=1., control_hz=20.):
+    target=checked_joint_target(target,limits);previous=np.asarray(previous,float)
+    if previous.shape!=(7,) or not np.isfinite(previous).all():raise ValueError('Finite previous joint reference required')
+    if not np.isfinite(maximum_speed) or not 0<maximum_speed<=1:raise ValueError('Reference speed must be in (0,1] rad/s')
+    step=maximum_speed/control_hz
+    return np.clip(previous+np.clip(target-previous,-step,step),np.asarray(limits)[:,0],np.asarray(limits)[:,1])
 
 
 def checked_joint_target(target, limits):
@@ -46,6 +55,9 @@ class CoupledWorker(ArticulatedWorker):
     def __init__(self):
         super().__init__()
         self.joint_tracking_enabled = False
+        self.joint_reference_mode='measured_delta'
+        self._pending_joint_reference=None
+        self._joint_reference=None
         self.controller_changes = []
 
     def reset(self, *args, **kwargs):
@@ -69,7 +81,8 @@ class CoupledWorker(ArticulatedWorker):
         result['execution_controller'] = 'JOINT_POSITION' if self.joint_tracking_enabled else 'OSC_POSE'
         if self.joint_tracking_enabled:
             result['joint_servo'] = {
-                'action_convention': 'seven normalized joint deltas followed by gripper',
+                'action_convention': 'official absolute joint goal with reference slew limiting' if self.joint_reference_mode=='slew_limited' else 'legacy measured-relative normalized delta',
+                'reference_mode':self.joint_reference_mode,'maximum_reference_speed_rad_s':1.,
                 'joint_delta_scale_rad': JOINT_DELTA_SCALE_RAD,
                 'kp': np.asarray(self.robot.controller.kp).tolist(),
                 'kd': np.asarray(self.robot.controller.kd).tolist(),
@@ -77,12 +90,13 @@ class CoupledWorker(ArticulatedWorker):
             }
         return result
 
-    def enable_joint_tracking(self, kp=150.):
+    def enable_joint_tracking(self, kp=150.,reference_mode='measured_delta'):
         self._require_env()
         if self.joint_tracking_enabled:
             raise ValueError('Joint tracking is already enabled')
         if not np.isfinite(kp) or not 0<float(kp)<=300:
             raise ValueError('Joint tracking stiffness must be in (0,300]')
+        if reference_mode not in REFERENCE_MODES:raise ValueError('Unknown joint reference mode')
         from robosuite.controllers import load_controller_config
         from robosuite.utils.buffers import DeltaBuffer
 
@@ -120,7 +134,17 @@ class CoupledWorker(ArticulatedWorker):
             self.env.env._action_dim = previous_dim
             raise
         self.joint_tracking_enabled = True
+        self.joint_reference_mode=reference_mode
+        self._joint_reference=np.asarray(self.robot.controller.goal_qpos).copy()
+        ordinary_set_goal=self.robot.controller.set_goal
+        def set_command_reference(action,set_qpos=None):
+            reference=self._pending_joint_reference
+            return ordinary_set_goal(action,set_qpos=reference if reference is not None else set_qpos)
+        # Use the official controller's absolute goal API. This assigns a
+        # desired position only; qpos/qvel and physical contacts are untouched.
+        self.robot.controller.set_goal=set_command_reference
         record = {'control_step': self.control_steps, 'from': 'OSC_POSE', 'to': 'JOINT_POSITION',
+                  'reference_mode':reference_mode,'maximum_reference_speed_rad_s':1.,
                   'robot_action_dim': self.robot.action_dim, 'environment_action_dim': self.env.env.action_dim,
                   'joint_delta_scale_rad': JOINT_DELTA_SCALE_RAD,
                   'kp': np.asarray(self.robot.controller.kp).tolist(),
@@ -134,6 +158,24 @@ class CoupledWorker(ArticulatedWorker):
                 json.dumps(self.controller_changes, indent=2) + '\n')
         return {**self._response_state(), 'controller_change': record}
 
+    def set_joint_reference_mode(self,mode):
+        self._require_env()
+        if not self.joint_tracking_enabled or mode not in REFERENCE_MODES:
+            raise ValueError('Enable joint tracking and select a supported reference mode')
+        previous=self.joint_reference_mode
+        data=self.env.sim.data
+        before={name:np.asarray(getattr(data,name)).copy() for name in ('qpos','qvel','act','ctrl')}
+        self.joint_reference_mode=mode
+        self._joint_reference=np.clip(np.asarray(self.robot.controller.goal_qpos).copy(),self.ik_solver.limits[:,0],self.ik_solver.limits[:,1])
+        changes={name:float(np.max(np.abs(np.asarray(getattr(data,name))-value))) if value.size else 0. for name,value in before.items()}
+        if any(changes.values()):raise RuntimeError('Reference mode change altered integration state')
+        record={'control_step':self.control_steps,'from_reference_mode':previous,'reference_mode':mode,
+            'state_assignment':False,'physical_steps_during_switch':0,'integration_state_max_changes':changes,
+            'controller_gains_changed':False,'actuator_limits_changed':False,'physical_contacts_changed':False}
+        self.controller_changes.append(record)
+        if self.episode_dir:(Path(self.episode_dir)/'controller-changes.json').write_text(json.dumps(self.controller_changes,indent=2)+'\n')
+        return {**self._response_state(),'reference_mode_change':record}
+
     def action(self, *args, **kwargs):
         if self.joint_tracking_enabled:
             raise ValueError('OSC action is disabled after controller switch; use joint_action')
@@ -144,17 +186,24 @@ class CoupledWorker(ArticulatedWorker):
         if not self.joint_tracking_enabled:
             raise ValueError('Call enable_joint_tracking before joint_action')
         target = checked_joint_target(target_joints, self.ik_solver.limits)
-        if isinstance(max_steps, bool) or int(max_steps) != max_steps or not 1 <= int(max_steps) <= MAX_CONTROL_STEPS:
-            raise ValueError('Joint action max_steps must be an integer in [1,600]')
+        if isinstance(max_steps, bool) or int(max_steps) != max_steps or not 1 <= int(max_steps) <= self.maximum_control_steps:
+            raise ValueError(f'Joint action max_steps must be an integer in [1,{self.maximum_control_steps}]')
         measured = np.asarray(self.env.sim.data.qpos[self.robot._ref_joint_pos_indexes])
         normalized_joint_command(target, measured, gripper)
         target_pose = self.ik_solver.fk(target)
         target_transform = pose_matrix(target_pose)
         executed, posture_error = 0, float(np.max(np.abs(target - measured)))
-        for _ in range(min(int(max_steps), MAX_CONTROL_STEPS - self.control_steps)):
+        for _ in range(min(int(max_steps), self.maximum_control_steps - self.control_steps)):
             before = np.asarray(self.env.sim.data.qpos[self.robot._ref_joint_pos_indexes]).copy()
-            control, bounded_goal = normalized_joint_command(target, before, gripper)
-            self.latest_obs, _, _, _ = self.env.step(control)
+            previous_reference=np.asarray(self._joint_reference if self._joint_reference is not None else before).copy()
+            if self.joint_reference_mode=='slew_limited':
+                bounded_goal=slew_limited_reference(target,previous_reference,self.ik_solver.limits)
+                control=np.r_[np.zeros(7),float(gripper)]
+                self._pending_joint_reference=bounded_goal.copy()
+            else:control,bounded_goal=normalized_joint_command(target,before,gripper)
+            try:self.latest_obs, _, _, _ = self.env.step(control)
+            finally:self._pending_joint_reference=None
+            self._joint_reference=bounded_goal.copy()
             self.control_steps += 1
             executed += 1
             actual_joints = np.asarray(self.env.sim.data.qpos[self.robot._ref_joint_pos_indexes]).copy()
@@ -166,9 +215,10 @@ class CoupledWorker(ArticulatedWorker):
                 raise RuntimeError('Official joint controller goal disagrees with commanded bounded reference')
             self.action_log.append({
                 'step': self.control_steps, 'execution_controller': 'JOINT_POSITION',
-                'target_joints': target.tolist(), 'joint_reference_before_step': before.tolist(),
+                'target_joints': target.tolist(), 'joint_reference_before_step': previous_reference.tolist(),
+                'measured_joints_before_step':before.tolist(),'joint_reference_mode':self.joint_reference_mode,
                 'controller_goal_joints': controller_goal.tolist(),
-                'reference_clipped': bool(np.any(np.abs(target - before) > JOINT_DELTA_SCALE_RAD)),
+                'reference_clipped': bool(np.max(np.abs(target-bounded_goal))>1e-10),
                 'target_pose_world_xyzw': np.asarray(target_pose).tolist(),
                 'control': control.tolist(), 'eef_pose_world_xyzw': np.asarray(actual_pose).tolist(),
                 'joint_positions': actual_joints.tolist(),
@@ -192,7 +242,7 @@ class CoupledWorker(ArticulatedWorker):
         return response
 
     def dispatch(self, request):
-        if request['op'] in {'enable_joint_tracking', 'joint_action'}:
+        if request['op'] in {'enable_joint_tracking', 'set_joint_reference_mode', 'joint_action'}:
             arguments = {key: value for key, value in request.items() if key not in {'op', 'id'}}
             return getattr(self, request['op'])(**arguments)
         return super().dispatch(request)

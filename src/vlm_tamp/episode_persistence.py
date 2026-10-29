@@ -44,7 +44,20 @@ def practice_continuation_decision(status, budget, summary, returncode, remainin
     return 'continue_practice'
 
 
-def run_persistent_agent(work,out,env,readonly,initial_prompt,seconds,*,learning_practice=False,episode_seconds=1800):
+def practice_continuation_prompt(budget):
+    return f"""The last physical episode is terminal, but this practice session is
+not complete. Preserve its findings, call practice_status and continue with a
+fresh reset within the granted budget. Initially {budget.get('initial_attempts', 5)}
+attempts were granted; the hard cap is {budget.get('maximum_attempts', 20)}.
+If the granted block is exhausted and the hard cap permits more, use
+request_attempts with your own findings and concrete next hypotheses. Seek
+simulator success and verify repeatability first. No task strategy is supplied
+by this reminder. Write practice-summary.json with best_supported_method and
+stop_reason when the stopping requirements or actual hard budget are reached."""
+
+
+def run_persistent_agent(work,out,env,readonly,initial_prompt,seconds,*,learning_practice=False,episode_seconds=1800,
+                         model='gpt-6-luna',reasoning='high'):
     work,out=Path(work),Path(out)
     started=time.monotonic();deadline=started+seconds
     (out/'episode-deadline.json').write_text(json.dumps({'deadline_monotonic':deadline,
@@ -62,8 +75,8 @@ def run_persistent_agent(work,out,env,readonly,initial_prompt,seconds,*,learning
             reason='practice_wall_budget_exhausted' if learning_practice else 'wall_budget_exhausted'
             break
         number=len(turns)+1;last=out/f'agent-turn{number:03d}-last.txt'
-        command=(codex_arguments(work,last,readonly_paths=readonly,ephemeral=False) if thread_id is None
-                 else codex_resume_arguments(work,last,thread_id,readonly_paths=readonly))
+        command=(codex_arguments(work,last,model=model,reasoning=reasoning,readonly_paths=readonly,ephemeral=False) if thread_id is None
+                 else codex_resume_arguments(work,last,thread_id,model=model,reasoning=reasoning,readonly_paths=readonly))
         (out/f'agent-turn{number:03d}-command.json').write_text(json.dumps(command,indent=2)+'\n')
         (out/f'agent-turn{number:03d}-prompt.txt').write_text(prompt)
         if number==1:
@@ -144,19 +157,14 @@ Keep raw coordinates and paths in findings only. Preserve failures, uncertainty,
 applicability and conditional methods. This is a format repair, not a request
 for another attempt or a new strategy."""
         elif reason=='continue_practice':
-            prompt="""The last physical episode is terminal, but this adaptive practice
-session is not complete. Preserve its findings, call practice_status and continue
-with a fresh reset. If the granted block is exhausted, request_attempts with your
-own findings and concrete next hypotheses. Start with five attempts and extend
-up to twenty if needed. Seek simulator success and verify repeatability first.
-No task strategy is supplied by this reminder. Write practice-summary.json with
-best_supported_method and stop_reason when the minimum block and repeatability
-requirements are met, or when the hard budget is exhausted."""
+            prompt=practice_continuation_prompt(budget)
         else:
             remaining_episode=status.get('remaining_wall_seconds')
             prompt=continuation_prompt(status,remaining_episode if remaining_episode is not None else deadline-time.monotonic())
     (out/'stop-service-reason.json').write_text(json.dumps({'reason':reason})+'\n')
     (out/'agent-exit.json').write_text(json.dumps({'returncode':code,
+        'requested_model':model,'requested_reasoning':reasoning,
+        'started_monotonic':started,'finished_monotonic':time.monotonic(),
         'wall_seconds':time.monotonic()-started,'turns':len(turns),'thread_id':thread_id,
         'termination_reason':reason,'normal_terminal':reason in {
             'simulator_success','control_budget_exhausted','wall_budget_exhausted',

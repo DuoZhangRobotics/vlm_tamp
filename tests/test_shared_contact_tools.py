@@ -25,7 +25,11 @@ def test_shared_tool_configuration_preserves_caller_motion_requests():
     old_agent={'maximum_grasp_search_seconds':180.,'motion_policy':'full','grasp_constraint':'rigid'}
     old_script={'maximum_grasp_search_seconds':600.,'motion_policy':'short'}
     a=shared.tool_configuration(old_agent);b=shared.tool_configuration(old_script)
-    assert shared.tool_contract(a)==shared.tool_contract(b)
+    assert a['maximum_grasp_search_seconds']==180.
+    assert b['maximum_grasp_search_seconds']==600.
+    ca=shared.tool_contract(a);cb=shared.tool_contract(b)
+    ca['settings'].pop('maximum_grasp_search_seconds');cb['settings'].pop('maximum_grasp_search_seconds')
+    assert ca==cb
     assert a['motion_policy']=='full' and a['grasp_constraint']=='rigid'
     assert b['motion_policy']=='short'
     assert old_agent['maximum_grasp_search_seconds']==180.
@@ -38,7 +42,7 @@ def test_grounding_uses_measured_finite_pad_support(monkeypatch):
     supported=[np.array([0.,0.,.16])]
     mechanism=SimpleNamespace(spec={});evidence={'cylinder_radius_m':.01}
     monkeypatch.setattr(shared,'fit_observed_handle',
-        lambda *args:(mechanism,cloud,np.ones((2,2),bool),original,evidence))
+        lambda *args,**kwargs:(mechanism,cloud,np.ones((2,2),bool),original,evidence))
     received=[]
     def menu(axis,points,metadata):
         received.append((axis.copy(),points.copy(),metadata))

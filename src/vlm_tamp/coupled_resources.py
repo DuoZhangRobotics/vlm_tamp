@@ -4,6 +4,7 @@ import copy
 import json
 from pathlib import Path
 import shutil
+import time
 
 import numpy as np
 from PIL import Image
@@ -116,6 +117,7 @@ class CoupledResources:
 
     def grasps(self,cloud,output):
         import yaml
+        began=time.perf_counter()
         output=Path(output)
         xyz=np.asarray(cloud,np.float32)
         seed=getattr(self,'grasp_seed',0)
@@ -132,7 +134,9 @@ class CoupledResources:
         seed_key=b'' if seed==0 else f'grasp-seed:{seed}'.encode()
         digest=hashlib.sha256(xyz.tobytes()+json.dumps(self.pins,sort_keys=True).encode()+seed_key).hexdigest()
         cache=self.cache/('graspgen-'+digest)
+        lookup_seconds=time.perf_counter()-began
         if cache.exists():
+            cache_started=time.perf_counter()
             provenance=read(cache/'input-provenance.json')
             if (provenance['cache_key']!=digest or provenance['checkpoint_pins']!=self.pins
                     or provenance.get('grasp_seed',0)!=seed):
@@ -142,13 +146,29 @@ class CoupledResources:
             shutil.copytree(cache,output)
             provenance.update(reused=True);save(output/'input-provenance.json',provenance)
             with np.load(output/'grasp_candidates.npz') as data:
-                return {key:data[key].copy() for key in ['poses_world_base','scores','retained_indices']}
+                result={key:data[key].copy() for key in ['poses_world_base','scores','retained_indices']}
+            save(output/'generation-timing.json',{'cache_reused':True,
+                'checkpoint_and_cache_key_seconds':lookup_seconds,'cache_read_seconds':time.perf_counter()-cache_started,
+                'model_initialization_seconds':0.,'generation_call_seconds':0.,'cache_write_seconds':0.,
+                'total_seconds':time.perf_counter()-began,'historical_inference_time_is_not_current_work':True})
+            return result
+        initialization_seconds=0.
         if self.graspgen is None:
+            model_started=time.perf_counter()
             from .rekep_libero.perception import GraspGen
             self.graspgen=GraspGen()
+            initialization_seconds=time.perf_counter()-model_started
+        generation_started=time.perf_counter()
         result=self.graspgen.generate(xyz,output,**({'seed':seed} if seed else {}))
+        generation_seconds=time.perf_counter()-generation_started
+        cache_started=time.perf_counter()
         np.save(output/'input-cloud.npy',xyz)
         save(output/'input-provenance.json',{'cache_key':digest,'reused':False,'checkpoint_pins':self.pins,'grasp_seed':seed,
             'input_source':'current predicted RGB-D handle cloud','provided_inventory':False})
         shutil.copytree(output,cache)
+        save(output/'generation-timing.json',{'cache_reused':False,
+            'checkpoint_and_cache_key_seconds':lookup_seconds,'cache_read_seconds':0.,
+            'model_initialization_seconds':initialization_seconds,'generation_call_seconds':generation_seconds,
+            'cache_write_seconds':time.perf_counter()-cache_started,'total_seconds':time.perf_counter()-began,
+            'generation_call_scope':'Sampler, host processing, candidate persistence and checkpoint hashes; not pure GPU utilization.'})
         return result

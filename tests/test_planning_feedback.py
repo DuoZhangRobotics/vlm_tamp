@@ -1,4 +1,5 @@
 from vlm_tamp.planning_feedback import summarize_arc_failure
+from vlm_tamp.planning_feedback import summarize_pose_failure
 
 
 def test_feedback_separates_ik_projection_from_collision_and_unknown_values():
@@ -33,12 +34,15 @@ def test_failed_arc_exposes_current_diagnostics_without_private_path(tmp_path,mo
     (robot.public/'attempt01').mkdir(parents=True)
     robot.calls=3;robot.attempt=1;robot.config={}
     robot.ik=robot.scene=robot.record=robot.spec=None
+    robot.spec={'joint_origin_world_m':[0.,0.,0.],'joint_axis_world':[0.,0.,1.]}
+    robot.epoch=0
     robot.state={'metadata':{'joint_positions':[0.]*7}}
     def fail(*args,**kwargs):
-        folder=args[7];folder.mkdir()
+        folder=args[6];folder.mkdir()
         (folder/'result.json').write_text(json.dumps({'status':'search_budget_exhausted','goal_angle_rad':1.5}))
         raise ValueError('No complete numerical plan')
-    monkeypatch.setattr(module,'contact_plan',fail)
+    monkeypatch.setattr(module,'measured_robot_scene',lambda service:service.scene)
+    monkeypatch.setattr(module,'plan_signed_arc',fail)
     with pytest.raises(ValueError) as caught:
         robot.plan_arc(90,grasp_constraint='rigid')
     details=caught.value.planning_diagnostic
@@ -58,3 +62,14 @@ def test_collision_feedback_names_geometry_and_does_not_reuse_stale_part_for_sel
     assert summary['first_blocking_surface_by_rejected_goal']=={
         'moving_noncontact_geometry':1,'robot_self_collision':1}
     assert summary['first_blocking_robot_part_by_rejected_goal']['gripper0_hand_collision']==1
+
+
+def test_free_pose_feedback_identifies_goal_collision_before_path_search():
+    result=summarize_pose_failure([{'result':{'status':'invalid_endpoint','endpoints':{
+        'start':{'accepted':True},'goal':{'accepted':False,'last_rejected_part':2006,'last_rejected_surface':0}}}}])
+    assert result['module']=='native_scene.endpoint_admission'
+    assert result['robot_valid_ik_solutions']==1
+    assert result['endpoint_rejection_examples'][0]['robot_part']=='robot0_link6_collision'
+    assert result['endpoint_rejection_examples'][0]['reason']=='stationary_observed_geometry'
+    assert not result['physical_motion_issued']
+    assert summarize_pose_failure([])['module']=='full_pose_ik'

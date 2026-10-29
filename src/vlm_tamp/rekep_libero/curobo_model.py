@@ -22,7 +22,7 @@ def axis_frame(axis):
     return np.column_stack([x, np.cross(z, x), z])
 
 
-def export_model(record, directory, margin_rad=.025):
+def export_model(record, directory, margin_rad=0.):
     directory = Path(directory).resolve()
     directory.mkdir(parents=True, exist_ok=True)
     reference = np.asarray(record['reference_joints'], float)
@@ -32,7 +32,7 @@ def export_model(record, directory, margin_rad=.025):
     tcp = np.asarray(record['reference_tcp_world'], float)
     if reference.shape != (7,) or axes.shape != (7, 3) or anchors.shape != (7, 3):
         raise ValueError('Exactly seven calibrated revolute joints are required')
-    if not 0 < margin_rad < .2 or not np.all(limits[:, 0] + margin_rad < limits[:, 1] - margin_rad):
+    if not 0 <= margin_rad < .2 or not np.all(limits[:, 0] + margin_rad < limits[:, 1] - margin_rad):
         raise ValueError('Invalid command joint-limit reserve')
     robot = ET.Element('robot', name='libero_calibrated_panda')
     ET.SubElement(robot, 'link', name='world')

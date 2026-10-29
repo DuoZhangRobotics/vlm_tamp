@@ -37,7 +37,16 @@ def source_commands(run,attempt):
     for event in events:
         op=event['request']['operation'];args=event['request'].get('arguments',{})
         if op=='reset' and event['response']['ok']:current+=1
-        if current!=attempt or op not in {'execute','gripper'} or not event['response']['ok']:continue
+        if current!=attempt or op not in {'execute','gripper','execute_sequence','push','hook_pull'} or not event['response']['ok']:continue
+        if op in {'execute_sequence','push','hook_pull'}:
+            for stage in event['response'].get('result',{}).get('stages',[]):
+                artifact=stage['artifact_id'];name=stage['stage']
+                label=f'{args["plan_id"]}-{name}' if op=='execute_sequence' else name
+                path=run/f'attempt{attempt:02d}'/f'{artifact:03d}-issued-{label}.npy'
+                g=({'opening':-1,'approach':-1,'closure':1,'manipulation':args.get('manipulation_gripper',1)}[name]
+                   if op=='execute_sequence' else 0)
+                commands.append({'event':artifact,'path':str(path),'references':np.load(path),'gripper':g})
+            continue
         label=args['plan_id'] if op=='execute' else ('close' if args.get('close',True) else 'open')
         path=run/f'attempt{attempt:02d}'/f'{event["sequence"]:03d}-issued-{label}.npy'
         refs=np.load(path)
@@ -45,6 +54,16 @@ def source_commands(run,attempt):
         commands.append({'event':event['sequence'],'path':str(path),'references':refs,'gripper':g})
     if not commands:raise ValueError('No issued trajectories')
     return commands
+
+
+def source_reference_mode(run,attempt=1):
+    protocol=read_json(Path(run)/'protocol.json') if (Path(run)/'protocol.json').exists() else {}
+    if protocol.get('controller_reference_mode'):return protocol['controller_reference_mode']
+    path=Path(run)/f'attempt{attempt:02d}/initial/controller-changes.json'
+    if path.exists():
+        changes=read_json(path)
+        if changes and changes[0].get('reference_mode'):return changes[0]['reference_mode']
+    return 'measured_delta'
 
 
 def run_replays(source,attempt,output,repetitions=5):
@@ -68,7 +87,7 @@ def run_replays(source,attempt,output,repetitions=5):
             state=sim.action(state['metadata']['eef_pose_world_xyzw'],gripper=-1,max_steps=60,output_dir=folder/'opened')
             with np.load(folder/'opened/obs.npz') as a,np.load(source/f'attempt{attempt:02d}/opened/obs.npz') as b:
                 checks={k:bool(k in b and np.array_equal(a[k],b[k],equal_nan=True)) for k in a.files}
-            state=sim.enable_joint_tracking(kp=300.)
+            state=sim.enable_joint_tracking(kp=300.,reference_mode=source_reference_mode(source,attempt))
             for command in commands:
                 state,result=execute_batch(sim,state,command['references'],gripper=command['gripper'],event_sink=tracking.append)
                 executions.append({k:v for k,v in result.items() if k!='events'})

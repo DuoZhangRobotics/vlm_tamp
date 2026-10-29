@@ -1,0 +1,84 @@
+Introduction: using the part and motion toolbox
+
+You choose the task strategy, evidence to collect, experiments, recovery and
+lessons to retain. The tools provide measurements and numerical calculations.
+Start from the current task instruction, public observations and episode budget.
+Use compact replies and useful images; load detailed help or saved arrays when
+needed. Depth/calibration, IK and collision calculations belong in numerical tools.
+
+The perception tools connect through returned IDs:
+1. segment_parts: select a visible part with a coarse box or clicks; inspect
+   the proposed masks and choose a part_id. No hinge annotation is required.
+2. associate_views: optionally examine that observed surface in other cameras
+   from the same capture. Occlusion and disagreement are different outcomes.
+3. track_part_motion: follow the selected part through saved observations.
+   A clear reference can come from any included frame; keep observations ordered.
+   For live agentview recordings, track_video_motion uses extra RGB frames while
+   keeping measured depth at the supplied observation timestamps. Other cameras
+   use track_part_motion. More frames are not a guarantee of a better estimate.
+4. estimate_and_verify_joint: fit a joint hypothesis from measured motion and
+   optionally test it against a later motion interval. An unverified estimate
+   and a motion-supported estimate are different results.
+
+5. apply_joint_estimate: explicitly install a current estimate by ID, then obtain
+   fresh plans. The signed task direction and current contact geometry remain.
+   Without a grounded handle, provide current_part_id and motion_sign (+1 or -1)
+   to build a model from the current observed part for joint-linked pushing.
+   A supported joint does not require a vertical handle or establish a pinch.
+   A supported unsigned axis fit does not verify opening/closing direction.
+   After a pivot correction, check that your signed motion still serves the task.
+   Use refresh_contact for current handle/panel geometry when a fixed-world joint
+   hypothesis remains useful; it does not replace that hinge with another visual
+   guess. apply_joint_estimate(..., reuse_fixed_joint=true) explicitly reuses an
+   older estimate from this episode under the fixed-world-joint assumption. It
+   updates the joint parameter, not the current part pose or contact evidence.
+
+Start with the reset camera_overview: it shows already captured cameras in one
+sheet. Open an original view where the intended contact and attachment edge are
+visible before marking pixels. The free edge of a moving panel is not its hinge.
+Use ground_multiview to check independently selected views when unsure. A failed
+contact fit does not install a different vertical feature as a handle; select
+the intended part yourself. A motion_effect reporting a stationary region while
+the hand moved calls for checking part identity/contact before further motion.
+Unknown object motion is not automatically replaced with an attached-hand guess.
+If tracking measured motion but the automatic scene update was unresolved,
+apply_part_motion transports the previous observed part/contact model. Choose
+a reference capture matching scene_reference_control_step and a current capture.
+If current geometry must be refitted instead, refresh_contact keeps the joint.
+Watch grasp_evidence: measured pad gap comes from robot proprioception. If it
+collapses toward fully closed during manipulation, recheck contact rather than
+assuming the close command established a grasp. This is not a tactile certificate.
+   Unsupported checking motion requires an explicitly provisional hypothesis;
+   a candidate contradicted by its checking interval is rejected by this tool.
+
+The perception calls issue no motion and do not update the planning model.
+They need observed object movement to estimate an axis; they cannot create a
+successful probe or substitute gripper movement for object movement. You choose
+whether and how to gather more evidence using the available action tools.
+Planning returns predictions; use captures returned after executed actions as
+motion evidence.
+
+In live work, treat a visually marked hinge as an initial hypothesis. When the
+hinge is uncertain or predicted movement disagrees with observations, prefer
+measured part motion to repeated visual guesses. After informative movement,
+check the estimate and explicitly apply it if useful before further planning.
+Stop on task success; do not collect extra motion solely to exercise a tool.
+
+When a result is unsupported, inspect its reason, support measurements and
+overlays. Consider a different view, part selection, reference or informative
+motion; decide based on the evidence and remaining budget. Report unresolved
+when evidence remains inadequate. Repeating the same request adds no observations.
+
+Current scope: upright revolute joints. The unsigned axis does not determine
+the requested task direction. Mask scores and geometric residuals are not
+calibrated correctness probabilities. Offline tracking uses the supplied clip;
+later-interval agreement is not independent future confirmation.
+
+Before planning, read the relevant grounding/model-update contract: an axis
+alone is not a contact or collision model. Plans do not execute themselves;
+use fresh plans after model changes. Check observed outcomes after actions;
+a successful fit or plan does not establish contact retention or task success.
+
+Keep evidence, failures and uncertainty in your working notes. Scope part IDs,
+coordinates and plans to their episode. Transfer procedural lessons with their
+support and limitations; distinguish supplied tool instructions from discoveries.

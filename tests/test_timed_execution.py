@@ -1,7 +1,20 @@
 import numpy as np
 import pytest
 
-from vlm_tamp.timed_execution import schedule,execute
+from vlm_tamp.timed_execution import schedule,execute,gripper_arm_reference
+
+
+def test_gripper_hold_recovers_measured_overshoot_without_assigning_state():
+    bounds=np.tile([-3.,3.],(7,1));bounds[5]=[-.0175,3.7525]
+    measured=np.zeros(7);measured[5]=3.7529091835;original=measured.copy()
+    target,evidence=gripper_arm_reference(measured,bounds,planning_reserve_rad=.005)
+    assert np.array_equal(measured,original)
+    assert target[5]==pytest.approx(measured[5]-.05)
+    assert np.all(target>=bounds[:,0]) and np.all(target<=bounds[:,1])
+    assert np.max(np.abs(target-measured))<=.05+1e-12
+    assert evidence['performed'] and evidence['joints'][0]['joint']==6
+    quiet,evidence=gripper_arm_reference(target,bounds,planning_reserve_rad=.005)
+    assert np.array_equal(quiet,target) and not evidence['performed']
 
 
 class BlockedSimulator:

@@ -1,0 +1,50 @@
+Carry out the task instruction returned by reset using public observations and
+the documented robot tools. The tool interface declares the initially granted
+and maximum attempts, with 600 controls and 30 minutes per attempt. Context and
+your notes persist. Complete the initial grant; if repeatable success is still
+absent, request more attempts with concrete experiments, within the session cap.
+Read the compact tool index and relevant help. The contact skills push and
+hook_pull are available alongside existing grasped manipulation. Inspect their
+previews when applicable and decide which strategy is justified by the scene.
+Environment collision predictions are advisory throughout these simulation contact skills: inspect
+the reported predictions and learn from actual motion and native task outcomes.
+Physical contacts remain enabled. Push-and-release can be tried experimentally;
+its validation status is a separate result, not a hidden execution permission.
+You choose targets, regions, motion, experiments and recovery; no contact recipe
+or successful coordinates are supplied. Depth, IK and collision calculations
+belong in numerical tools. Use actual feedback rather than inferring contact
+from arm motion. A tool's return without task success is evidence for another
+decision, not permission to reset an active episode with budget remaining.
+
+task_success=false means the task is not complete yet. It is not evidence by
+itself that an action failed, made no progress, or used the wrong direction.
+Use current images and observable goal relationships to judge direction and
+progress. Optional measure_surface and compare_surface_geometry provide
+numerical relations between surfaces you select; they supply no native target.
+Positive joint increments follow the installed signed axis, not a universal
+open/close convention. For a pinch grasp, plan_grasp is only the approach:
+follow its gripper-stage contract, then inspect evidence after closing.
+
+Try useful bounded physical experiments when robot-valid plans are available;
+an environmental contact prediction alone does not prohibit a simulation test.
+Repeated previews without changed evidence do not establish whether a motion
+works. Larger useful motions and release can be strategies for success, not
+only efficiency optimizations. You still choose the applicable strategy.
+
+For each attempt, record your hypothesis, chosen changes, observations and
+outcome. After a terminal attempt, reset while another granted attempt remains.
+Compare methods on success first, then costs. Save findings.txt and a root
+guidelines.json with a nonempty principles list. Each principle should describe
+applicability, observable failure signals, conditional actions, supporting
+attempts and limits. Preserve failures. Distinguish supplied tool descriptions
+from your tested discoveries. Do not claim generalization from one scene.
+
+Transferable guidelines must not contain historical pixel boxes, world poses,
+joint vectors, raw evidence paths, object-state indices or executable replay
+recipes. Relative settings and their observed limitations may be retained.
+Estimate current geometry again in each episode. There is no teacher or
+reflection model. Learning is your practice, feedback and retained notes.
+After completing the initial grant, two consecutive native successes permit
+ending with the documented method and its limits. Otherwise use the available
+attempt budget to test corrections. Write practice-summary.json when finished. Report native successes
+and unresolved failures candidly. Do not ask the human for a solution.

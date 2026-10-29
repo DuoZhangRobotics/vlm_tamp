@@ -1,0 +1,7 @@
+Before relying on a tool result, verify what entity and quantity each value
+represents and whether it still corresponds to the intended selection. Compare
+new or edited estimates with recent observations and the prior model;
+distinguish measured changes from changes introduced by a request or assumption.
+If a material inconsistency remains, choose a check that can resolve it. If the
+evidence is consistent, continue useful planning or action. Briefly record the
+supporting evidence and the outcome you expect from your next operation.

@@ -156,28 +156,35 @@ def grasp_poses(generated,anchors,normal,metadata):
     rows=frontal_poses(normal,anchors,pad_local)
     for index,variant,pose in candidate_variants(generated,metadata['robot_calibration']):
         rotation=pose_matrix(pose)[:3,:3]
-        if -rotation[:,2]@normal<.75 or abs(rotation[:,0]@[0.,0.,1.])>.40:continue
-        if min(np.linalg.norm(pose[:3]-a) for a in anchors)>.10:continue
+        # Frontality and original translation are preferences, not rejection
+        # tests: translations are explicitly grounded on the observed handle.
+        preference=float(1+rotation[:,2]@normal)+.25*abs(float(rotation[:,0]@[0.,0.,1.]))
         for number,anchor in enumerate(anchors):
             refined=np.asarray(pose).copy();refined[:3]=anchor-rotation@pad_local
             rows.append({'pose':refined,'source':'GraspGen rotation with observed handle translation',
+                         'orientation_family':'learned','preference_cost':preference,
                          'graspgen_index':index,'variant':variant,'anchor_index':number})
-    unique=[]
-    rows.sort(key=lambda r:r['anchor_index'])
+    rows.sort(key=lambda r:r.get('preference_cost',0.))
+    unique=[];positions=[];quaternions=[]
     for row in rows:
-        if not any(np.linalg.norm(row['pose'][:3]-v['pose'][:3])<.003 and
-            (Rotation.from_quat(row['pose'][3:])*Rotation.from_quat(v['pose'][3:]).inv()).magnitude()<.05 for v in unique):
-            unique.append(row)
-    groups={number:[row for row in unique if row['anchor_index']==number] for number in range(len(anchors))}
-    interleaved=[];used=set()
-    # Diversify wrist orientation at the two highest supported heights before
-    # exhausting the budget on one orientation across many nearby heights.
-    for rank in range(3):
-        for number,group in list(groups.items())[:2]:
-            if rank<len(group):interleaved.append(group[rank]);used.add((number,rank))
+        p=np.asarray(row['pose'][:3]);q=np.asarray(row['pose'][3:]);q=q/np.linalg.norm(q)
+        if positions:
+            nearby=np.linalg.norm(np.asarray(positions)-p,axis=1)<.003
+            same_rotation=np.abs(np.asarray(quaternions)@q)>np.cos(.05/2)
+            if np.any(nearby & same_rotation):continue
+        unique.append(row);positions.append(p);quaternions.append(q)
+    # Round-robin across sources and heights. Learned/oblique alternatives must
+    # get a chance even when a caller allows only a small number of poses.
+    heights=list(dict.fromkeys([0,len(anchors)-1,len(anchors)//2,*range(len(anchors))])) if anchors else []
+    families=['frontal','learned','oblique']
+    groups={(height,family):[r for r in unique if r['anchor_index']==height and
+        r['orientation_family']==family] for height in heights for family in families}
+    interleaved=[]
     for rank in range(max(map(len,groups.values()),default=0)):
-        for number,group in groups.items():
-            if rank<len(group) and (number,rank) not in used:interleaved.append(group[rank])
+        for height in heights:
+            for family in families:
+                group=groups[height,family]
+                if rank<len(group):interleaved.append(group[rank])
     return interleaved,pad_local
 
 

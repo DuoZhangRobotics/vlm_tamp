@@ -27,6 +27,16 @@ FLOAT=ctypes.POINTER(ctypes.c_float)
 DOUBLE=ctypes.POINTER(ctypes.c_double)
 INTEGER=ctypes.POINTER(ctypes.c_int)
 _TREE_CACHE={}
+JOINT_ADMISSION_RESERVE_RAD=0.  # Actual robot bounds; no added joint-limit reserve.
+
+
+def native_plan_status(count,stats):
+    """Deadline expiry during validation is not evidence of a collision."""
+    if count>1:return 'solved'
+    if stats.get('timed_out'):
+        return 'dense_validation_timeout' if count in {-2,-3,-4,-5} else 'search_timeout'
+    return {0:'no_path',-2:'dense_path_capacity',-3:'dense_projection_failed',-4:'dense_scene_collision',
+        -5:'dense_goal_collision',-9:'native_exception'}.get(count,str(count))
 
 
 def cleanup_worker_dumps(pid,started_at,*,folder=None,executable=None):
@@ -108,25 +118,54 @@ def gripper_cover(metadata,world_robot,*,spacing=.012):
     return np.asarray(rows,float),records
 
 
-def gripper_convex(metadata,world_robot,parts,point_radius):
+def gripper_convex(metadata,world_robot,parts,point_radius,contact_surface=None):
     """Known robot convex geometry in native EEF coordinates, without scene IDs."""
     import vamp
     eef=world_robot@np.asarray(vamp.panda.eefk(metadata['joint_positions']),float)[0]
     inverse=np.linalg.inv(eef)
     volumes={v['robot_geom_name']:v for v in metadata['robot_collision_volumes_world']}
     planes=[];offsets=[0];bounds=[]
+    # Contact skills permit only distal finger geometry (including pad/body
+    # overlap). Legacy grasp callers keep their original full-finger policy.
+    tcp=pose_matrix(metadata['eef_pose_world_xyzw'])
+    tcp_in_eef=inverse@tcp
+    pad_vertices=[transform_points(v['vertices_world'],np.linalg.inv(tcp)) for v in volumes.values()
+                  if v['robot_geom_name'].endswith('_pad_collision')]
+    tip_start=min(p[:,2].min() for p in pad_vertices)-.001 if pad_vertices else 0.
     for part in parts:
         volume=volumes[part['robot_geom_name']]
         world=np.asarray(volume['planes_world'],float)
         local=np.column_stack([world[:,:3]@eef[:3,:3],world[:,3]+world[:,:3]@eef[:3,3]])
         local/=np.linalg.norm(local[:,:3],axis=1)[:,None]
         vertices=transform_points(volume['vertices_world'],inverse)
-        center=vertices.mean(0)
-        expanded=local.copy();expanded[:,3]-=point_radius
-        padded_vertices=HalfspaceIntersection(expanded,center).intersections
-        radius=float(np.max(np.linalg.norm(padded_vertices-center,axis=1))+.00001)
-        planes.extend(local);offsets.append(len(planes))
-        bounds.append([*center,radius,float(part['selected_handle_contact_allowed']),*part['sphere_range']])
+        allowed=part['selected_handle_contact_allowed']
+        pieces=[(local,vertices,allowed)]
+        name=part['robot_geom_name']
+        if contact_surface is not None:
+            if contact_surface not in {'fingertips','palm'}:raise ValueError('Unknown contact surface')
+            if 'finger' in name and not name.endswith('_pad_collision'):
+                # z_tcp = axis_eef dot (p_eef - tcp_origin_eef).
+                axis=tcp_in_eef[:3,2];cut=tip_start+axis@tcp_in_eef[:3,3]
+                pieces=[]
+                from scipy.optimize import linprog
+                for plane,permission in [(np.r_[axis,-cut],False),(np.r_[-axis,cut],True)]:
+                    clipped=np.vstack([local,plane])
+                    # Chebyshev centre supplies a strictly interior point even
+                    # for asymmetric configured convex finger meshes.
+                    fit=linprog([0,0,0,-1],A_ub=np.c_[clipped[:,:3],np.ones(len(clipped))],
+                        b_ub=-clipped[:,3],bounds=[(None,None)]*3+[(0,None)],method='highs')
+                    if not fit.success or fit.x[3]<1e-8:continue
+                    points=HalfspaceIntersection(clipped,fit.x[:3]).intersections
+                    pieces.append((clipped,points,permission))
+            else:
+                pieces=[(local,vertices,name.endswith('_pad_collision') or contact_surface=='palm')]
+        for local_piece,points,permission in pieces:
+            center=points.mean(0)
+            expanded=local_piece.copy();expanded[:,3]-=point_radius
+            padded_vertices=HalfspaceIntersection(expanded,center).intersections
+            radius=float(np.max(np.linalg.norm(padded_vertices-center,axis=1))+.00001)
+            planes.extend(local_piece);offsets.append(len(planes))
+            bounds.append([*center,radius,float(permission),*part['sphere_range']])
     return _f(planes),np.ascontiguousarray(offsets,dtype=np.int32),_f(bounds)
 
 
@@ -152,10 +191,21 @@ def arm_convex(metadata,record,world_robot):
 class NativeScene:
     """A process-local CAPT context. It is never passed to the executor."""
     def __init__(self,scene,record,metadata,reference_q,goal_angle,*,articulated=True,aligned=True,
-                 allow_contact=True,point_radius=.0025,gripper_padding=0.,output=None,grasp_constraint='point'):
+                 allow_contact=True,point_radius=.0025,gripper_padding=0.,output=None,grasp_constraint='point',collision_policy=None):
         if grasp_constraint not in {'point','rigid','jaw_axis'}:
             raise ValueError('Unknown grasp constraint')
         self.grasp_constraint=grasp_constraint
+        self.collision_policy=collision_policy or scene.config.get('environment_collision_policy','veto')
+        if self.collision_policy not in {'advisory','veto'}:raise ValueError('Unknown collision policy')
+        self.position_tolerance_m=float(scene.config.get('arc_position_tolerance_m',.003))
+        self.orientation_tolerance_rad=float(scene.config.get('arc_orientation_tolerance_rad',0.))
+        if not np.isfinite(self.orientation_tolerance_rad) or not 0<=self.orientation_tolerance_rad<=np.pi:
+            raise ValueError('Arc orientation tolerance must be finite and in [0, pi]')
+        self.angular_weighted_tolerance=(.15*(self.orientation_tolerance_rad if grasp_constraint=='rigid'
+            else 2*np.sin(self.orientation_tolerance_rad/2))
+            if grasp_constraint!='point' and self.orientation_tolerance_rad else 1e-6)
+        if not np.isfinite(self.position_tolerance_m) or self.position_tolerance_m<=0:
+            raise ValueError('Arc position tolerance must be finite and positive')
         if not np.isfinite(gripper_padding) or gripper_padding<0:raise ValueError('Invalid gripper padding')
         build=json.loads((LIBRARY.parent/'build.json').read_text())
         if build['source_sha256']!=hashlib.sha256(SOURCE.read_bytes()).hexdigest():
@@ -170,12 +220,16 @@ class NativeScene:
         self.lib.mcvamp_set_gripper_convex.argtypes=[ctypes.c_void_p,FLOAT,INTEGER,FLOAT,ctypes.c_int,ctypes.c_float]
         self.lib.mcvamp_set_arm_convex.argtypes=[ctypes.c_void_p,FLOAT,INTEGER,FLOAT,ctypes.c_int,FLOAT,FLOAT,FLOAT]
         self.lib.mcvamp_set_existing_palm_tolerance.argtypes=[ctypes.c_void_p,ctypes.c_float]
+        self.lib.mcvamp_set_position_tolerance.argtypes=[ctypes.c_void_p,ctypes.c_float]
+        self.lib.mcvamp_set_orientation_tolerance.argtypes=[ctypes.c_void_p,ctypes.c_float]
+        self.lib.mcvamp_constraint_error.argtypes=[ctypes.c_void_p,FLOAT,FLOAT,DOUBLE]
         self.lib.mcvamp_validate.argtypes=[ctypes.c_void_p,FLOAT,DOUBLE]
         self.lib.mcvamp_project.argtypes=[ctypes.c_void_p,FLOAT,FLOAT,FLOAT,DOUBLE]
         self.lib.mcvamp_plan.argtypes=[ctypes.c_void_p,FLOAT,FLOAT,FLOAT,ctypes.c_int,ctypes.c_int,ctypes.c_double,FLOAT,ctypes.c_int,DOUBLE]
         self.world_robot,self.native_tcp,frames=calibrated_frames(record)
         self.chain=RobotChain(record)
         self.scene=scene
+        self.metadata=metadata
         self.reference_q=np.asarray(reference_q,float)
         self.reference_tcp=pose_matrix(self.chain.forward(reference_q))
         robot_world=np.linalg.inv(self.world_robot)
@@ -184,28 +238,39 @@ class NativeScene:
             if v['robot_geom_name'].endswith('_pad_collision')]
         if len(pads)!=2:raise ValueError('Exactly two configured finger pads are required')
         self.pad_local=np.mean(pads,axis=0)
+        self.pad_local[2]+=float(scene.config.get('grasp_contact_depth_offset_m',0.))
         self.anchor=self.reference_tcp[:3,3]+self.reference_tcp[:3,:3]@self.pad_local
         self.origin=np.asarray(scene.origin,float);self.axis=np.asarray(scene.axis,float)
         gripper,parts=gripper_cover(metadata,self.world_robot)
-        distance=cKDTree(scene.contact_reference).query(scene.moving_reference)[0]
-        low,high=np.quantile(scene.contact_reference[:,2],[.01,.99])
-        panel_distance=np.abs((scene.moving_reference-scene.panel_origin)@scene.panel_normal)
-        # Preserve the baseline's local finger/bar and finger/mount permissions.
-        # This is not deletion of these points: arm and palm still query them.
-        selected=(distance<.028)|((distance<.065)&(panel_distance<scene.panel_band+.006)
-            &(scene.moving_reference[:,2]>=low-.015)&(scene.moving_reference[:,2]<=high+.015))
-        static=_f(transform_points(voxel_points(scene.static_points,.0075),robot_world))
-        moving=_f(transform_points(voxel_points(scene.moving_reference[~selected],.005),robot_world))
-        # The transported handle reference locates the contact region; it is
-        # not a fresh depth measurement. Adding it to the obstacle tree lets
-        # submillimetre rigid-fit error invent palm penetration even when the
-        # current measured moving surface is clear. Query current observed
-        # moving endpoints, with the reference used only for association.
-        contact=_f(transform_points(voxel_points(scene.moving_reference[selected],.003),robot_world))
+        contact_surface=getattr(scene,'skill_contact_surface',None)
+        if self.collision_policy=='advisory':
+            observed_counts={'stationary':len(scene.static_points),'moving':len(scene.moving_reference),'contact_reference':len(scene.contact_reference)}
+            static,moving,contact=(_f(np.empty((0,3))) for _ in range(3))
+        else:
+            distance=cKDTree(scene.contact_reference).query(scene.moving_reference)[0]
+            low,high=np.quantile(scene.contact_reference[:,2],[.01,.99])
+            panel_distance=np.abs((scene.moving_reference-scene.panel_origin)@scene.panel_normal)
+            # Preserve the baseline's local finger/bar and finger/mount permissions.
+            # This is not deletion of these points: arm and palm still query them.
+            selected=(distance<.028)|((distance<.065)&(panel_distance<scene.panel_band+.006)
+                &(scene.moving_reference[:,2]>=low-.015)&(scene.moving_reference[:,2]<=high+.015))
+            if contact_surface is not None:
+                selected=distance<=.0035
+            static=_f(transform_points(voxel_points(scene.static_points,.0075),robot_world))
+            moving=_f(transform_points(voxel_points(scene.moving_reference[~selected],.005),robot_world))
+            # The transported handle reference locates the contact region; it is
+            # not a fresh depth measurement. Adding it to the obstacle tree lets
+            # submillimetre rigid-fit error invent palm penetration even when the
+            # current measured moving surface is clear. Query current observed
+            # moving endpoints, with the reference used only for association.
+            contact=_f(transform_points(voxel_points(scene.moving_reference[selected],.003),robot_world))
+            observed_counts={'stationary':len(static),'moving':len(moving),'contact':len(contact)}
         origin=transform_points([self.origin],robot_world)[0]
         axis=robot_world[:3,:3]@self.axis
         anchor=transform_points([self.anchor],robot_world)[0]
-        limits=self.chain.limits.copy();limits[:,0]+=.005;limits[:,1]-=.005
+        reserve=float(scene.config.get('native_joint_reserve_rad',JOINT_ADMISSION_RESERVE_RAD))
+        limits=self.chain.limits.copy();limits[:,0]+=reserve;limits[:,1]-=reserve
+        self.joint_bounds=_f(limits)
         config=_f(np.r_[origin,axis,anchor,self.native_tcp.ravel(),self.pad_local,
             limits[:,0],limits[:,1],float(articulated),float(allow_contact),reference_q,goal_angle,float(aligned)])
         grip=_f(gripper)
@@ -226,10 +291,14 @@ class NativeScene:
             _TREE_CACHE[key]=(self.lib,base,time.perf_counter()-before)
         self.handle=self.lib.mcvamp_clone(_TREE_CACHE[key][1],_pointer(config),_pointer(grip),len(grip))
         if not self.handle:raise RuntimeError('Native CAPT construction failed')
+        if not self.lib.mcvamp_set_position_tolerance(self.handle,self.position_tolerance_m):
+            self.close();raise RuntimeError('Could not configure arc position tolerance')
+        if not self.lib.mcvamp_set_orientation_tolerance(self.handle,self.orientation_tolerance_rad):
+            self.close();raise RuntimeError('Could not configure arc orientation tolerance')
         self.lib.mcvamp_set_grasp_constraint.argtypes=[ctypes.c_void_p,ctypes.c_int]
         if not self.lib.mcvamp_set_grasp_constraint(self.handle,{'point':0,'rigid':1,'jaw_axis':2}[grasp_constraint]):
             self.close();raise RuntimeError('Could not configure grasp constraint')
-        planes,offsets,bounds=gripper_convex(metadata,self.world_robot,parts,gripper_padding)
+        planes,offsets,bounds=gripper_convex(metadata,self.world_robot,parts,gripper_padding,contact_surface)
         if not self.lib.mcvamp_set_gripper_convex(self.handle,_pointer(planes),offsets.ctypes.data_as(INTEGER),
                 _pointer(bounds),len(bounds),gripper_padding):
             self.close();raise RuntimeError('Calibrated convex gripper installation failed')
@@ -237,6 +306,8 @@ class NativeScene:
         if not self.lib.mcvamp_set_arm_convex(self.handle,_pointer(arm_planes),arm_offsets.ctypes.data_as(INTEGER),_pointer(arm_bounds),len(arm_bounds),_pointer(axes),_pointer(anchors),_pointer(reference)):
             self.close();raise RuntimeError('Configured arm geometry installation failed')
         self.record={'planner':'MC-VAMP CRRTC','upstream_revision':build['upstream_revision'],
+            'environment_collision_policy':self.collision_policy,'observed_point_counts':observed_counts,
+            'physical_simulator_contacts_enabled':True,'environment_collision_free_certificate':False,
             'native_adapter_sha256':build['source_sha256'],'frame_validation':frames,
             'static_points':len(static),'moving_noncontact_points':len(moving),'selected_contact_points':len(contact),
             'point_radius_m':point_radius,'capt_build_seconds':0. if reused else _TREE_CACHE[key][2],
@@ -264,6 +335,14 @@ class NativeScene:
             }[grasp_constraint],
             'ambient_dimension':7,'hinge_progress_coordinate':'derived from grip point',
             'projection':'native MC-VAMP composition with adapter finite-difference damped least-squares step',
+            'arc_position_tolerance_m':self.position_tolerance_m,
+            'joint_bounds_rad':self.joint_bounds.tolist(),'joint_bound_buffer_rad':reserve,
+            'arc_orientation_tolerance_rad':self.orientation_tolerance_rad,
+            'angular_weighted_tolerance':self.angular_weighted_tolerance,
+            'progress_bound_weighted_tolerance':1e-6,
+            'constraint_metric':'1e-6 * max(position ratio, orientation ratio, progress-bound ratio)',
+            'constraint_metric_units':'scaled_dimensionless_acceptance_ratio',
+            'position_tolerance_affects_collision_checks':False,
             'native_simd_projection_fully_preserved':False,'aligned_jaws':bool(aligned)}
         self.record.update(grasp_constraint=grasp_constraint,
             shared_tool_stack='observed-hinged-contact-v1',
@@ -274,6 +353,12 @@ class NativeScene:
             self.record.update(contact_exemption='configured fingers versus the selected observed patch only; arm/palm and other observed points checked',
                 contact_geometry_source='fresh depth-selected bounded patch',
                 object_motion_predicted=False,articulation_constraint_used=bool(articulated),
+                bar_contact_distance_m=None,local_mount_distance_m=None,
+                local_mount_plane_association_extra_m=None)
+        if contact_surface is not None:
+            self.record.update(contact_exemption='distal fingertips/pads and explicitly selected palm versus selected target patch only',
+                skill_contact_surface=contact_surface,proximal_fingers_checked=True,
+                palm_contact_allowed=contact_surface=='palm',contact_association_m=.0035,
                 bar_contact_distance_m=None,local_mount_distance_m=None,
                 local_mount_plane_association_extra_m=None)
         update=getattr(scene,'pose_update',None)
@@ -317,7 +402,18 @@ class NativeScene:
     def validate(self,q):
         statistics=np.zeros(13,np.float64)
         result=self.lib.mcvamp_validate(self.handle,_pointer(self.q(q)),statistics.ctypes.data_as(DOUBLE))
-        return {'accepted':bool(result),**self.statistics(statistics)}
+        joints=np.asarray(q,np.float32)
+        violated=np.where((joints<self.joint_bounds[:,0])|(joints>self.joint_bounds[:,1]))[0]
+        stats=self.statistics(statistics);code=int(stats['last_rejected_part'])
+        part=(f'robot0_link{code-2000}_collision' if 2001<=code<=2007 else
+            next((p['robot_geom_name'] for p in getattr(self,'record',{}).get('gripper_cover',[])
+                  if 1000+p['sphere_range'][0]==code),None))
+        return {'accepted':bool(result),**stats,
+            'blocking_robot_part':part if not result else None,
+            'blocking_surface':({0:'observed stationary geometry',1:'moving target outside contact patch',2:'selected contact patch'}
+                .get(int(stats['last_rejected_surface'])) if not result else None),
+            'joint_bound_violations':[{'joint':int(j+1),'value_rad':float(joints[j]),
+                'allowed_range_rad':self.joint_bounds[j].tolist()} for j in violated]}
 
     @staticmethod
     def statistics(stats):
@@ -325,11 +421,27 @@ class NativeScene:
             'timed_out','last_rejected_part','last_rejected_surface','solve_seconds','resampling_seconds','iterations',
             'sparse_states','dense_states'],stats.tolist()))
 
+    def constraint_errors(self,q):
+        """Evaluate physical errors without projection or collision checking."""
+        error=np.zeros(6,np.float32);metric=ctypes.c_double()
+        code=self.lib.mcvamp_constraint_error(self.handle,_pointer(self.q(q)),_pointer(error),ctypes.byref(metric))
+        return {'accepted':bool(code),'residual':metric.value,
+            'residual_units':'scaled_dimensionless_acceptance_ratio',
+            'constraint_acceptance_ratio':metric.value/1e-6,
+            'position_error_m':float(np.linalg.norm(error[:2])),
+            'radial_error_m':float(error[0]),'height_error_m':float(error[1]),
+            'angular_weighted_error':float(np.linalg.norm(error[2:])),
+            'position_tolerance_m':self.position_tolerance_m,
+            'orientation_tolerance_rad':self.orientation_tolerance_rad,
+            'angular_weighted_tolerance':self.angular_weighted_tolerance,
+            'progress_bound_weighted_tolerance':1e-6}
+
     def project(self,q):
         result=np.zeros(8,np.float32);residual=ctypes.c_double()
         code=self.lib.mcvamp_project(self.handle,_pointer(_f(np.zeros(26))),_pointer(self.q(q)),
             _pointer(result),ctypes.byref(residual))
-        return result[:7].astype(float),{'accepted':bool(code),'residual':residual.value}
+        return result[:7].astype(float),{**self.constraint_errors(result[:7]),
+            'accepted':bool(code),'residual':residual.value}
 
     def plan(self,start,goal,*,constrained=True,seconds=10.,iterations=3000):
         start,goal=self.q(start),self.q(goal)
@@ -364,14 +476,18 @@ class NativeScene:
                     'owned_crash_dump_cleanup':cleanup_worker_dumps(worker.pid,worker_started)}
             result=json.loads(result_file.read_text());n=result['count'];stats=np.asarray(result['statistics'])
             output=np.load(Path(temporary)/'path.npy')
-        names={0:'no_path',-2:'dense_path_capacity',-3:'dense_projection_failed',-4:'dense_scene_collision',
-            -5:'dense_goal_collision',-9:'native_exception'}
-        result={'exact_solution':n>1,'status':'solved' if n>1 else names.get(n,str(n)),
+        statistics=self.statistics(stats)
+        result={'exact_solution':n>1,'status':native_plan_status(n,statistics),
             'planner':'MC-VAMP CRRTC' if constrained else 'VAMP RRTC','endpoints':endpoints,
-            'total_seconds':time.perf_counter()-before,**self.statistics(stats),
+            'total_seconds':time.perf_counter()-before,**statistics,
             'sampled_motion_validation_step_rad':.006,'continuous_collision_certificate':False,
-            'maximum_solve_seconds':seconds,'maximum_iterations':iterations}
-        return output[:max(0,n)].astype(float),result
+            'maximum_solve_seconds':seconds,'maximum_planning_seconds':seconds,
+            'deadline_scope':'search and dense validation together','maximum_iterations':iterations}
+        path=output[:max(0,n)].astype(float)
+        # Native float32 bounds can round a few ulps outside the exact driver
+        # bounds. Normalize the returned references to the same real limits.
+        if len(path):path=np.clip(path,self.chain.limits[:,0],self.chain.limits[:,1])
+        return path,result
 
     def _solve_native(self,start,goal,constrained,seconds,iterations,temporary):
         resource.setrlimit(resource.RLIMIT_CORE,(0,0))

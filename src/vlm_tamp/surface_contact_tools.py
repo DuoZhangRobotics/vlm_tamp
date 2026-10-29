@@ -75,11 +75,14 @@ def plan_pose(ik,scene,record,metadata,pose,folder):
     folder=Path(folder);folder.mkdir()
     preserve_scene(scene,folder)
     start=np.asarray(metadata['joint_positions']);attempts=[]
-    solutions=ik.solve_many(pose,start,maximum=8)
+    write_json(folder/'planning-input.json',{'reference_joints':start,
+        'requested_pose_world_xyzw':pose,'planning_only':True,
+        'metadata':{key:metadata[key] for key in ['joint_positions','eef_pose_world_xyzw','robot_collision_volumes_world']}})
+    solutions=ik.solve_many(pose,start)
     with NativeScene(scene,record,metadata,start,.05,articulated=False) as context:
         for index,solution in enumerate(solutions):
             path,result=context.plan(start,solution['joints'],constrained=False,seconds=8.)
-            attempts.append({'ik_index':index,'result':result})
+            attempts.append({'ik_index':index,'goal_joints':solution['joints'],'result':result})
             if result['exact_solution']:
                 np.save(folder/'path.npy',path)
                 result={**result,'requested_pose_world_xyzw':np.asarray(pose).tolist(),
@@ -87,5 +90,11 @@ def plan_pose(ik,scene,record,metadata,pose,folder):
                 write_json(folder/'result.json',result);write_json(folder/'attempts.json',attempts)
                 write_json(folder/'native-scene.json',context.record)
                 return path,result
+        write_json(folder/'native-scene.json',context.record)
     write_json(folder/'attempts.json',attempts)
-    raise ValueError('No observed-scene-free path to the requested TCP pose; '+('no robot-valid IK' if not solutions else 'collision or finite planning search failure'))
+    from .planning_feedback import summarize_pose_failure
+    diagnostic=summarize_pose_failure(attempts,context.record)
+    error=ValueError(f"Free-pose planning: {diagnostic['status']}; {len(solutions)} robot-valid IK solutions. "
+        f"Endpoint rejections: {diagnostic['endpoint_rejection_counts']}; search outcomes: {diagnostic['search_stage_counts']}.")
+    error.planning_diagnostic=diagnostic
+    raise error

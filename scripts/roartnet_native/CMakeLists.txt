@@ -1,0 +1,16 @@
+cmake_minimum_required(VERSION 3.18)
+project(roartnet_native LANGUAGES C CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+find_package(Python COMPONENTS Interpreter Development REQUIRED)
+find_package(pybind11 CONFIG REQUIRED)
+find_package(PCL 1.8 REQUIRED COMPONENTS common search kdtree features)
+if(NOT DEFINED RPMART_ROOT)
+  message(FATAL_ERROR "Set RPMART_ROOT to the pinned official repository")
+endif()
+# Compile the authors' exact SHOT implementation. Only the build configuration
+# differs to support current PCL headers; no descriptor substitutions.
+pybind11_add_module(shot ${RPMART_ROOT}/src_shot/shot.cpp)
+target_include_directories(shot PRIVATE ${PCL_INCLUDE_DIRS})
+target_link_libraries(shot PRIVATE ${PCL_LIBRARIES})
+target_compile_options(shot PRIVATE ${PCL_DEFINITIONS})

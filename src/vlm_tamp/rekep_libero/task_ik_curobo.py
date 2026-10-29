@@ -6,6 +6,7 @@ placement retains a bounded CPU refinement because orientation is free there.
 """
 
 import json
+import time
 from pathlib import Path
 
 import numpy as np
@@ -33,7 +34,7 @@ class TaskIK(BaseIK):
     def __init__(self, robot_record, config, self_valid=None, *, output, sim=None):
         super().__init__(robot_record, config, self_valid)
         self.output = Path(output)
-        self.reserve = float(config['command_joint_reserve_rad'])
+        self.reserve = float(config.get('command_joint_reserve_rad',0.))
         model = export_model(robot_record, self.output/'curobo-model', self.reserve)
         self.client = CuroboClient(model, config, self.output/'curobo.log')
         self.events = []
@@ -77,21 +78,31 @@ class TaskIK(BaseIK):
 
     def solve_many(self, target_pose, seed, maximum=None):
         seed = np.asarray(seed, float)
+        query_started = time.perf_counter()
         target = pose_matrix(target_pose)
+        rpc_started = time.perf_counter()
         result = self.client.solve(np.asarray(target_pose).tolist(), seed.tolist())
+        rpc_seconds = time.perf_counter()-rpc_started
+        postprocess_started = time.perf_counter()
         solutions, rejected = [], {'solver': 0, 'bounds': 0, 'residual': 0, 'duplicate': 0, 'self_collision': 0}
-        proposals = list(zip(result['solutions'], result['success']))
+        proposals = list(zip(result['solutions'], result['success']));optimizer_failed_flags=0
         if self.config.get('curobo_query_reproducible', False):
             proposals.sort(key=lambda item: (posture_cost(np.asarray(item[0]), seed, self.chain.limits)
                 if np.isfinite(item[0]).all() else float('inf'), tuple(item[0])))
         for q, success in proposals:
             q = np.asarray(q, float)
             if not success:
-                rejected['solver'] += 1
-                continue
-            if not np.isfinite(q).all() or joint_reserve(q, self.chain.limits) < self.reserve-1e-5:
+                # Optimizer convergence is diagnostic. Independent robot FK,
+                # requested residuals, real bounds and self geometry decide.
+                optimizer_failed_flags += 1
+            if not np.isfinite(q).all():
                 rejected['bounds'] += 1
                 continue
+            # Proposals may round beyond a float32 boundary or need a box
+            # projection. The projected candidate must still pass actual FK
+            # residual and self checks; no out-of-range command is admitted.
+            proposed=q.copy()
+            q=np.clip(q,self.chain.limits[:,0]+self.reserve,self.chain.limits[:,1]-self.reserve)
             pose = self.chain.forward(q)
             matrix = pose_matrix(pose)
             position = float(np.linalg.norm(matrix[:3, 3]-target[:3, 3]))
@@ -109,13 +120,18 @@ class TaskIK(BaseIK):
                 'position_error_m': position, 'orientation_error_rad': angle,
                 'joint_reserve_rad': joint_reserve(q, self.chain.limits),
                 'posture_cost': posture_cost(q, seed, self.chain.limits), 'backend': 'curobo',
-                'scene_collision_checked': False})
+                'scene_collision_checked': False,'solver_reported_success':bool(success),
+                'joint_bound_projection_rad':float(np.max(np.abs(q-proposed)))})
         solutions.sort(key=lambda row: row['posture_cost'])
         for rank, solution in enumerate(solutions):
             solution['posture_rank'] = rank
         self.events.append({'query': len(self.events), 'pose': np.asarray(target_pose).tolist(),
             'returned': len(result['solutions']), 'distinct_robot_valid': len(solutions),
-            'rejected': rejected, 'elapsed_seconds': result['elapsed_seconds'],
+            'rejected': rejected,'optimizer_failed_flags':optimizer_failed_flags,
+            'admitted_failed_flag_candidates':sum(not s['solver_reported_success'] for s in solutions), 'elapsed_seconds': result['elapsed_seconds'],
+            'worker_rpc_seconds': rpc_seconds,
+            'cpu_postprocessing_seconds': time.perf_counter()-postprocess_started,
+            'wall_seconds': time.perf_counter()-query_started,
             'peak_gpu_allocated_bytes': result['peak_gpu_allocated_bytes'],
             **{k: result[k] for k in ('seed_pool_sha256', 'query_sha256', 'explicit_seed_count') if k in result}})
         return solutions if maximum is None else solutions[:maximum]

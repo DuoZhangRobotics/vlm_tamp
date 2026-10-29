@@ -27,6 +27,17 @@ def test_narrow_edge_has_insufficient_plane_support():
     assert not fit['supported']
 
 
+def test_current_relative_geometry_does_not_require_same_material_identity(tmp_path):
+    c=CompletionEvidence(tmp_path)
+    a,_=plane_fit(surface());b,_=plane_fit(surface(62))
+    c.measurements['a']={**a,'kind':'surface','control_steps':90,'observation_ids':[4]}
+    c.measurements['b']={**b,'kind':'surface','control_steps':90,'observation_ids':[4]}
+    relation=c.geometry_relation('a','b',90)
+    assert relation['supported'] and abs(relation['values']['plane_angle_deg']-62)<.3
+    assert not relation['semantic_identity_verified'] and not relation['object_motion_claimed']
+    with pytest.raises(ValueError,match='current physical state'):c.geometry_relation('a','b',91)
+
+
 def test_partial_progress_and_stale_measurement_do_not_certify_completion(tmp_path):
     c=CompletionEvidence(tmp_path)
     c.set_contract('Requested orientation', [{'id':'orientation','quantity':'plane_angle_deg',

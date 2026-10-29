@@ -28,8 +28,11 @@ class CoupledClient(ArticulatedClient):
         self.reader = threading.Thread(target=self._read, daemon=True)
         self.reader.start()
 
-    def enable_joint_tracking(self,kp=150.):
-        return self.request('enable_joint_tracking',kp=float(kp))
+    def enable_joint_tracking(self,kp=150.,reference_mode='measured_delta'):
+        return self.request('enable_joint_tracking',kp=float(kp),reference_mode=reference_mode)
+
+    def set_joint_reference_mode(self,mode):
+        return self.request('set_joint_reference_mode',mode=mode)
 
     def joint_action(self, target_joints, gripper=1, max_steps=1, output_dir=None):
         arguments = {'target_joints': list(target_joints), 'gripper': gripper,

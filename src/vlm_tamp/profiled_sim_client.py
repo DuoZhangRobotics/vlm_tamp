@@ -8,12 +8,14 @@ import time
 import numpy as np
 from .coupled_client import CoupledClient
 from .coupled_storage import read_json
+from .runtime_paths import simulator_python
+from .execution_limits import control_limit
 
 
 class ProfiledClient(CoupledClient):
-    def __init__(self,log_path=None,timeout=240,*,fast=True,timeline=None):
+    def __init__(self,log_path=None,timeout=240,*,fast=True,timeline=None,python=None):
         root=Path(__file__).resolve().parents[2]
-        self.python='/home/duo/miniforge3/envs/vlm-tamp/bin/python';self.timeout=float(timeout)
+        self.python=simulator_python(python);self.timeout=float(timeout)
         self.log_handle=open(log_path,'a') if log_path else None;self.timeline=timeline;self.rpc_events=[];self.fast=fast
         env=os.environ.copy()
         for k in list(env):
@@ -33,12 +35,15 @@ class ProfiledClient(CoupledClient):
         return result
     def joint_trajectory(self,references,gripper=1,stop_on_success=False):
         return self.request('joint_trajectory',references=np.asarray(references,float).tolist(),gripper=int(gripper),stop_on_success=bool(stop_on_success))
+    def observe(self,output_dir,camera_names=None):
+        return self.request('observe',output_dir=str(output_dir),**({'camera_names':camera_names} if camera_names is not None else {}))
 
 
-def execute_batch(sim,state,references,*,gripper=1,maximum_control_steps=600,event_sink=None,stop_on_success=False):
+def execute_batch(sim,state,references,*,gripper=1,maximum_control_steps=None,event_sink=None,stop_on_success=False):
     refs=np.asarray(references,float)
     if refs.ndim!=2 or refs.shape[1]!=7 or not np.isfinite(refs).all():raise ValueError('Finite seven-joint references required')
-    if len(refs)>maximum_control_steps-int(state['control_steps']):raise ValueError('Complete trajectory exceeds remaining budget')
+    limit=control_limit(state) if maximum_control_steps is None else min(control_limit(state),maximum_control_steps)
+    if len(refs)>limit-int(state['control_steps']):raise ValueError('Complete trajectory exceeds remaining budget')
     before=time.perf_counter();state=sim.joint_trajectory(refs,gripper=gripper,**({'stop_on_success':True} if stop_on_success else {}));done=state.pop('trajectory')
     done['wall_seconds']=time.perf_counter()-before
     if event_sink:

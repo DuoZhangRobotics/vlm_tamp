@@ -85,7 +85,8 @@ def test_busy_transport_does_not_queue_duplicates_and_status_does_not_wait(tmp_p
     assert namespace['call']('await_request',request_id=token)==original
 
 
-def test_supervisor_resumes_an_early_final_in_the_same_episode(tmp_path,monkeypatch):
+@pytest.mark.parametrize('model',['gpt-6-luna','gpt-6-astra'])
+def test_supervisor_resumes_an_early_final_in_the_same_episode(tmp_path,monkeypatch,model):
     from vlm_tamp import episode_persistence as supervisor
     work=tmp_path/'work';out=tmp_path/'out';out.mkdir();work.mkdir()
     for name in ['robot_data','requests','replies']:(work/name).mkdir()
@@ -104,10 +105,12 @@ def test_supervisor_resumes_an_early_final_in_the_same_episode(tmp_path,monkeypa
             return 0
         def poll(self):return 0
     monkeypatch.setattr(supervisor.subprocess,'Popen',Process)
-    code=supervisor.run_persistent_agent(work,out,{},[],'Initial instructions.',20)
+    code=supervisor.run_persistent_agent(work,out,{},[],'Initial instructions.',20,model=model)
     record=json.loads((out/'continuation.json').read_text())
     assert code==0 and len(commands)==2
     assert commands[1][1:3]==['exec','resume'] and identity in commands[1]
     assert '262' in prompts[1] and 'Do not reset' in prompts[1]
     assert record['turns'][0]['decision']=='continue_same_episode'
     assert record['termination_reason']=='simulator_success'
+    assert all(command[command.index('-m')+1]==model for command in commands)
+    assert json.loads((out/'agent-exit.json').read_text())['requested_model']==model

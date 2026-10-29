@@ -37,6 +37,8 @@ class FakeRobot:
                 pass
             def reset_goal(self):
                 self.goal_qpos = robot.data.qpos[:7].copy()
+            def set_goal(self,action,set_qpos=None):
+                self.goal_qpos=robot.data.qpos[:7]+np.asarray(action)*.05 if set_qpos is None else np.asarray(set_qpos).copy()
         self.controller = JointController()
 
 
@@ -59,8 +61,8 @@ def mock_worker():
             return False
         def step(self, control):
             self.controls.append(control.copy())
-            robot.controller.goal_qpos = data.qpos[:7] + control[:7] * .05
-            data.qpos[:7] = robot.controller.goal_qpos
+            robot.controller.set_goal(control[:7])
+            data.qpos[:7] += getattr(self,'tracking_fraction',1.)*(robot.controller.goal_qpos-data.qpos[:7])
             return {}, 0, False, {}
     worker.env, worker.robot = Env(), robot
     worker.ik_solver = SimpleNamespace(limits=np.tile([-2., 2.], (7, 1)),
@@ -83,9 +85,9 @@ class CoupledWorkerTests(unittest.TestCase):
         return {'robosuite': ModuleType('robosuite'), 'robosuite.controllers': controllers,
                 'robosuite.utils': ModuleType('robosuite.utils'), 'robosuite.utils.buffers': buffers}
 
-    def enable(self, worker):
+    def enable(self, worker,mode='measured_delta'):
         with patch.dict(sys.modules, self.mocked_modules()):
-            return worker.enable_joint_tracking()
+            return worker.enable_joint_tracking(reference_mode=mode)
 
     def test_switch_resizes_bookkeeping_without_steps_or_state_assignment(self):
         worker = mock_worker()
@@ -144,6 +146,21 @@ class CoupledWorkerTests(unittest.TestCase):
         control, goal = normalized_joint_command(np.full(7, .01), np.zeros(7), 0)
         np.testing.assert_allclose(control[:7], .2)
         np.testing.assert_allclose(goal, .01)
+
+    def test_reference_slew_is_independent_of_measured_tracking_error(self):
+        worker=mock_worker();self.enable(worker,'slew_limited');worker.env.tracking_fraction=.1
+        worker.joint_action(np.ones(7),gripper=0,max_steps=5)
+        goals=np.asarray([e['controller_goal_joints'] for e in worker.action_log])
+        np.testing.assert_allclose(goals[:,0],[.05,.10,.15,.20,.25])
+        self.assertLess(worker.env.sim.data.qpos[0],.1)
+        self.assertTrue(np.allclose(np.diff(goals,axis=0),.05))
+        self.assertTrue(np.all(np.asarray(worker.env.controls)[:,:7]==0))
+
+    def test_reference_mode_switch_does_not_assign_physical_state(self):
+        worker=mock_worker();self.enable(worker)
+        before=worker.env.sim.data.qpos.copy();record=worker.set_joint_reference_mode('slew_limited')
+        np.testing.assert_array_equal(worker.env.sim.data.qpos,before)
+        self.assertFalse(record['reference_mode_change']['state_assignment'])
 
 
 if __name__ == '__main__':

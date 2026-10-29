@@ -9,7 +9,7 @@ import traceback
 import numpy as np
 from PIL import Image
 from .coupled_worker import CoupledWorker,checked_joint_target
-from .rekep_libero.sim_worker import MAX_CONTROL_STEPS
+from .execution_limits import DEFAULT_CONTROL_STEPS, checked_control_steps
 
 
 class ProfiledWorker(CoupledWorker):
@@ -22,7 +22,8 @@ class ProfiledWorker(CoupledWorker):
         finally:
             seconds=time.perf_counter()-before
             row=self.stats.setdefault(name,{'seconds':0.,'calls':0});row['seconds']+=seconds;row['calls']+=1
-    def reset(self,*args,stop_on_success=False,**kwargs):
+    def reset(self,*args,stop_on_success=False,maximum_control_steps=DEFAULT_CONTROL_STEPS,**kwargs):
+        self.maximum_control_steps=checked_control_steps(maximum_control_steps)
         self.last_frame=-1
         self.stop_on_success=bool(stop_on_success)
         result=super().reset(*args,**kwargs)
@@ -49,7 +50,7 @@ class ProfiledWorker(CoupledWorker):
         return {'metadata':{'joint_positions':self.env.sim.data.qpos[self.robot._ref_joint_pos_indexes].tolist(),
             'eef_pose_world_xyzw':self._eef_pose().tolist(),
             'gripper_qpos':self.env.sim.data.qpos[self.robot._ref_gripper_joint_pos_indexes].tolist()},
-            'control_steps':self.control_steps,'step_limit_reached':self.control_steps>=MAX_CONTROL_STEPS}
+            'control_steps':self.control_steps,'maximum_control_steps':self.maximum_control_steps,'step_limit_reached':self.control_steps>=self.maximum_control_steps}
     def _save_frame(self,force=False):
         if self.fast and self.last_frame==self.control_steps:return
         if not force and self.control_steps%5:return
@@ -58,7 +59,17 @@ class ProfiledWorker(CoupledWorker):
     def _write_action_log(self):
         if self.in_batch:return
         with self.timed('write_action_and_contact_logs'):return super()._write_action_log()
-    def observe(self,output_dir):
+    def observe(self,output_dir,camera_names=None):
+        if camera_names is not None:
+            from .rekep_libero.sim_worker_v3 import ARM_VIEW_POLICIES
+            if (not isinstance(camera_names,list) or not 1<=len(camera_names)<=4
+                    or len(set(camera_names))!=len(camera_names)
+                    or any(n not in {'agentview','wrist','frontview',*ARM_VIEW_POLICIES} for n in camera_names)):
+                raise ValueError('Choose one to four distinct calibrated cameras')
+        self.selected_capture_cameras=camera_names
+        try:return self._observe_selected(output_dir)
+        finally:self.selected_capture_cameras=None
+    def _observe_selected(self,output_dir):
         if not self.fast:
             with self.timed('observe_total'):return super().observe(output_dir)
         with self.timed('observe_total'):
@@ -80,11 +91,11 @@ class ProfiledWorker(CoupledWorker):
                 (output/'metadata.json').write_text(json.dumps(metadata,indent=2)+'\n')
             return {'observation_dir':str(output),'metadata_file':str(output/'metadata.json'),
                 'evaluation':{'task_success':bool(self.env.check_success())},'control_steps':self.control_steps,
-                'step_limit_reached':self.control_steps>=MAX_CONTROL_STEPS}
+                'maximum_control_steps':self.maximum_control_steps,'step_limit_reached':self.control_steps>=self.maximum_control_steps}
     def joint_trajectory(self,references,gripper=1,stop_on_success=False):
         self._require_env();refs=np.asarray(references,float)
         if refs.ndim!=2 or refs.shape[1]!=7 or not np.isfinite(refs).all():raise ValueError('Finite seven-joint trajectory required')
-        if len(refs)>MAX_CONTROL_STEPS-self.control_steps:raise ValueError('Complete trajectory exceeds remaining budget')
+        if len(refs)>self.maximum_control_steps-self.control_steps:raise ValueError('Complete trajectory exceeds remaining budget')
         for q in refs:checked_joint_target(q,self.ik_solver.limits)
         if gripper not in (-1,0,1):raise ValueError('Invalid gripper command')
         stop_on_success=bool(stop_on_success or getattr(self,'stop_on_success',False))
