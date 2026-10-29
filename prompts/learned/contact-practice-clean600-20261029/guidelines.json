@@ -1,0 +1,32 @@
+{
+  "principles": [
+    {
+      "applicability": "Broad planar panel movement when the selected contact surface and desired motion align.",
+      "failure_signals": ["RGB-D feedback reports too few or inconsistent matches", "the selected patch normal is poorly aligned with the requested force", "native task_success remains false"],
+      "conditional_actions": ["Inspect the current panel in another camera and reselect an opaque patch on the same moving part", "use measured motion or a current joint model if a normal push does not give interpretable feedback", "continue only with a fresh plan and judge progress from observed geometry and native task outcome"],
+      "supporting_attempts": ["attempt 1: broad pushes gave unresolved tracking before a final frame-edge push returned native success", "attempt 2: several broad pushes remained unresolved", "attempt 4: after broad pushes and a fresh view, a frame-edge push toward the cabinet returned native success", "attempt 5: broad push followed by a fresh-view palm push returned native success"],
+      "limits": "Success followed staged pushes; the broad push alone was not sufficient evidence. Contact-stage RGB-D feedback often remained unresolved, and attempt 5 did not isolate which interval caused completion. Camera view and panel orientation changed the measured normal. This is tested on one microwave setup."
+    },
+    {
+      "applicability": "Hook-pull on a door edge that appears to offer a retaining lip.",
+      "failure_signals": ["preview reports no hookable feature or an unobserved rear contact surface"],
+      "conditional_actions": ["Do not execute a hook without an observed retaining surface; inspect a different visible edge or use a supported pinch/push method"],
+      "supporting_attempts": ["attempt 2: previews on two edges returned no supported hook"],
+      "limits": "This only describes the tested views and patches in this microwave scene; it does not show that the door has no graspable handle."
+    },
+    {
+      "applicability": "Robot motion near a joint limit during contact planning.",
+      "failure_signals": ["preview reports start_configuration_blocked with a small joint bound violation"],
+      "conditional_actions": ["Use the documented bounded gripper correction, inspect measured joints, then obtain a fresh observation and plan; allow enough control budget for both the correction and contact motion"],
+      "supporting_attempts": ["attempt 2: repeated small seventh-joint excursions blocked contact previews; a longer bounded correction moved it inside temporarily"],
+      "limits": "The correction did not remain effective through later trajectories in this attempt."
+    },
+    {
+      "applicability": "A side-hinged door has a visible handle and an articulated grasp sequence is available.",
+      "failure_signals": ["grounding reports insufficient handle depth", "image-motion intent conflicts with adjacent-depth direction", "closure gap or visual appearance is mistaken for a grasp or success"],
+      "conditional_actions": ["Inspect a view that resolves the handle, panel and hinge together", "if direction remains genuinely unclear, use the documented unknown hint so the depth prior is explicit, then treat the joint as a hypothesis", "execute a planned jaw-axis sequence, inspect measured object motion and native task_success, and replan a smaller arc from updated geometry when progress is measured but incomplete"],
+      "supporting_attempts": ["attempt 3: side-view model plus jaw-axis sequence measured about 69.6 degrees of opening; a fresh 25-degree arc then returned native success", "attempt 6: repeated the side-view model and 90-degree jaw-axis sequence; native success terminated execution"],
+      "limits": "Two successes on this microwave setup, not broad generalization. The hinge model was single-view and depth-directed; pad-gap evidence did not verify a physical pinch. Attempt 6 ended by native success before a final measured angle was reported."
+    }
+  ]
+}

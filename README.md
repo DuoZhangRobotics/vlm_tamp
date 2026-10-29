@@ -6,6 +6,9 @@ The current experiment is [clean practice with 600 controls](docs/clean_start_60
 one learner starts without inherited task memory, then fresh agents are evaluated
 with and without its frozen notes. Evaluator notebooks are retained separately.
 Open `results/clean-start-600-20261029/watch.html` with VS Code Live Preview.
+The completed pilot recorded 5/6 practice successes and 2/3 fresh successes with
+memory versus 1/3 without. Opening state 13 remains unreliable in fresh actors;
+these small counts do not establish a general success-rate improvement.
 
 The current experimental branch adds push/hook skills, observed-motion joint
 tools, configurable recovery budgets and corrected joint-reference tracking.

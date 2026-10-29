@@ -1,0 +1,130 @@
+{
+  "learner": "gpt-6-luna",
+  "source": "/common/users/dz323/vlm_tamp/results/clean-start-600-20261029/frozen-memory/clean-v1/guidelines.json",
+  "sha256": "2516568a4d43fb252599f49bab7149487dabce9d632f51c839edd01ee7ee2aa5",
+  "verbatim_learner_authored": true,
+  "teacher_or_reflection_model": false,
+  "practice_clean_start": true,
+  "inherited_task_memory": null,
+  "worked_example_supplied": false,
+  "control_steps_per_episode": 600,
+  "runtime_commit": "a09a38b",
+  "practice_native_outcomes": [
+    true,
+    false,
+    true,
+    true,
+    true,
+    true
+  ],
+  "practice_successes": 5,
+  "practice_attempts": 6,
+  "practice_wall_seconds": 2407.2932620199863,
+  "review": {
+    "reviewed_before_evaluation": true,
+    "verbatim_learner_authored": true,
+    "teacher_rewrite": false,
+    "eligible_for_scoped_transfer": true,
+    "memory_sha256": "2516568a4d43fb252599f49bab7149487dabce9d632f51c839edd01ee7ee2aa5",
+    "bytes": 4011,
+    "words": 536,
+    "no_historical_pixels_world_poses_joint_vectors_state_indices_or_replay_paths_found": true,
+    "relative_angle_settings_only_in_scoped_supporting_evidence": true,
+    "practice_outcomes_match_recorded_native_results": true,
+    "practice_successes": 5,
+    "practice_attempts": 6,
+    "opening_successes": 2,
+    "opening_attempts": 2,
+    "scope": "Conditional lessons from one microwave setup; fresh-agent transfer remains to be measured.",
+    "caveats": [
+      "Closing successes were recorded during push approaches; the notes do not establish controlled-stroke qualification.",
+      "The practice-summary claim that two consecutive successes establish repeatability spans closing and opening cases. Those consecutive outcomes alone are not same-case repeatability evidence.",
+      "There are two opening successes on state13 and two closing successes on state17, but only one success on closing49. No broad success-rate claim is supported."
+    ],
+    "reviewed_at": 1793303254.383575
+  },
+  "fresh_evaluation": {
+    "cases": [
+      {
+        "task": "close_microwave",
+        "state_index": 49
+      },
+      {
+        "task": "open_microwave",
+        "state_index": 13
+      },
+      {
+        "task": "open_microwave",
+        "state_index": 37
+      }
+    ],
+    "one_actor_per_case_and_condition": true,
+    "model_sampling_not_deterministically_paired": true,
+    "memory_native_successes": 2,
+    "memory_cases": 3,
+    "no_memory_native_successes": 1,
+    "no_memory_cases": 3,
+    "source_and_input_hashes_verified": true,
+    "memory_read_confirmed_in_all_three_memory_actors": true,
+    "evaluator_notebooks_fed_forward": false,
+    "rows": [
+      {
+        "task": "close_microwave",
+        "state_index": 49,
+        "memory_condition": "none",
+        "official_task_success": false,
+        "control_steps": 600,
+        "actor_wall_seconds": 483.7579979898874
+      },
+      {
+        "task": "close_microwave",
+        "state_index": 49,
+        "memory_condition": "frozen",
+        "official_task_success": true,
+        "control_steps": 545,
+        "actor_wall_seconds": 700.0920131788589
+      },
+      {
+        "task": "open_microwave",
+        "state_index": 13,
+        "memory_condition": "frozen",
+        "official_task_success": false,
+        "control_steps": 600,
+        "actor_wall_seconds": 1232.052155225072
+      },
+      {
+        "task": "open_microwave",
+        "state_index": 13,
+        "memory_condition": "none",
+        "official_task_success": false,
+        "control_steps": 600,
+        "actor_wall_seconds": 774.4303288180381
+      },
+      {
+        "task": "open_microwave",
+        "state_index": 37,
+        "memory_condition": "none",
+        "official_task_success": true,
+        "control_steps": 299,
+        "actor_wall_seconds": 389.72781827207655
+      },
+      {
+        "task": "open_microwave",
+        "state_index": 37,
+        "memory_condition": "frozen",
+        "official_task_success": true,
+        "control_steps": 267,
+        "actor_wall_seconds": 295.9427091272082
+      }
+    ],
+    "complete_memory_text_visible_in_all_three_memory_actors": true
+  },
+  "limits": [
+    "Small pilot; no general success-rate estimate.",
+    "Closing success with memory occurred during approach, before the controlled push stroke.",
+    "Both fresh opening13 evaluations failed despite two successful opening13 practice attempts.",
+    "Only conditional procedural notes and scoped relative settings are transferred; geometry is re-estimated."
+  ],
+  "authoring_run": "results/clean-start-600-20261029/trials/clean-v1-practice",
+  "authoring_file": "results/clean-start-600-20261029/trials/clean-v1-practice/agent-workspace/guidelines.json"
+}

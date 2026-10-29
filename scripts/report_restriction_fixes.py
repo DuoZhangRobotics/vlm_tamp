@@ -80,7 +80,7 @@ img,video{max-width:100%;max-height:480px}a{color:#1264a2}.note{background:#e8f1
     if plan.get('clean_start'):
         body+='<article><h2>Clean practice and memory comparison</h2><p>'+esc(f"One learner starts without inherited task memories or worked examples. {plan['initial_and_maximum_attempts']} practice episodes; {plan['control_steps']} controls per episode. Generic tool documentation remains available.")+'</p>'
         body+='<p>Fresh evaluation actors may write their own lessons and notebooks. Those files are archived; they are not fed to later actors in this comparison. Each memory condition receives either no prior notes or the same frozen practice guidelines.</p>'
-        body+=link(study/'varied-practice-plan.json',study,'Declared experiment')+'</article>'
+        body+=link(study/'varied-practice-plan.json',study,'Declared experiment')+' · '+link(ROOT/'docs/clean_start_600_20261029.md',study,'Results and interpretation')+'</article>'
         for file in sorted(study.glob('*-practice-manifest.json')):
             experiment=read(file,{})
             if not experiment.get('plan',{}).get('clean_start'):continue
