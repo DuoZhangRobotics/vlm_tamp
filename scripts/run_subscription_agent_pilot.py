@@ -13,6 +13,7 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'src'))
 from vlm_tamp.subscription_agent import clean_environment, codex_arguments, verify_isolation, validate_attempt_budget
 from vlm_tamp.subscription_tasks import DEFAULT_TASK, TASKS, task_spec
+from vlm_tamp.execution_limits import LEARNING_CONTROL_STEPS
 
 PROMPT='''Run the autonomous robotics pilot described in tools.txt. Read the tool
 documentation and the one approved example in example/. Open the microwave
@@ -34,13 +35,31 @@ def ledger_hashes():
     return {str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in files if p.exists()}
 
 
+def default_prompt(task, attempts, control_steps, *, no_example=False):
+    text=PROMPT.replace('Open the microwave',task_spec(task)['instruction'].capitalize())
+    text=text.replace('at most two\nphysical attempts on the provided case, 600 control steps each.',
+        f'at most {attempts}\nphysical {"attempt" if attempts==1 else "attempts"} on the provided case, {control_steps} control steps each.')
+    if no_example:
+        text=text.replace('documentation and the one approved example in example/.','documentation.')
+        text=text.replace('Your only recovery guidance is\nthe explicit example.','Recovery decisions belong to you.')
+    return text
+
+
+def validate_clean_start(args):
+    if not args.clean_start:return
+    inherited=[name for name in ['guidelines_source','successful_method_file','memory_store','abstract_experience']
+        if getattr(args,name,None)]
+    if inherited:raise ValueError('Clean start cannot inherit '+', '.join(inherited))
+    args.no_example=True
+
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--output',required=True)
     p.add_argument('--model',choices=['gpt-6-luna','gpt-6-astra'],default='gpt-6-luna')
     p.add_argument('--reasoning',choices=['low','medium','high','xhigh','max'],default='high')
     p.add_argument('--agent-seconds',type=int,default=1800)
-    p.add_argument('--control-steps',type=int,default=1200)
+    p.add_argument('--control-steps',type=int,default=LEARNING_CONTROL_STEPS)
     p.add_argument('--reference-mode',choices=['measured_delta','slew_limited'],default='slew_limited')
     p.add_argument('--episode-seconds',type=int,default=1800,help='Per-attempt wall budget during persistent practice')
     p.add_argument('--prompt-file',help='Optional exact recorded initial prompt for a fresh reproduction')
@@ -69,7 +88,9 @@ def main():
     p.add_argument('--completion-checks',action='store_true')
     p.add_argument('--abstract-experience',action='store_true')
     p.add_argument('--no-example',action='store_true',help='Do not supply a worked example to the actor')
+    p.add_argument('--clean-start',action='store_true',help='Reject inherited memories/methods and omit worked examples; retain generic tool documentation')
     a=p.parse_args();out=(ROOT/a.output).resolve()
+    validate_clean_start(a)
     if a.practice_cases:
         if not a.learning_practice or a.evaluation_case or a.checkpoint_source:raise ValueError('Curriculum is practice-only and cannot be combined with a checkpoint')
         from serve_practice_curriculum import checked_cases
@@ -82,10 +103,8 @@ def main():
     validate_attempt_budget(a.attempts,learning_practice=a.learning_practice,evaluation_case=a.evaluation_case,initial_attempts=a.initial_attempts)
     if a.learning_practice and not a.prompt_file:
         raise ValueError('Learning practice requires an explicit practice prompt')
-    prompt=Path(a.prompt_file).read_text() if a.prompt_file else PROMPT.replace('Open the microwave',task_spec(a.task)['instruction'].capitalize())
-    if a.no_example and not a.prompt_file:
-        prompt=prompt.replace('documentation and the one approved example in example/.','documentation.')
-        prompt=prompt.replace('Your only recovery guidance is\nthe explicit example.','Recovery decisions belong to you.')
+    prompt=Path(a.prompt_file).read_text() if a.prompt_file else default_prompt(
+        a.task,a.attempts,a.control_steps,no_example=a.no_example)
     if not 0<=a.state<50:raise ValueError('Official initial-state index must be 0..49')
     if not out.is_relative_to(ROOT/'results') or out==ROOT/'results':
         raise ValueError('Use a new results/<run> directory')
@@ -121,6 +140,12 @@ def main():
         *(['--evaluation-case'] if a.evaluation_case else []),'--attempts',str(a.attempts),
         *(['--memory-store',str(Path(a.memory_store).resolve())] if a.memory_store else [])],check=True,cwd=ROOT,env=env)
     protocol=json.loads((out/'protocol.json').read_text())
+    if a.clean_start:
+        if protocol.get('frozen_agent_guidelines_sha256') or protocol.get('example_supplied'):
+            raise RuntimeError('Clean-start workspace unexpectedly contains prior guidance')
+        for name in ['experience/guidelines.json','experience/successful-method.json','episodic_library']:
+            if (work/name).exists():raise RuntimeError('Clean-start workspace contains '+name)
+    protocol['clean_start']=bool(a.clean_start)
     protocol['model']=a.model;protocol['reasoning_effort']=a.reasoning
     protocol['unconditioned_hinge_fit_diagnostics']=bool(a.fit_diagnostics)
     protocol['scene_variant']=a.scene_variant

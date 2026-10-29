@@ -44,6 +44,10 @@ joint vectors, raw evidence paths, object-state indices or executable replay
 recipes. Relative settings and their observed limitations may be retained.
 Estimate current geometry again in each episode. There is no teacher or
 reflection model. Learning is your practice, feedback and retained notes.
+Keep detailed evidence in your per-attempt notebooks. Maintain one concise
+guidelines.json that consolidates useful lessons, removes duplicated or
+superseded advice, and preserves applicability and uncertainty. Do not copy
+the full notebook history into the transferable guidelines.
 After completing the initial grant, two consecutive native successes permit
 ending with the documented method and its limits. Otherwise use the available
 attempt budget to test corrections. Write practice-summary.json when finished. Report native successes

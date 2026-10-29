@@ -2,11 +2,16 @@
 
 ## Luna contact recovery (29 October 2026)
 
+The current experiment is [clean practice with 600 controls](docs/clean_start_600_20261029.md):
+one learner starts without inherited task memory, then fresh agents are evaluated
+with and without its frozen notes. Evaluator notebooks are retained separately.
+Open `results/clean-start-600-20261029/watch.html` with VS Code Live Preview.
+
 The current experimental branch adds push/hook skills, observed-motion joint
 tools, configurable recovery budgets and corrected joint-reference tracking.
 Read the [implementation and evidence handoff](docs/restriction_fixes_20261029.md)
-and [restriction audit](docs/restriction_audit_20261029.md). The local runtime page
-is `results/restriction-fixes-20261029/watch.html`; open it with VS Code Live Preview.
+and [restriction audit](docs/restriction_audit_20261029.md). The preceding study's
+page remains at `results/restriction-fixes-20261029/watch.html`.
 Versioned learner memories and their provenance live under `prompts/learned/`.
 
 The experiments retain zero added collision padding and physical simulator

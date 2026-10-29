@@ -1,6 +1,6 @@
 """Per-episode control budget shared by service, planners and simulator RPCs."""
 DEFAULT_CONTROL_STEPS = 600
-LEARNING_CONTROL_STEPS = 1200
+LEARNING_CONTROL_STEPS = DEFAULT_CONTROL_STEPS
 CONTROL_HZ = 20.
 
 

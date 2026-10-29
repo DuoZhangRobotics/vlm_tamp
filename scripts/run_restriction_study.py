@@ -1,4 +1,4 @@
-"""Compare fixed-memory Luna under the cleaned policy at two control budgets."""
+"""Compare fixed-memory Luna under the cleaned policy at declared control budgets."""
 import argparse
 import hashlib
 import json
@@ -54,7 +54,7 @@ def validate_terminal(returncode, agent, evaluation, interrupted=False):
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--study',default=str(ROOT/'results/restriction-fixes-20261029'))
-    p.add_argument('--tag',default='cleaned-v1');p.add_argument('--budgets',nargs='+',type=int,default=[600,1200])
+    p.add_argument('--tag',default='cleaned-v1');p.add_argument('--budgets',nargs='+',type=int,default=[600])
     p.add_argument('--cases',nargs='+',default=['close_microwave:17','close_microwave:49','open_microwave:13'])
     p.add_argument('--memory',default=str(ROOT/'results/contact-skills-20261028/frozen-memory/advisory-v4/guidelines.json'))
     a=p.parse_args();study=Path(a.study).resolve();study.mkdir(parents=True,exist_ok=True);(study/'trials').mkdir(exist_ok=True)

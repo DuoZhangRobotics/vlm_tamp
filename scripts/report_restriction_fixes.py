@@ -71,8 +71,38 @@ img,video{max-width:100%;max-height:480px}a{color:#1264a2}.note{background:#e8f1
 <h1>Luna recovery: restriction fixes and control budgets</h1><p class="note">Zero added collision padding. Physical contacts remain enabled. Native task success, contact retention and numerical feasibility are reported separately.</p>
 <button onclick="location.reload()">Refresh</button>'''
     status=read(study/'implementation-status.json',{})
+    if status.get('title'):
+        body=body.replace('Luna recovery: restrictions and control budgets',esc(status['title']))
+        body=body.replace('Luna recovery: restriction fixes and control budgets',esc(status['title']))
     body+='<article><h2>Implementation and validation</h2><p>'+esc(', '.join(f'{x["id"]}: {x["status"]}'.replace('_',' ') for x in status.get('steps',[])))+'</p>'
     body+=link(ROOT/'docs/restriction_audit_20261029.md',study,'Original audit and plan')+' · '+link(study/'implementation-status.json',study,'Current work record')+'</article>'
+    plan=read(study/'varied-practice-plan.json',{})
+    if plan.get('clean_start'):
+        body+='<article><h2>Clean practice and memory comparison</h2><p>'+esc(f"One learner starts without inherited task memories or worked examples. {plan['initial_and_maximum_attempts']} practice episodes; {plan['control_steps']} controls per episode. Generic tool documentation remains available.")+'</p>'
+        body+='<p>Fresh evaluation actors may write their own lessons and notebooks. Those files are archived; they are not fed to later actors in this comparison. Each memory condition receives either no prior notes or the same frozen practice guidelines.</p>'
+        body+=link(study/'varied-practice-plan.json',study,'Declared experiment')+'</article>'
+        for file in sorted(study.glob('*-practice-manifest.json')):
+            experiment=read(file,{})
+            if not experiment.get('plan',{}).get('clean_start'):continue
+            rows=experiment.get('evaluations',[])
+            expected=len(plan['later_evaluation_cases'])*len(plan['evaluation_memory_conditions'])
+            body+='<article><h2>Fresh evaluations: memory versus no memory</h2><p>'+esc(f"{len(rows)}/{expected} episodes complete. Same code, initial states and control limits; a fresh actor for each case/condition. Condition order alternates between cases. One rollout per condition does not establish a general success rate.")+'</p>'
+            body+='<table><tr><th>Case / logs</th><th>Memory</th><th>Native outcome</th><th>Controls</th><th>Total (s)</th><th>Services (s)</th><th>Outside (s)</th></tr>'
+            for row in rows:
+                timing=read(study/'trials'/row['run']/'timing-breakdown.json',{})
+                total=row.get('actor_wall_seconds');services=timing.get('service_wall_seconds')
+                outside=max(0,total-services) if total is not None and services is not None else None
+                label=f"{row['task'].replace('_',' ')} / {row['state_index']}"
+                body+=f'<tr><td><a href="#{esc(row["run"])}">{esc(label)}</a></td>'
+                values=['None' if row['memory_condition']=='none' else 'Frozen practice notes',
+                    'Success' if row['official_task_success'] else 'Failed',row['control_steps'],
+                    *[f'{value:.1f}' if value is not None else 'unavailable' for value in [total,services,outside]]]
+                body+=''.join('<td>'+esc(value)+'</td>' for value in values)+'</tr>'
+            body+='</table><p>Outside-service time includes model calls, transport and local analysis.</p>'+link(file,study,'Complete comparison manifest')+'</article>'
+    context=read(study/'context-size-audit.json',{})
+    if context:
+        body+='<article><h2>Memory size and conversation history</h2><p>'+esc(context['summary'])+'</p>'
+        body+=link(study/'context-size-audit.json',study,'Measured sizes, context counters and sources')+'</article>'
     if (study/'hardware-conditions.json').exists():
         body+='<p>GPU 3 was shared with another workload during the later tests. Wall time includes the recorded hardware conditions. '+link(study/'hardware-conditions.json',study,'Hardware observation')+'</p>'
     final=read(study/'final-evaluation-summary.json',{})

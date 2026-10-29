@@ -95,8 +95,9 @@ python scripts/report_restriction_fixes.py
 ## What changed
 
 - A single per-episode control budget reaches the worker, service, planners,
-  schemas, prompts and reports. The normal learning runner defaults to 1,200;
-  comparisons explicitly request 600 or 1,200. The wall limit remains 30 minutes.
+  schemas, prompts and reports. This study used 600/1,200-control comparisons.
+  The subsequent clean-start study restores the normal default to 600;
+  1,200 remains an explicit option. The wall limit remains 30 minutes.
 - Removed extra 0.025/0.005 rad joint reserves. Full-pose cuRobo generation and
   CPU admission use the same 3 mm tolerance. Failed optimizer flags are
   diagnostic: actual FK residuals, bounds and robot checks decide admission.
@@ -170,7 +171,7 @@ From the repository root, on this server:
 
 ```bash
 source scripts/server_runtime_env.sh
-CUDA_VISIBLE_DEVICES=3 python scripts/run_restriction_study.py --tag cleaned-v1
+CUDA_VISIBLE_DEVICES=3 python scripts/run_restriction_study.py --tag cleaned-v1 --budgets 600 1200
 ```
 
 Use VS Code Live Preview on
