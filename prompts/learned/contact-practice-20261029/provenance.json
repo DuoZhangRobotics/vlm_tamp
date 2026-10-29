@@ -39,5 +39,67 @@
     "reviewed_at_unix": 1793284657.343536
   },
   "practice_code_commit": "2313406",
-  "initial_memory_sha256": "58f8817207de1e2b1936a9cd02037e857dd03be414aff1fa83166599195dba1b"
+  "initial_memory_sha256": "58f8817207de1e2b1936a9cd02037e857dd03be414aff1fa83166599195dba1b",
+  "final_evaluation": {
+    "completed": true,
+    "manifest": "results/restriction-fixes-20261029/repaired-v3-final-manifest.json",
+    "runtime_commit": "4a42817",
+    "memory_sha256": "d3d4d3a27a7c3da748701ffcc26ef721258b2eb62030f4333c34d5b3f07bd931",
+    "memory_bytes_unchanged": true,
+    "development_native_successes": 2,
+    "development_cases": 3,
+    "additional_native_successes": 1,
+    "additional_cases": 2,
+    "one_fresh_actor_per_case": true,
+    "additional_cases_excluded_from_this_practice_not_claimed_globally_unseen": true,
+    "memory_effect_not_isolated_from_implementation_repairs": true,
+    "rows": [
+      {
+        "task": "close_microwave",
+        "state_index": 17,
+        "group": "development_regression",
+        "native_success": true,
+        "controls": 214,
+        "success_stage": "free-approach",
+        "sources_unchanged": true
+      },
+      {
+        "task": "close_microwave",
+        "state_index": 49,
+        "group": "development_regression",
+        "native_success": true,
+        "controls": 526,
+        "success_stage": "free-approach",
+        "sources_unchanged": true
+      },
+      {
+        "task": "open_microwave",
+        "state_index": 13,
+        "group": "development_regression",
+        "native_success": false,
+        "controls": 1200,
+        "success_stage": null,
+        "sources_unchanged": true
+      },
+      {
+        "task": "close_microwave",
+        "state_index": 32,
+        "group": "additional_case",
+        "native_success": true,
+        "controls": 196,
+        "success_stage": "free-approach",
+        "sources_unchanged": true
+      },
+      {
+        "task": "open_microwave",
+        "state_index": 37,
+        "group": "additional_case",
+        "native_success": false,
+        "controls": 1200,
+        "success_stage": null,
+        "sources_unchanged": true
+      }
+    ],
+    "interpretation": "All three closing cases succeeded during free approach; both opening cases failed at 1,200 controls. These results do not qualify the requested contact modes or establish broad task reliability."
+  }
 }

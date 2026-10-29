@@ -6,6 +6,92 @@ simulation; physical contacts remain enabled. Real joint bounds, known robot
 self checks, finite inputs and observation freshness remain checked. Luna
 continues to choose strategy, targets and recovery from public observations.
 
+## Completed final evaluation
+
+The five-case `repaired-v3-final` evaluation completed on runtime commit
+`4a42817`, with Luna/high and the unchanged learner memory described below.
+All source-integrity checks passed. There were **3/5 native task successes**:
+all three closing cases succeeded; both opening cases failed. Each case has
+one fresh actor, so these counts do not establish a general success rate.
+
+| Case | Group | Native outcome | Controls | Actor wall (s) | Robot services (s) | Outside services (s) |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| close_microwave / 17 | Development | Success | 214 | 622.0 | 168.0 | 454.0 |
+| close_microwave / 49 | Development | Success | 526 | 1209.5 | 555.4 | 654.2 |
+| open_microwave / 13 | Development | Failure | 1200 | 1800.1 | 877.1 | 922.9 |
+| close_microwave / 32 | Additional | Success | 196 | 330.7 | 100.6 | 230.1 |
+| open_microwave / 37 | Additional | Failure | 1200 | 1634.7 | 952.1 | 682.7 |
+
+The additional cases were excluded from this six-attempt practice block; they
+are not claimed globally unseen. Outside-service time includes Luna calls,
+transport and local analysis, rather than isolated reasoning time. GPU 3 was
+shared with another workload. The webpage provides nested capture, perception,
+contact search, grasp search, IK, connection and execution timings; overlapping
+sections must not be added together.
+
+The development result is 2/3, the same count as the earlier cleaned-v1
+1,200-control condition, with a different failed case. These runs do not establish
+an improvement in overall task reliability or isolate the effect of memory.
+The matched controller experiment and local contact replays below establish
+their narrower improvements separately.
+
+### What actually succeeded and failed
+
+- **All three final closures occurred during a push's free approach.** The
+  requested controlled stroke or release had not begun on the winning call.
+  Measured approach contact-landmark peaks were 4.65, 47.14 and 37.82 cm/s for
+  states 17, 49 and 32. State 17 explicitly selected palm contact. States 49 and
+  32 selected fingertips, but offline records include palm and arm contact with
+  the microwave. These are native task successes; they do not qualify the
+  requested contact mode. Normal stopping was unchanged, and these final
+  episodes contain no post-success withdrawal/coasting test.
+- **Opening state 13 reached 52.05 degrees, then lost its grasp.** Seven arc
+  executions made sustained progress after the second pinch attempt. The pad
+  gap then fell from 21.66 to 0.95 mm. Another arc with the closed gripper made
+  no door progress. Recovery push event 108 requested five degrees of opening,
+  but its 29-control free approach closed the door before the stroke. Its
+  tracker found only two correspondences and returned `object_motion_unresolved`.
+  The episode ended 0.006 degrees open. This does not isolate which grasp or
+  tolerance choice caused the slip.
+- **Opening state 37 began with a gripper-command error.** The grasp plan
+  explicitly required `gripper=-1` during approach; Luna executed `gripper=1`,
+  which closes the fingers. The pad gap fell to 0.009 mm around an observed
+  19.03 mm handle. Later surface-contact motions opened the door to 45.38
+  degrees. Four subsequent free approaches reduced that progress through
+  34.48, 25.71 and 8.37 degrees to closed. The episode ended closed. The hook
+  preview reported an unobserved retaining surface and issued no hook motion.
+
+LIBERO's native opening predicate requires more than 74.48 degrees. That
+threshold and the native angles/contact records above are offline grading only;
+the actor and planner received no native object geometry. Per-run
+`failure-analysis.json`, `outcome-analysis.json` and `physical-stage-timeline.json`
+link these conclusions to the actual events. The remaining problems include
+contact retention, progress lost during approaches, visual tracking after large
+motion, and misuse of the low-level gripper convention. A feasible IK endpoint
+does not resolve those problems.
+
+### Batch completion and report reproduction
+
+The original coordinator stopped after opening state 13 because the CLI returned
+143 at its deadline, although the physical episode had already exhausted all
+1,200 controls and recorded a normal terminal result. The original exit/logs
+remain. `driver-continuation.json` records the continuation of the two declared
+remaining cases on unchanged source and memory; the failed opening stays in the
+denominator. The tracked coordinator now verifies independent terminal evidence
+before accepting this specific exit, and still rejects interrupted or incomplete
+runs. Its 20 regression tests passed in isolation and after promotion.
+
+The coordinator/report changes were promoted only after all five evaluations
+finished. `final-integrity-audit.json` preserves the preceding source and memory
+checks. To regenerate the offline summaries and existing webpage:
+
+```bash
+source scripts/server_runtime_env.sh
+python scripts/report_restriction_outcomes.py --tag repaired-v3-final --code-commit 4a42817
+python scripts/plot_restriction_progress.py --final-tag repaired-v3-final
+python scripts/report_restriction_fixes.py
+```
+
 ## What changed
 
 - A single per-episode control budget reaches the worker, service, planners,
@@ -33,7 +119,9 @@ continues to choose strategy, targets and recovery from public observations.
 
 The old adapter limited target minus *measured position* to 0.05 rad. This is a
 position-lead cap, not a limit on consecutive commanded references. At Kp=300 it
-caps proportional lead at 15 Nm and can cause large tracking lag against damping.
+limits the proportional term to 15 before robosuite multiplies by the joint mass
+matrix and adds compensation; this is not a fixed 15 Nm torque cap. The limited
+position lead can cause large tracking lag against damping.
 The corrected `slew_limited` adapter limits consecutive desired references to
 1 rad/s using robosuite's existing `set_goal(..., set_qpos=reference)` API.
 It changes a controller goal, **not simulator qpos/qvel**. Gains, actuator limits,
@@ -55,7 +143,7 @@ maximum as a universal default. Faster requested motion is not guaranteed to
 reach its endpoint or retain a grasp. Preserve `measured_delta` for historical
 prefixes; `source_reference_mode` reads the mode recorded in newer runs.
 
-## Evidence so far
+## Initial diagnostics before the frozen comparisons
 
 - A budget-only fresh Luna run with old numerical/controller policy and frozen
   memory closed state 49 at control **692** (623.02 s actor wall). The earlier
@@ -102,7 +190,7 @@ change runtime sources during a frozen comparison, and never present scripted
 checkpoint success as fresh policy transfer. Read `motion_settings`, the current
 tool schema and source-reference mode instead of assuming historical defaults.
 
-## Automated checks
+## Initial automated checks before follow-up repairs
 
 The full server suite passed 1,494 tests, skipped 36, failed 44 and had eight
 fixture-setup errors. The remaining failures require unavailable historical
@@ -139,7 +227,7 @@ The 600-control condition succeeded in 1/3 runs; the 1,200-control condition in 
 
 - Closing state 17 / 1,200: native success occurred during approach, with measured peak hand speed 0.173 m/s, before the requested controlled contact stroke. It is task success, not a validated 3 cm/s controlled-stroke result. Separate withdrawal/coasting validation is required.
 
-### Follow-up implementation under validation
+### Follow-up implementation tested separately
 
 Preserve a signed axis when reinstalling a generic part model. Retain prior observed geometry as inactive, timestamped history for explicit measured part-motion updates. Use a combined initial motion baseline and a third checking interval before automatic hinge revision. Make the expected plan executor and arc search budget explicit. Preserve detailed grasp and specialized arc IK timings in the report.
 
@@ -196,18 +284,18 @@ microwave contact was gone but finger/mug contact remained. Those three tests
 therefore establish retained closure with the reported contacts, not completely
 contact-free withdrawal. See `retention-summary.json` for forces and geometry names.
 
-Varied practice uses six attempts in one persistent Luna context across the
-three development cases. Freeze and inspect its learner-authored notes before
-fresh evaluation. Final-version evaluation covers the three development
-regressions and two separately declared cases; report those groups separately.
+Varied practice used six attempts in one persistent Luna context across the
+three development cases. Its learner-authored notes were inspected and frozen
+before fresh evaluation. Final-version evaluation covered the three development
+regressions and two separately declared cases, reported separately above.
 No native coordinates or successful action sequence is supplied to the learner.
 
 ## Varied practice and camera-selection repair
 
 The persistent six-attempt practice block on commit `2313406` completed with
-2/6 native successes: closing state17 at855 controls on its first attempt and
-121 on the repeat. Closing state49 failed twice (1182 and1131 controls, wall
-budget); opening state13 failed twice (1200 controls and1179 controls). Luna
+2/6 native successes: closing state 17 at 855 controls on its first attempt and
+121 on the repeat. Closing state 49 failed twice (1182 and 1131 controls, wall
+budget); opening state 13 failed twice (1200 controls and 1179 controls). Luna
 requested further practice after reaching the declared cap; this block is kept
 intact while its frozen notes are assessed in fresh agents.
 
@@ -220,19 +308,19 @@ indices or replay recipe. Supporting attempt numbers identify evidence only.
 
 A recorded push exposed a separate observation inefficiency: its original
 four-camera subset kept being used after arm/target visibility changed. Four
-failed subset fits triggered four full-camera recoveries, costing32.9 seconds;
-contact and stroke planning together took about4.4 seconds.
+failed subset fits triggered four full-camera recoveries, costing 32.9 seconds;
+contact and stroke planning together took about 4.4 seconds.
 
 The repair chooses up to four views from each new tracker's current reference
 features and retains the requested view. The quality thresholds are unchanged.
 On the same four recorded physical intervals, a closed-loop observation replay
 used only actually available reference views: both policies accepted all four
-intervals, while full captures fell from4 to1. Final measured progress differed
-by0.42mm. This is an observer replay, not a claim of faster live task completion.
+intervals, while full captures fell from 4 to 1. Final measured progress differed
+by 0.42 mm. This is an observer replay, not a claim of faster live task completion.
 The baseline replay reproduces the recorded progress to floating-point precision.
 See `camera-selection-replay/closed-loop-comparison.json` and `analyze.py`.
 
-The camera repair passed45 focused contact/feedback tests. It was prepared in
+The camera repair passed 45 focused contact/feedback tests. It was prepared in
 an isolated copy and applied only after the six-attempt practice finished.
 Final fresh-agent evaluation therefore tests the repaired system plus frozen
 learner memory; it does not isolate the causal contribution of memory alone.
@@ -251,14 +339,14 @@ fit and would reject grasp planning afterwards.
 The repair merges the standard handle schema with the preserved fixed-joint
 parameters and clears the part-only flag only after the handle fit succeeds.
 Error messages now identify the required model and the available update tools.
-The regression failed with KeyError: joint_family before repair;71 related tests
+The regression failed with KeyError: joint_family before repair; 71 related tests
 passed afterwards (5 optional-fixture skips). A real recorded RGB-D check also
-fitted the9.72mm-radius handle without motion or native object geometry, while
+fitted the 9.72 mm-radius handle without motion or native object geometry, while
 preserving the previous hinge origin and signed axis exactly.
 
 The v2 evaluation driver was suspended while its active episode finished on
-unchanged code. Its two completed outcomes remain: closing17 succeeded at224
-controls and closing49 failed at1200. No logged KeyError occurred in those two
+unchanged code. Its two completed outcomes remain: closing 17 succeeded at 224
+controls and closing 49 failed at 1200. No logged KeyError occurred in those two
 runs, so their outcomes are not attributed to this latent conversion bug. The
-cohort was stopped before its remaining cases; a new complete v3 five-case
-evaluation follows after repair. Memory remains frozen and unchanged.
+cohort was stopped before its remaining cases. The complete v3 five-case
+evaluation reported above followed the repair. Memory remained frozen and unchanged.

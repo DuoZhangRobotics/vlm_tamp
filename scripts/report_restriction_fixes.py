@@ -75,6 +75,25 @@ img,video{max-width:100%;max-height:480px}a{color:#1264a2}.note{background:#e8f1
     body+=link(ROOT/'docs/restriction_audit_20261029.md',study,'Original audit and plan')+' · '+link(study/'implementation-status.json',study,'Current work record')+'</article>'
     if (study/'hardware-conditions.json').exists():
         body+='<p>GPU 3 was shared with another workload during the later tests. Wall time includes the recorded hardware conditions. '+link(study/'hardware-conditions.json',study,'Hardware observation')+'</p>'
+    final=read(study/'final-evaluation-summary.json',{})
+    if final:
+        body+='<article><h2>Final frozen evaluation</h2><p>'+esc(f"{final['completed_cases']}/{final['planned_cases']} cases complete; runtime commit {final['code_commit']}. One fresh Luna actor per case, with the same frozen learner memory.")+'</p>'
+        counts=[]
+        for group,label in [('development_regression','Development cases'),('additional_case','Additional cases excluded from this practice')]:
+            value=final.get(group,{})
+            counts.append(f"{label}: {value.get('native_successes',0)}/{value.get('completed',0)} native successes")
+        body+='<p>'+esc('; '.join(counts))+'. These small counts do not establish a general success rate or isolate the effect of memory.</p>'
+        body+='<table><tr><th>Case / logs</th><th>Group</th><th>Outcome</th><th>Controls</th><th>Total (s)</th><th>Services (s)</th><th>Outside (s)</th><th>Success stage</th></tr>'
+        for row in final['rows']:
+            label=f"{row['task'].replace('_',' ')} / {row['state_index']}"
+            body+=f'<tr><td><a href="#{esc(row["run"])}">{esc(label)}</a></td>'
+            values=['Development' if row['group']=='development_regression' else 'Additional',
+                'Success' if row['native_success'] else 'Failed',row['controls'],
+                f"{row['actor_wall_seconds']:.1f}",f"{row['service_seconds']:.1f}",
+                f"{row['outside_service_seconds']:.1f}",row.get('success_stage') or '—']
+            body+=''.join('<td>'+esc(value)+'</td>' for value in values)+'</tr>'
+        body+='</table><p>Outside-service time includes Luna calls, transport and local analysis. Click a case for video, input/output and detailed profiling. A success during free approach does not validate the requested contact stroke or release.</p>'
+        body+=link(study/'final-evaluation-summary.json',study,'Evaluation summary and provenance')+'</article>'
     plot=study/'task-progress-comparison.png'
     if plot.exists():body+=f'<article><h2>Observed task outcomes</h2><p>Offline simulator grading; these native angles were not actor or planner inputs. Each line is a separate rollout.</p><img src="{plot.name}" alt="Door opening versus controls across evaluation conditions"></article>'
     qualification=read(study/'qualification-summary.json',{})
@@ -133,7 +152,7 @@ img,video{max-width:100%;max-height:480px}a{color:#1264a2}.note{background:#e8f1
                     a.get('control_steps'),a.get('success_by_600_controls'),wall,service_seconds))
         elif not protocol.get('learning_practice'):trial_rows.append((run.name,protocol.get('case',{}).get('task','starting'),protocol.get('maximum_control_steps_per_attempt'),
             'interrupted' if interruption else 'running',status_row.get('control_steps'),None,wall,service_seconds))
-        card=f'<article><h2>{esc(run.name)}</h2><p>Tools selected: {esc(dict(calls))}.</p>'
+        card=f'<article id="{esc(run.name)}"><h2>{esc(run.name)}</h2><p>Tools selected: {esc(dict(calls))}.</p>'
         skills=[e for e in events if e['request']['operation'] in {'push','hook_pull'}]
         card+=f'<p>Contact skill selections: {len(skills)}; previews: {sum(bool(e["request"].get("arguments",{}).get("preview")) for e in skills)}; calls with physical motion: {sum(bool(e.get("response",{}).get("result",{}).get("robot_motion_executed")) for e in skills)}. Availability, selection, execution and native task success are separate measurements.</p>'
         if interruption:card+='<p>Infrastructure/implementation interruption: '+esc(interruption.get('reason'))+'. Excluded from task-success counts.</p>'

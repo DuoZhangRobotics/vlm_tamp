@@ -20,6 +20,38 @@ def source_hashes():
     return {str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}
 
 
+def validate_terminal(returncode, agent, evaluation, interrupted=False):
+    """Keep task outcomes when the CLI deadline follows a completed episode.
+
+    The pilot preserves a SIGTERM exit as 143 even when the robot has already
+    reached success or its episode budget. Require independent episode evidence
+    before accepting that exit. An unverified or interrupted episode must still
+    stop the study instead of being silently counted as a normal evaluation.
+    """
+    attempts = evaluation.get('attempts', [])
+    if interrupted or not agent.get('normal_terminal') or len(attempts) != 1:
+        raise RuntimeError('Evaluation lacks one uninterrupted normal terminal episode')
+    attempt = attempts[0]
+    reason = attempt.get('reason')
+    if attempt.get('premature_end') or not attempt.get('all_trajectories_completed_or_success_terminated'):
+        raise RuntimeError('Physical episode did not complete normally')
+    controls = attempt.get('control_steps')
+    limit = attempt.get('maximum_control_steps')
+    remaining_wall = attempt.get('remaining_wall_seconds')
+    control_exhausted = (reason == 'control_budget_exhausted'
+        and isinstance(controls, int) and isinstance(limit, int)
+        and limit > 0 and controls >= limit)
+    wall_exhausted = (reason == 'wall_budget_exhausted'
+        and isinstance(remaining_wall, (int, float)) and remaining_wall <= 0)
+    success = reason == 'simulator_success' and attempt.get('official_task_success') is True
+    if not (control_exhausted or wall_exhausted or success):
+        raise RuntimeError('Terminal evidence does not establish success or an exhausted budget')
+    if returncode and not (returncode == 143 and agent.get('returncode') == -15
+            and agent.get('termination_reason') == reason):
+        raise RuntimeError('Unexpected infrastructure exit after episode')
+    return attempt
+
+
 def main():
     p=argparse.ArgumentParser();p.add_argument('--study',default=str(ROOT/'results/restriction-fixes-20261029'))
     p.add_argument('--tag',default='cleaned-v1');p.add_argument('--budgets',nargs='+',type=int,default=[600,1200])
@@ -59,14 +91,18 @@ def main():
                     raise
                 active.update(status='completed',returncode=process.returncode,finished_at=time.time());write_json(study/'active-process.json',active)
             render(study)
-            if process.returncode:raise RuntimeError('Actor infrastructure failure; inspect the retained run')
-            evaluation=read_json(out/'evaluation-private.json');agent=read_json(out/'agent-exit.json')
-            if not agent.get('normal_terminal') or len(evaluation['attempts'])!=1:raise RuntimeError('Evaluation did not end with one normal terminal episode')
+            try:
+                evaluation=read_json(out/'evaluation-private.json');agent=read_json(out/'agent-exit.json')
+            except (OSError,ValueError) as error:
+                raise RuntimeError('Actor infrastructure failure: missing or invalid terminal records') from error
+            attempt=validate_terminal(process.returncode,agent,evaluation,(out/'operator-interruption.json').exists())
             unchanged=source_hashes()==frozen
             write_json(out/'source-integrity.json',{'sources_unchanged_during_run':unchanged,'checked_files':len(frozen)})
             if not unchanged:raise RuntimeError('Sources changed before evaluation ended')
             if hashlib.sha256(memory.read_bytes()).hexdigest()!=memory_hash:raise RuntimeError('Frozen memory changed')
-            row={'run':name,'budget':controls,**evaluation['attempts'][0],'actor_wall_seconds':agent['wall_seconds']}
+            row={'run':name,'budget':controls,**attempt,'actor_wall_seconds':agent['wall_seconds'],
+                'runner_returncode':process.returncode,'actor_returncode':agent['returncode'],
+                'normal_terminal_verified':True}
             manifest['rows'].append(row);write_json(path,manifest)
             print(json.dumps({k:row.get(k) for k in ['run','official_task_success','control_steps','success_by_600_controls','first_native_success_control_step']}),flush=True)
     manifest.update(completed=True,finished_at=time.time());write_json(path,manifest);render(study)
