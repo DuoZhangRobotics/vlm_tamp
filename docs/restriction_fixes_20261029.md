@@ -238,3 +238,27 @@ Final fresh-agent evaluation therefore tests the repaired system plus frozen
 learner memory; it does not isolate the causal contribution of memory alone.
 Controller, planner, contact permissions, measurement-quality thresholds and
 native success criteria are unchanged by this camera-selection update.
+
+## Generic-joint to handle conversion repair
+
+A no-motion regression exposed a schema/type-transition bug. A part-only joint
+model intentionally has no handle. After a valid handle fit, refresh_contact
+passed that sparse model directly to the legacy manifold constructor, which
+requires joint_family and target_progress. It could raise KeyError before
+constructing the handle model. The old generic/no-handle flag also survived the
+fit and would reject grasp planning afterwards.
+
+The repair merges the standard handle schema with the preserved fixed-joint
+parameters and clears the part-only flag only after the handle fit succeeds.
+Error messages now identify the required model and the available update tools.
+The regression failed with KeyError: joint_family before repair;71 related tests
+passed afterwards (5 optional-fixture skips). A real recorded RGB-D check also
+fitted the9.72mm-radius handle without motion or native object geometry, while
+preserving the previous hinge origin and signed axis exactly.
+
+The v2 evaluation driver was suspended while its active episode finished on
+unchanged code. Its two completed outcomes remain: closing17 succeeded at224
+controls and closing49 failed at1200. No logged KeyError occurred in those two
+runs, so their outcomes are not attributed to this latent conversion bug. The
+cohort was stopped before its remaining cases; a new complete v3 five-case
+evaluation follows after repair. Memory remains frozen and unchanged.

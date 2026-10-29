@@ -371,7 +371,7 @@ class RobotService:
             axis_prior='upright door', contact_policy='selected functional finger contact',
             constraint={'type':'point_on_circle_with_coupled_orientation'})
         mechanism, cloud, mask, anchors, evidence = ground_handle(
-            self.cameras, choices,template if fixed_joint is None else {**fixed_joint,'camera':choices['camera']},
+            self.cameras, choices,template if fixed_joint is None else {**template,**fixed_joint,'camera':choices['camera']},
             self.state['metadata'],**({'fixed_joint':fixed_joint} if fixed_joint is not None else {}))
         names=['spec','cloud','mask','anchors','contact_scene_kind','choices','epoch','scene','tracker']
         previous={key:getattr(self,key,None) for key in names}
@@ -381,6 +381,9 @@ class RobotService:
                 'note':'Plane/cylinder residuals do not measure hinge accuracy. Check another calibrated view or independent observed motion.'}
         self.contact_scene_kind='articulated'
         self.spec['observed_handle_radius_m'] = evidence['cylinder_radius_m']
+        # A successful current handle fit adds grasp geometry to a part-only
+        # joint model. Preserve the fixed joint, but update its capabilities.
+        self.spec.pop('generic_part_joint_model',None)
         self.choices = choices
         self.epoch += 1
         self.scene = None
@@ -761,13 +764,13 @@ class RobotService:
 
     def _select_contact(self, probe_degrees, max_candidates, seed, options=None):
         if getattr(self,'contact_scene_kind','articulated')!='articulated':
-            raise ValueError('Handle grasp/arc tools require a grounded mechanism; use free-motion pose planning for a selected surface')
+            raise ValueError('Grasp planning needs a current handle/joint model. Use ground, or refresh_contact when a fixed joint is retained. Push/hook can plan directly from a current visible region.')
         if not np.isfinite(probe_degrees) or float(probe_degrees)==0 or int(max_candidates)<1:
             raise ValueError('Use a finite nonzero signed angle and a positive candidate count')
         if self.scene is None:
             raise ValueError('Ground the target first')
         if (getattr(self,'spec',None) or {}).get('generic_part_joint_model'):
-            raise ValueError('This model describes an observed part and joint; use joint-linked push/hook, or explicitly select a handle for a pinch grasp')
+            raise ValueError('This model has an observed part and joint but no handle geometry. Use refresh_contact to fit a current handle while retaining the joint, or use joint-linked push/hook.')
         if type(seed) is not int or not 0<=seed<2**31:
             raise ValueError('Grasp seed must be an integer in [0, 2**31)')
         require_grasp_budget(self.state,{**self.config,**(options or {})})
@@ -882,7 +885,7 @@ class RobotService:
                  position_tolerance_m=None, max_wrist_reorientation_deg=None,
                  orientation_tolerance_deg=None,collision_policy=None,budget_seconds=None):
         if getattr(self,'contact_scene_kind','articulated')!='articulated':
-            raise ValueError('An observed surface patch is not a hinge model; use pose or joint planning')
+            raise ValueError('Arc planning needs an associated joint model. Install a current part/joint estimate, apply measured motion to retained geometry, or ground the mechanism. Free pose/joint planning applies to a selected surface.')
         angle = float(degrees)
         if not np.isfinite(angle) or angle==0:
             raise ValueError('Specify a finite nonzero signed relative angle')
