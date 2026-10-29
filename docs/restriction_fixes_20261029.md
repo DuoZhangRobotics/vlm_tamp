@@ -201,3 +201,40 @@ three development cases. Freeze and inspect its learner-authored notes before
 fresh evaluation. Final-version evaluation covers the three development
 regressions and two separately declared cases; report those groups separately.
 No native coordinates or successful action sequence is supplied to the learner.
+
+## Varied practice and camera-selection repair
+
+The persistent six-attempt practice block on commit `2313406` completed with
+2/6 native successes: closing state17 at855 controls on its first attempt and
+121 on the repeat. Closing state49 failed twice (1182 and1131 controls, wall
+budget); opening state13 failed twice (1200 controls and1179 controls). Luna
+requested further practice after reaching the declared cap; this block is kept
+intact while its frozen notes are assessed in fresh agents.
+
+Luna wrote four scoped principles. The reviewed file is preserved verbatim in
+`prompts/learned/contact-practice-20261029/guidelines.json`, SHA256
+`d3d4d3a27a7c3da748701ffcc26ef721258b2eb62030f4333c34d5b3f07bd931`.
+It records incomplete opening results and explicitly declines a repeatability
+claim. The review found no saved coordinates, robot joint vectors, object-state
+indices or replay recipe. Supporting attempt numbers identify evidence only.
+
+A recorded push exposed a separate observation inefficiency: its original
+four-camera subset kept being used after arm/target visibility changed. Four
+failed subset fits triggered four full-camera recoveries, costing32.9 seconds;
+contact and stroke planning together took about4.4 seconds.
+
+The repair chooses up to four views from each new tracker's current reference
+features and retains the requested view. The quality thresholds are unchanged.
+On the same four recorded physical intervals, a closed-loop observation replay
+used only actually available reference views: both policies accepted all four
+intervals, while full captures fell from4 to1. Final measured progress differed
+by0.42mm. This is an observer replay, not a claim of faster live task completion.
+The baseline replay reproduces the recorded progress to floating-point precision.
+See `camera-selection-replay/closed-loop-comparison.json` and `analyze.py`.
+
+The camera repair passed45 focused contact/feedback tests. It was prepared in
+an isolated copy and applied only after the six-attempt practice finished.
+Final fresh-agent evaluation therefore tests the repaired system plus frozen
+learner memory; it does not isolate the causal contribution of memory alone.
+Controller, planner, contact permissions, measurement-quality thresholds and
+native success criteria are unchanged by this camera-selection update.

@@ -62,6 +62,16 @@ def _overlay(service,camera,region,target_region,point,direction,dest):
     img.save(dest)
 
 
+def feedback_camera_names(tracker,requested,available,previous=()):
+    """Choose current reference views; never reuse the original ranking blindly."""
+    references=tracker.tracker.references
+    ranked=sorted((name for name in references if name in available),
+        key=lambda name:-len(references[name]['pixels']))
+    names=list(dict.fromkeys(([requested] if requested in available else [])+ranked))[:4]
+    # Keep ordering stable when the captured set itself has not changed.
+    return list(previous) if set(names)==set(previous) else names
+
+
 def run_skill(service,kind,*,observation_id,camera,region_xyxy,target_region_xyxy=None,
               direction_world=None,distance_m=.03,joint_degrees=None,joint_model_epoch=None,
               mode='controlled',contact_speed_m_s=.03,contact_surface='fingertips',
@@ -200,9 +210,15 @@ def run_skill(service,kind,*,observation_id,camera,region_xyxy,target_region_xyx
         phase=time.perf_counter()
         tracker=ContactTracker(service.cameras,tracked_target,service.state['control_steps'])
         timing['tracker_initialization_seconds']+=time.perf_counter()-phase
-        visible=sorted(tracker.tracker.references,key=lambda n:-len(tracker.tracker.references[n]['pixels']))
-        view_names=list(dict.fromkeys([camera,*visible]))[:4]
-        result['feedback_cameras']=view_names
+        view_names=[]
+        def refresh_feedback_views(reference_tracker):
+            nonlocal view_names
+            selected_views=feedback_camera_names(reference_tracker,camera,service.cameras,view_names)
+            if selected_views!=view_names:
+                result.setdefault('feedback_camera_changes',[]).append({
+                    'control_steps':int(service.state['control_steps']),'cameras':selected_views})
+            view_names=selected_views;result['feedback_cameras']=list(view_names)
+        refresh_feedback_views(tracker)
 
         def issue(refs,label,**stage_fields):
             nonlocal executed
@@ -302,6 +318,7 @@ def run_skill(service,kind,*,observation_id,camera,region_xyxy,target_region_xyx
         # reference endpoint does not establish physical arrival at standoff.
         if not engagement.get('reuse_existing_contact'):
             phase=time.perf_counter();tracker=ContactTracker(service.cameras,tracked_target,service.state['control_steps'])
+            refresh_feedback_views(tracker)
             timing['tracker_initialization_seconds']+=time.perf_counter()-phase
             meta=service.state['metadata'];start=np.asarray(meta['joint_positions'])
             insertion_goal=np.eye(4);insertion_goal[:3,:3]=engagement['rotation']
@@ -349,6 +366,7 @@ def run_skill(service,kind,*,observation_id,camera,region_xyxy,target_region_xyx
                 if not after['accepted']:raise SkillStop('current_observation_start_collision',diagnostic=after,
                     explanation='A full current sensor snapshot still rejects the measured robot configuration; no obstacle was bypassed.')
             phase=time.perf_counter();tracker=ContactTracker(service.cameras,tracked_target,service.state['control_steps'])
+            refresh_feedback_views(tracker)
             timing['tracker_initialization_seconds']+=time.perf_counter()-phase
             meta=service.state['metadata'];start=np.asarray(meta['joint_positions']);tcp=pose_matrix(chain.forward(start))
             hand_point=tcp[:3,3]+tcp[:3,:3]@contact_local
@@ -434,6 +452,7 @@ def run_skill(service,kind,*,observation_id,camera,region_xyxy,target_region_xyx
                 # target cloud projected into the post-pulse image.
                 release_tracker=(ContactTracker(service.cameras,tracked_target,service.state['control_steps'])
                     if motion_applied else tracker)
+                refresh_feedback_views(release_tracker)
                 result['release_motion_reference']='after_pulse' if motion_applied else 'before_pulse'
                 timing['tracker_initialization_seconds']+=time.perf_counter()-phase
                 meta=service.state['metadata'];start=np.asarray(meta['joint_positions']);tcp=pose_matrix(chain.forward(start))

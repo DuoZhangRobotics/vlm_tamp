@@ -1,0 +1,81 @@
+{
+  "principles": [
+    {
+      "name": "Use hook contact when pinch support is contradicted",
+      "applicability": "A narrow door handle is visible and the measured pad gap does not support the fitted handle width, or closure produces a near-zero gap without physical-contact evidence.",
+      "observable_failure_signals": [
+        "The gripper gap collapses toward zero while the bar remains wider than the pads.",
+        "The grasp report says grasp_not_verified or near_closed_without_bar_width_support.",
+        "The part does not follow the hand in measured RGB-D motion."
+      ],
+      "conditional_actions": [
+        "Open the gripper and inspect a fresh hook preview on the current handle.",
+        "Proceed only when the retaining feature and its back surface are observed and a robot-valid approach is available.",
+        "After motion, accept engagement only when current part-motion evidence supports it; otherwise reselect the contact or use another visible surface."
+      ],
+      "supporting_attempts": [
+        "Attempt 6: pinch closures were unsupported; open-gripper hook pulls later produced measured door-follow motion.",
+        "Attempt 3: a hook attempt without a supported catch did not establish engagement."
+      ],
+      "limits": "The positive evidence came from one opening episode in this microwave scene. The door remained natively incomplete. A preview is not proof of hook engagement, and a retaining surface can become hidden as the panel moves."
+    },
+    {
+      "name": "Reground handle and panel after every meaningful door motion",
+      "applicability": "A push, pull, grasped arc, or contact skill has changed the visible door angle or invalidated the current scene model.",
+      "observable_failure_signals": [
+        "A previously selected region no longer overlays the handle.",
+        "The requested contact is reported outside the target patch or the retaining surface is unobserved.",
+        "RGB-D matching becomes inconsistent or the current motion estimate conflicts with the image."
+      ],
+      "conditional_actions": [
+        "Use a fresh capture and fit the current handle and panel while retaining a hinge hypothesis only if it remains useful.",
+        "Inspect a second current view for hook support when the front view cannot show the retaining surface.",
+        "Do not reuse prior contact geometry or assume the part followed the robot; compare measured motion and the current image before continuing."
+      ],
+      "supporting_attempts": [
+        "Attempt 5: contact and hinge discrepancies accumulated after repeated motion and required refreshed geometry.",
+        "Attempt 6: hook support varied by camera and door angle; fresh selection restored some engagements and exposed other failed selections."
+      ],
+      "limits": "Fresh geometry preserves the previous fixed-hinge and signed-direction assumptions; it does not independently verify them. This was tested on microwave-door scenes only."
+    },
+    {
+      "name": "Keep task direction separate from joint sign",
+      "applicability": "The installed model has a signed axis, but opening or closing direction is not independently verified, or the task changes between episodes.",
+      "observable_failure_signals": [
+        "The door moves opposite the visible goal relationship.",
+        "An image hint or tracker is unresolved while the model still labels one sign as open or close.",
+        "A motion produces movement but the native task boolean remains false."
+      ],
+      "conditional_actions": [
+        "Make a bounded physical motion only from current robot-valid geometry, then inspect the changed door-cavity relationship and measured joint-axis motion.",
+        "Continue the same sign only when current evidence shows movement toward the requested state; otherwise update the direction hypothesis.",
+        "Use native task_success as the completion criterion, not a direction label, appearance alone, or robot motion."
+      ],
+      "supporting_attempts": [
+        "Attempt 3: opening-direction assumptions were contradicted by observed outcomes.",
+        "Attempt 6: positive motion was supported as opening by measured and visible door movement, yet remained below native success.",
+        "Attempts 1 and 4: successful closing used scene-specific contact and direction choices."
+      ],
+      "limits": "The axis and direction evidence were not independently verified across scenes. This principle does not supply a universal world direction or opening threshold."
+    },
+    {
+      "name": "Treat collision and motion predictions as evidence, not outcomes",
+      "applicability": "A contact preview reports an environmental overlap, or an executed skill returns false, unresolved, or partial progress.",
+      "observable_failure_signals": [
+        "A plan is marked robot-valid while an advisory environment overlap is also reported.",
+        "The robot moves but RGB-D part motion is rejected or inconsistent.",
+        "The skill returns before native success, including after measurable partial motion."
+      ],
+      "conditional_actions": [
+        "Inspect the reported prediction and contact overlay, then judge physical motion from the returned capture and RGB-D evidence.",
+        "If tracking is unresolved, compare fresh images and re-estimate geometry; do not invent attachment from hand motion.",
+        "After accepted partial progress, continue only with a current valid plan and sufficient attempt budget; check native success after every action."
+      ],
+      "supporting_attempts": [
+        "Attempt 5: robot travel and rejected or inconsistent tracking did not reliably indicate door progress.",
+        "Attempt 6: advisory overlap did not itself prevent execution, while other valid plans failed to establish engagement; accepted RGB-D motion still did not guarantee native completion."
+      ],
+      "limits": "The contact predictions were incomplete and scene-specific. RGB-D evidence can fail or be occluded, and accepted rigid motion is not a native task certificate."
+    }
+  ]
+}

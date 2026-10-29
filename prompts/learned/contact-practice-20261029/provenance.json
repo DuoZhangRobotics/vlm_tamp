@@ -1,0 +1,43 @@
+{
+  "learner": "gpt-6-luna",
+  "source": "/common/users/dz323/vlm_tamp/results/restriction-fixes-20261029/trials/repaired-v1-practice/agent-workspace/guidelines.json",
+  "sha256": "d3d4d3a27a7c3da748701ffcc26ef721258b2eb62030f4333c34d5b3f07bd931",
+  "verbatim_learner_authored": true,
+  "teacher_or_reflection_model": false,
+  "held_out_updates": false,
+  "native_attempt_outcomes": [
+    true,
+    false,
+    false,
+    true,
+    false,
+    false
+  ],
+  "successes": 2,
+  "attempts": 6,
+  "has_successful_attempt": true,
+  "consecutive_successes_observed": false,
+  "review": {
+    "memory_sha256": "d3d4d3a27a7c3da748701ffcc26ef721258b2eb62030f4333c34d5b3f07bd931",
+    "reviewed_before_fresh_evaluation": true,
+    "eligible_for_transfer": true,
+    "verbatim_learner_authored": true,
+    "teacher_rewrite": false,
+    "coordinates_world_poses_robot_joint_vectors_or_replay_paths_found": false,
+    "object_state_indices_found": false,
+    "native_success_claims_match_recorded_outcomes": true,
+    "native_successes": 2,
+    "attempts": 6,
+    "repeatable_success_established": false,
+    "scope": "Procedural candidate guidelines from microwave-door practice; several supported observations were partial progress in failed episodes.",
+    "caveats": [
+      "The findings distinguish supplied tool contracts from discoveries.",
+      "Operation-level task success does not establish that every intended skill stage executed; inspect stage records when attributing causes.",
+      "General task success and transfer remain to be tested."
+    ],
+    "practice_code_commit": "2313406",
+    "reviewed_at_unix": 1793284657.343536
+  },
+  "practice_code_commit": "2313406",
+  "initial_memory_sha256": "58f8817207de1e2b1936a9cd02037e857dd03be414aff1fa83166599195dba1b"
+}
