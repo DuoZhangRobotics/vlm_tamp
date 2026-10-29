@@ -135,3 +135,61 @@ def test_sequence_replans_from_actual_closure_and_returns_slip_recovery(tmp_path
     if lose_contact:
         assert result['stop_reason']=='grasp_engagement_lost' and result['recovery_required']
         assert result['remaining_control_steps']>0
+
+
+def test_automatic_joint_revision_uses_longer_baseline_and_third_check(tmp_path,monkeypatch):
+    import vlm_tamp.sequence_execution as module
+    import vlm_tamp.joint_feedback as feedback
+    from test_robot_sequence import service,install_sequence
+    _,robot=service(tmp_path);install_sequence(robot);robot.record={};robot.scene=object();robot.cameras={}
+    robot.folder=lambda name:tmp_path/f'{robot.calls}-{name}'
+    monkeypatch.setattr(module,'measured_robot_scene',lambda s:s.scene)
+    monkeypatch.setattr(module,'grasp_observation',lambda *a,**k:{'status':'grasp_not_verified'})
+    planned=[];revisions=[];count=[0];robot.motion_feedback=[]
+    points=np.random.default_rng(3).uniform([.1,-.1,.9],[.3,.1,1.1],(50,3))
+    moved=lambda n:points@Rotation.from_euler('z',3*n,degrees=True).as_matrix().T
+    class Tracker:
+        def __init__(self,start):self.start=start;self.observe()
+        def observe(self,*a,**k):self.last_pairs=(moved(self.start),moved(count[0]))
+    def plan(ik,scene,record,meta,start,degrees,*a,**k):
+        planned.append(degrees);end=np.asarray(start).copy();end[0]+=.01
+        return np.vstack([start,end]),{'status':'solved'}
+    def revise(service,pairs):
+        revisions.append(count[0])
+        np.testing.assert_allclose(pairs[0]['first'],moved(0))
+        np.testing.assert_allclose(pairs[0]['second'],moved(2))
+        np.testing.assert_allclose(pairs[1]['first'],moved(2))
+        np.testing.assert_allclose(pairs[1]['second'],moved(3))
+        return {'motion_supported':True,'applied':True}
+    monkeypatch.setattr(module,'plan_signed_arc',plan)
+    monkeypatch.setattr(feedback,'revise_from_feedback',revise)
+    def issue(refs,gripper,label,**kwargs):
+        robot.state['control_steps']+=len(refs);robot.state['metadata']['joint_positions']=refs[-1].tolist()
+        if label.endswith('manipulation'):
+            count[0]+=1;n=count[0]
+            robot.motion_feedback.append({'label':label,'reference_observation_id':n+1,'current_observation_id':n+2,
+                'first':moved(n-1),'second':moved(n),'tracker':Tracker(n-1)})
+        return {'task_success':False,'episode_done':False,'observation':{},'grasp_evidence':{},
+            'motion_effect':{'observed_region_rotation_deg':planned[-1] if planned else 0.}}
+    robot.issue=issue
+    result=robot.execute_sequence('test',close_steps=3,hold=0)
+    assert revisions==[3]
+    assert planned==[3.,3.,3.,15.,6.]
+    assert result['stop_reason']=='requested_reference_motion_complete'
+
+
+def test_arc_search_allowance_is_explicit_and_bounded_by_episode_time(tmp_path,monkeypatch):
+    from test_robot_sequence import service
+    module,robot=service(tmp_path);robot.scene=object();robot.record={}
+    robot.spec={'joint_origin_world_m':[0,0,1],'joint_axis_world':[0,0,1]}
+    robot.config={'arc_search_seconds':20.};robot.episode_status=lambda:{'remaining_wall_seconds':40.}
+    monkeypatch.setattr(module,'measured_robot_scene',lambda s:s.scene)
+    budgets=[]
+    def plan(*args,config):
+        budgets.append(config['arc_search_seconds'])
+        return np.zeros((2,7)),{'status':'solved'}
+    monkeypatch.setattr(module,'plan_signed_arc',plan)
+    validate_operation('plan_arc',{'degrees':30,'budget_seconds':60})
+    result=robot.plan_arc(30,budget_seconds=60)
+    assert budgets==[40.] and result['constraints']['arc_search_budget_seconds']==40.
+    assert robot.config['arc_search_seconds']==20.

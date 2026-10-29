@@ -195,6 +195,8 @@ Tool interfaces (all coordinate conventions are explicit):
   Failed arc requests include planning_diagnostic with endpoint-projection,
   collision and search-budget evidence plus a readable full_diagnostic JSON.
   These describe the attempted numerical search, not proof of infeasibility.
+  plan_arc accepts budget_seconds to change its search allowance (default20s),
+  capped by the remaining episode wall time. Changing it does not change geometry.
   After any motion with a grounded articulated scene, accepted RGB-D rigid
   tracking updates the moving cloud for the next query. For contact arcs only,
   visual motion and hand motion are reported separately. Unresolved visual

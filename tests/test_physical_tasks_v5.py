@@ -71,7 +71,7 @@ def test_all_cached_regions_compile_without_scene_identity_inputs(task, kind, st
 
 
 def test_same_calibrated_pose_is_reachable_and_self_collision_is_respected():
-    record = json.loads((ROOT / 'tests/data/panda_chain_v4.json').read_text())
+    record = json.loads((ROOT / 'tests/fixtures/calibrated_panda.json').read_text())
     ik = TaskIK(record, CONFIG)
     solution = ik.solve(ik.chain.forward(ik.chain.reference_joints), ik.chain.reference_joints)
     assert solution is not None

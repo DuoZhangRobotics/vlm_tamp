@@ -27,12 +27,28 @@ def profile_run(run,events,actor_wall):
                 if name in row:ik[name]+=row[name]
     for file in run.glob('attempt*/*/selection/selected.json*'):
         grasp.update(read(file,{}).get('search_timing_seconds',{}))
+    grasp_phases=Counter()
+    for file in run.glob('attempt*/*-grasp/profiling.json*'):
+        grasp_phases.update(read(file,{}).get('phases',{}))
+    arc_details=Counter()
+    def arc_timing(result):
+        if result.get('segments'):
+            for segment in result['segments']:arc_timing(segment)
+            return
+        for key in ['goal_generation_seconds','native_connection_seconds','total_seconds']:
+            if key in result:arc_details[key]+=result[key]
+        for key in ['scene_setup_seconds','gpu_ik_seconds','equality_polish_seconds','fallback_setup_seconds']:
+            if key in result.get('curobo_v2',{}):arc_details[key]+=result['curobo_v2'][key]
+    for pattern in ['attempt*/*-arc/result.json*','attempt*/*-measured-grasp-plan/result.json*']:
+        for file in run.glob(pattern):arc_timing(read(file,{}))
     wall=sum(operations.values())
     return {'actor_wall_seconds':actor_wall,'service_wall_seconds':wall,
         'outside_service_seconds':max(0,actor_wall-wall) if actor_wall is not None else None,
         'outside_service_scope':'Luna calls, transport and local analysis; not isolated model reasoning time',
         'service_seconds_by_operation':dict(operations),'nested_execution_and_observation_seconds':dict(issues),
         'nested_full_pose_ik_seconds':dict(ik),'nested_grasp_search_seconds':dict(grasp),
+        'nested_grasp_generation_and_selection_seconds':dict(grasp_phases),
+        'nested_arc_goal_ik_and_connection_seconds':dict(arc_details),
         'nested_contact_skill_seconds':dict(contact),'nested_sequence_planning_seconds':dict(arcs),
         'nested_sections_overlap_do_not_sum':True}
 
@@ -55,13 +71,41 @@ img,video{max-width:100%;max-height:480px}a{color:#1264a2}.note{background:#e8f1
 <h1>Luna recovery: restriction fixes and control budgets</h1><p class="note">Zero added collision padding. Physical contacts remain enabled. Native task success, contact retention and numerical feasibility are reported separately.</p>
 <button onclick="location.reload()">Refresh</button>'''
     status=read(study/'implementation-status.json',{})
-    body+='<article><h2>Implementation and validation</h2><p>'+esc(', '.join(f'{x["id"]}: {x["status"]}' for x in status.get('steps',[])))+'</p>'
+    body+='<article><h2>Implementation and validation</h2><p>'+esc(', '.join(f'{x["id"]}: {x["status"]}'.replace('_',' ') for x in status.get('steps',[])))+'</p>'
     body+=link(ROOT/'docs/restriction_audit_20261029.md',study,'Original audit and plan')+' · '+link(study/'implementation-status.json',study,'Current work record')+'</article>'
+    if (study/'hardware-conditions.json').exists():
+        body+='<p>GPU 3 was shared with another workload during the later tests. Wall time includes the recorded hardware conditions. '+link(study/'hardware-conditions.json',study,'Hardware observation')+'</p>'
+    plot=study/'task-progress-comparison.png'
+    if plot.exists():body+=f'<article><h2>Observed task outcomes</h2><p>Offline simulator grading; these native angles were not actor or planner inputs. Each line is a separate rollout.</p><img src="{plot.name}" alt="Door opening versus controls across evaluation conditions"></article>'
+    qualification=read(study/'qualification-summary.json',{})
+    if qualification:
+        body+='<article><h2>Local contact repeatability</h2><p>'+esc(qualification['scope'])+'</p><table><tr><th>Mode</th><th>Requested speed</th><th>Native closure</th><th>Retained closure</th><th>Contact-free coasts</th><th>Measured stroke peak*</th></tr>'
+        for row in qualification['groups']:
+            n=row['replays']
+            if row['skill']=='hook_pull':continue
+            body+='<tr>'+''.join('<td>'+esc(x)+'</td>' for x in [row['mode'],f"{100*row['requested_contact_speed_m_s']:.0f} cm/s",f"{row['native_successes']}/{n}",f"{row['retained_native_successes']}/{n}",f"{row['all_environment_contact_free_coasts']}/{n}",f"{100*row['mean_peak_stroke_speed_m_s']:.2f} cm/s"])+'</tr>'
+        body+='</table><p>*Mean of recorded stroke peaks. Controlled-mode data includes later ineffective strokes after closure.</p>'
+        for row in qualification['groups']:
+            if row['skill']=='hook_pull':body+=f'<p>Hook-pull motion: {row["skill_motion_goals_reached"]}/{row["replays"]}; measured {abs(row["observed_joint_degrees"][0]):.2f}° for a 3° request, minimum gripper joint span {1000*row["minimum_gripper_joint_span_m"]:.1f} mm.</p>'
+        body+='<p>'+esc(qualification['contact_scope_note'])+'</p>'+link(study/'qualification-summary.json',study,'Measurements and provenance')+'</article>'
+    retention=read(study/'retention-summary.json',{})
+    if retention:
+        body+='<article><h2>Success after withdrawal and coasting</h2><p>'+esc(retention['scope'])+'</p><table><tr><th>Withdrawal</th><th>Retained closure</th><th>No microwave contact</th><th>No environment contact</th><th>Peak remaining force</th></tr>'
+        for row in retention['rows']:
+            body+='<tr>'+''.join('<td>'+esc(x)+'</td>' for x in [f"{100*row['withdrawal_m']:.1f} cm",row['retained_native_success'],row['microwave_contact_free_coast'],row['all_environment_contact_free_coast'],f"{row['peak_coast_force_n']:.3f} N"])+'</tr>'
+        body+='</table>'+link(study/'retention-summary.json',study,'Full contact evidence')+'</article>'
+    memory=read(study/'learner-memory-summary.json',{})
+    if memory:
+        body+='<article><h2>Frozen learner memory</h2><p>'+esc(memory.get('summary','Learner-authored procedural notes; geometry is re-estimated in each episode.'))+'</p>'
+        if memory.get('memory_file'):body+=link(Path(memory['memory_file']),study,'Read the frozen guidelines')+' · '
+        body+=link(study/'learner-memory-summary.json',study,'Practice outcomes, memory hash and provenance')+'</article>'
+    for folder in sorted(study.glob('contact-requalification*')):
+        if folder.is_dir() and (folder/'watch.html').exists():body+='<p>'+link(folder/'watch.html',study,'Contact replay details: '+folder.name)+'</p>'
     baseline=read(study/'trials/budget-only-close49-1200-r1/evaluation-private.json',{}).get('attempts',[])
     if baseline:
         a=baseline[0]
         body+=f'<article><h2>Budget-only comparison</h2><p>With the previous numerical policies and frozen memory, closing state 49 reached native success at control <strong>{a.get("first_native_success_control_step",a.get("control_steps"))}</strong> under a 1,200-control limit. The prior 600-control evaluation failed. This new actor knew its larger budget; it is not a claim that its decisions were identical to the prior run.</p></article>'
-    trial_rows=[];cards=[]
+    trial_rows=[];practice_rows=[];cards=[]
     for run in sorted((study/'trials').glob('*')) if (study/'trials').exists() else []:
         if not run.is_dir():continue
         protocol=read(run/'protocol.json',{});agent=read(run/'agent-exit.json',{})
@@ -80,12 +124,18 @@ img,video{max-width:100%;max-height:480px}a{color:#1264a2}.note{background:#e8f1
         (run/'timing-breakdown.json').write_text(json.dumps(profiling,indent=2)+'\n')
         if evaluation:
             for a in evaluation:
+                if protocol.get('learning_practice'):
+                    practice_rows.append((f'{run.name} / attempt {a["attempt"]}',f'{a.get("task")} / state {a.get("state_index")}',
+                        a.get('official_task_success'),a.get('control_steps'),a.get('attempt_wall_seconds')))
+                    continue
                 trial_rows.append((run.name,str(a.get('task',protocol.get('case',{}).get('task'))),
                     a.get('maximum_control_steps',protocol.get('maximum_control_steps_per_attempt')),a.get('official_task_success'),
                     a.get('control_steps'),a.get('success_by_600_controls'),wall,service_seconds))
-        else:trial_rows.append((run.name,protocol.get('case',{}).get('task','starting'),protocol.get('maximum_control_steps_per_attempt'),
+        elif not protocol.get('learning_practice'):trial_rows.append((run.name,protocol.get('case',{}).get('task','starting'),protocol.get('maximum_control_steps_per_attempt'),
             'interrupted' if interruption else 'running',status_row.get('control_steps'),None,wall,service_seconds))
         card=f'<article><h2>{esc(run.name)}</h2><p>Tools selected: {esc(dict(calls))}.</p>'
+        skills=[e for e in events if e['request']['operation'] in {'push','hook_pull'}]
+        card+=f'<p>Contact skill selections: {len(skills)}; previews: {sum(bool(e["request"].get("arguments",{}).get("preview")) for e in skills)}; calls with physical motion: {sum(bool(e.get("response",{}).get("result",{}).get("robot_motion_executed")) for e in skills)}. Availability, selection, execution and native task success are separate measurements.</p>'
         if interruption:card+='<p>Infrastructure/implementation interruption: '+esc(interruption.get('reason'))+'. Excluded from task-success counts.</p>'
         card+='<p>'+link(run/'tool-events.jsonl',study,'Tool requests and responses')+' · '+link(run/'agent-events.jsonl',study,'Luna input/output')+' · '+link(run/'agent-prompt.txt',study,'Initial prompt')+'</p>'
         for movie in sorted(run.glob('attempt*/initial/rollout.mp4')):
@@ -94,9 +144,18 @@ img,video{max-width:100%;max-height:480px}a{color:#1264a2}.note{background:#e8f1
         else:card+=f'<p>Current controls: {esc(status_row.get("control_steps"))}; remaining: {esc(status_row.get("remaining_control_steps"))}; last operation: {esc(status_row.get("last_completed_operation"))}.</p>'
         card+='<details open><summary>Time by robot service (inclusive)</summary>'+timing_table(profiling['service_seconds_by_operation'])+'</details>'
         card+='<details><summary>Execution, observation, grasp search and IK breakdown</summary><p>These are nested measurements inside service time. Sections overlap; do not add them together. Missing measurements are not zero-cost work.</p>'
-        for key in ['nested_execution_and_observation_seconds','nested_grasp_search_seconds','nested_full_pose_ik_seconds','nested_contact_skill_seconds','nested_sequence_planning_seconds']:
+        for key in ['nested_execution_and_observation_seconds','nested_grasp_generation_and_selection_seconds','nested_grasp_search_seconds','nested_full_pose_ik_seconds','nested_arc_goal_ik_and_connection_seconds','nested_contact_skill_seconds','nested_sequence_planning_seconds']:
             card+='<h3>'+esc(key.replace('_',' '))+'</h3>'+timing_table(profiling[key])
         card+='</details>'+link(run/'timing-breakdown.json',study,'Timing JSON')
+        analysis=read(run/'failure-analysis.json',{}) or read(run/'outcome-analysis.json',{})
+        if analysis:
+            card+='<p><strong>Outcome details:</strong> '+esc(' '.join(analysis.get('main_observed_failures',[])) or analysis.get('interpretation','See the measured evidence below.'))+'</p>'
+            card+='<details><summary>Measured outcome evidence</summary><p>Offline simulator grading only; native quantities were never actor or planner inputs.</p><pre>'+esc(json.dumps(analysis,indent=2))+'</pre></details>'
+        failed=[e for e in events if not e.get('response',{}).get('ok')]
+        if failed:
+            card+='<details><summary>Rejected requests and numerical failures</summary><table><tr><th>Event/tool</th><th>Reported cause</th></tr>'
+            for e in failed:card+='<tr><td>'+esc(f"{e['sequence']} / {e['request']['operation']}")+'</td><td>'+esc(e['response'].get('error','See full log'))+'</td></tr>'
+            card+='</table></details>'
         for event in events:
             if event['request']['operation'] in {'push','hook_pull'}:
                 result=event.get('response',{}).get('result',{})
@@ -107,6 +166,11 @@ img,video{max-width:100%;max-height:480px}a{color:#1264a2}.note{background:#e8f1
         body+='<article><h2>Luna evaluations</h2><table><tr><th>Condition</th><th>Task</th><th>Budget</th><th>Native success</th><th>Controls</th><th>By 600</th><th>Actor wall</th><th>Services</th></tr>'
         for name,task,budget,success,steps,by600,wall,svc in trial_rows:
             body+='<tr>'+''.join(f'<td>{esc(v)}</td>' for v in [name,task,budget,success,steps,by600,f'{wall:.1f} s' if wall is not None else 'running',f'{svc:.1f} s'])+'</tr>'
+        body+='</table></article>'
+    if practice_rows:
+        body+='<article><h2>Luna practice (development)</h2><p>One persistent learner session. Episode wall time ends at terminal bookkeeping; whole-session time, including note writing, is reported in its card below.</p><table><tr><th>Attempt</th><th>Case</th><th>Native success</th><th>Controls</th><th>Episode wall</th></tr>'
+        for name,task,success,steps,seconds in practice_rows:
+            body+='<tr>'+''.join('<td>'+esc(v)+'</td>' for v in [name,task,success,steps,f'{seconds:.1f} s' if seconds is not None else 'unknown'])+'</tr>'
         body+='</table></article>'
     retimes=[];sequences=[]
     for file in sorted(study.glob('*/result.json')):

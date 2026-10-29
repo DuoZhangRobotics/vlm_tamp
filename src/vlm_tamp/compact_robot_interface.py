@@ -166,7 +166,7 @@ def compact_response(response):
             'observed_progress','progress_units','contact','momentum','report','images','timing_seconds',
             'observed_joint_change_degrees','observed_joint_change_source','progress_measured_at_control_step',
             'estimated_approach_control_steps','estimated_approach_simulation_seconds','remaining_skill_seconds',
-            'scene_refresh_required','next_geometry_interfaces','feedback_cameras',
+            'scene_refresh_required','next_geometry_interfaces','retained_scene_reference_control_step','feedback_cameras',
             'budget_feasibility_scope','nominal_requested_motion_controls','nominal_cost_assumption','preview_artifacts','robot_valid_plan_available','control_budget_feasible','minimum_following_control_steps',
             'collision_policy','environment_collision_predictions','cartesian_path_deviation','simulator_physical_contacts_enabled',
             'perception_recoveries','recovery_options','physical_infeasibility_proved','release_evidence','motion_settings','retained_joint_estimate_id','motion_warnings','contact_warnings','release_motion_observed','release_motion_reference')))
@@ -202,9 +202,10 @@ def compact_response(response):
         if 'observation' in value:result['observation']=observation(value['observation'])
     result.update(pick(value, ('plan_id', 'candidate_id', 'kind', 'joint_path', 'planning_details', 'note',
         'geometry_epoch', 'model_file', 'point_clouds', 'constraints','budget_timing_assumptions','direction_contract',
-        'environment_collision_policy','approach_selection','search_summary','opening_required','approach_aperture_qpos',
+        'environment_collision_policy','approach_selection','search_summary','search_timing_seconds','expected_executor','opening_required','approach_aperture_qpos',
         'fixed_joint_preserved','historical_fixed_joint_reused','scene_reference_control_step','hinge_evidence',
-        'observed_part_pose_applied','hinge_preserved','signed_direction_preserved',
+        'observed_part_pose_applied','hinge_preserved','signed_direction_preserved','retained_observed_scene_reused',
+        'joint_model_from_registered_part','handle_model_required',
         'point_world_m', 'normal_toward_camera_world', 'radius_m', 'surface_fit_residual_m',
         'configured_pad_centers_in_tcp', 'contact_permission', 'object_motion_predicted',
         'grasp_or_attachment_required', 'palm_arm_and_other_surface_checks_retained',

@@ -10,6 +10,19 @@ from .rekep_libero.geometry import transform_points
 from .rekep_libero.scene_state_v7 import observed_points
 
 
+def retain_observed_articulation(service):
+    """Keep timestamped observations for explicit recovery, never active planning."""
+    if getattr(service,'spec',None) is None:return
+    service.retained_articulated_model=copy.deepcopy(service.spec)
+    reference=getattr(service,'scene_reference_control_step',None)
+    if (getattr(service,'scene',None) is not None and reference is not None and
+            getattr(service,'contact_scene_kind',None)=='articulated'):
+        service.retained_articulated_scene={'scene':copy.copy(service.scene),
+            'spec':copy.deepcopy(service.spec),'anchors':copy.deepcopy(service.anchors),
+            'choices':copy.deepcopy(getattr(service,'choices',{})),
+            'mask':getattr(service,'mask',None),'reference_control_step':int(reference)}
+
+
 def current_part_points(engine,part_id,track_id,current_step):
     part=engine.parts[part_id];view=engine._view(part['observation_id'],part['camera'])
     points=np.asarray(view['world_points'])[np.asarray(part['mask'],bool) & usable_pixels(view)]

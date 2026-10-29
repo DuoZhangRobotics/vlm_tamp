@@ -37,9 +37,13 @@ def momentum_status():
     path=Path(os.environ.get('VLM_TAMP_MOMENTUM_QUALIFICATION',
         str(ROOT/'results/contact-skills-20261028/momentum-qualification.json')))
     report=read_json(path) if path.is_file() else {}
-    okay=bool(report.get('execution_qualified') and report.get('sources_sha256')==qualification_sources())
+    current=bool(report and report.get('sources_sha256')==qualification_sources())
+    okay=bool(report.get('execution_qualified') and current)
+    reason=('qualification_missing' if not report else
+        'recorded_execution_not_qualified' if not report.get('execution_qualified') else
+        'qualification_stale' if not current else 'qualified_simulation_execution')
     return {'available':True,'validated':okay,'reason':'authorized_simulation_experiment',
-        'validation_reason':'qualified_simulation_execution' if okay else 'qualification_missing_or_stale',
+        'validation_reason':reason,'qualification_sources_current':current,
         'supported_speeds_m_s':[.03,.06,.12],
         'execution_scope':'simulation contact experiments; physical contacts remain active',
         'task_success_guaranteed':False}
@@ -471,7 +475,8 @@ def run_skill(service,kind,*,observation_id,camera,region_xyxy,target_region_xyx
         # motion into the grasp pipeline. Old geometry must be refreshed.
         executed=executed or int(service.state['control_steps'])!=initial_control_step
         if executed and service.sim is not None:
-            if service.spec is not None:service.retained_articulated_model=copy.deepcopy(service.spec)
+            from .observed_joint_scene import retain_observed_articulation
+            retain_observed_articulation(service)
             service.scene=None;service.spec=None;service.contact_scene_kind='surface'
             service.surface_reference_step=-1;service.tracker=None
             service.scene_reference_control_step=None
@@ -483,6 +488,10 @@ def run_skill(service,kind,*,observation_id,camera,region_xyxy,target_region_xyx
                 result['next_geometry_interfaces']=['segment_parts','apply_joint_estimate with current_part_id and reuse_fixed_joint=true','select_surface_contact']
                 result['retained_joint_estimate_id']=retained.get('joint_estimate_id')
             else:result['next_geometry_interfaces']=['refresh_contact' if retained else 'ground','select_surface_contact']
+            history=getattr(service,'retained_articulated_scene',None)
+            if history is not None:
+                result['retained_scene_reference_control_step']=history['reference_control_step']
+                result['next_geometry_interfaces'].insert(0,'apply_part_motion with matching reference and current observed tracks')
         result['robot_motion_executed']=executed
         result['remaining_skill_seconds']=budget.remaining
         if joint_degrees is not None and result.get('observed_progress') is not None:

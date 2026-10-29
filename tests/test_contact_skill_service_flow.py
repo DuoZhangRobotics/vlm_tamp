@@ -64,7 +64,8 @@ def test_advisory_release_flow_and_native_success_termination(tmp_path,monkeypat
             self.state={'control_steps':60,'metadata':{'joint_positions':[0.]*7,
                 'eef_pose_world_xyzw':[0,0,0,0,0,0,1],'gripper_qpos':[.04,-.04]}}
             self.latest_observation={'observation_id':1,'control_steps':60}
-            self.cameras={'test':{}};self.scene=None;self.spec=None;self.record={}
+            self.cameras={'test':{}};self.scene=scene;self.spec={'joint_axis_world':[0,0,-1]};self.record={}
+            self.anchors=[[0,0,0]];self.scene_reference_control_step=60
             self.calls=1;self.attempt=1;self.epoch=0;self.events=[]
             self.retained_articulated_model=None;self.contact_scene_kind='articulated'
         def episode_status(self):return {'remaining_wall_seconds':1000}
@@ -96,6 +97,10 @@ def test_advisory_release_flow_and_native_success_termination(tmp_path,monkeypat
         assert 'planning_timing_seconds' in pulse
     else:
         assert result['status']=='push_and_release_complete'
+        assert service.scene is None and service.spec is None
+        assert service.retained_articulated_scene['reference_control_step']==60
+        assert result['retained_scene_reference_control_step']==60
+        assert result['next_geometry_interfaces'][0].startswith('apply_part_motion')
         assert names[-2:]==['push-release-withdrawal','push-release-coasting']
         assert result['stages'][-1]['execution']['issued_commands']==20
         if unresolved_pulse:

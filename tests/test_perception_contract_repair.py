@@ -97,7 +97,8 @@ def test_joint_parameter_update_does_not_resegment_new_images_or_move_geometry()
     np.testing.assert_array_equal(service.scene.origin,[.005,0,1])
 
 
-def test_measured_part_pose_preserves_hinge_and_prevents_double_application(monkeypatch):
+@pytest.mark.parametrize('retained',[False,True])
+def test_measured_part_pose_preserves_hinge_and_prevents_double_application(monkeypatch,retained):
     import serve_subscription_robot as module
     from serve_subscription_robot import RobotService
     from vlm_tamp.coupled_scene import Scene
@@ -117,9 +118,24 @@ def test_measured_part_pose_preserves_hinge_and_prevents_double_application(monk
     service._perception_tools=SimpleNamespace(tracks={'t':{'observation_ids':[1,2],'world':world,'valid':valid}},
         _record=lambda i:{'control_steps':i*10})
     service.export_geometry=lambda x:{'model':service.spec}
+    if retained:
+        from vlm_tamp.observed_joint_scene import retain_observed_articulation
+        # Separate masks of the same observed object need not have the same ID.
+        # Timestamp, measured motion and geometry consistency govern this update.
+        service.spec.update(generic_part_joint_model=True,part_id='current-mask')
+        service._perception_tools.tracks['t']['part_id']='earlier-mask'
+        retain_observed_articulation(service)
+        service.scene=service.spec=None;service.contact_scene_kind='surface';service.scene_reference_control_step=None
+        with pytest.raises(ValueError,match='reference capture'):
+            service._perception_tools._record=lambda i:{'control_steps':i*10+1}
+            service.apply_part_motion('t',1,2)
+        assert service.scene is None and service.spec is None and service.epoch==0
+        service._perception_tools._record=lambda i:{'control_steps':i*10}
     result=service.apply_part_motion('t',1,2)
     np.testing.assert_allclose(service.scene.moving_reference,world[1],atol=1e-10)
     np.testing.assert_array_equal(service.scene.static_points,scene.static_points)
     assert service.spec['joint_origin_world_m']==[0,0,1]
     assert service.scene_reference_control_step==20 and result['hinge_preserved']
+    assert result['retained_observed_scene_reused']==retained
+    assert service.contact_scene_kind=='articulated'
     with pytest.raises(ValueError,match='twice'):service.apply_part_motion('t',1,2)

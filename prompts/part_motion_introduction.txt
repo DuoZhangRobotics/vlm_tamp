@@ -44,6 +44,9 @@ Unknown object motion is not automatically replaced with an attached-hand guess.
 If tracking measured motion but the automatic scene update was unresolved,
 apply_part_motion transports the previous observed part/contact model. Choose
 a reference capture matching scene_reference_control_step and a current capture.
+After a contact skill invalidates the active scene, its retained reference step
+can anchor this measured update. Reusing a fixed joint preserves its signed axis
+unless you explicitly change motion_sign; it supplies no new current pose by itself.
 If current geometry must be refitted instead, refresh_contact keeps the joint.
 Watch grasp_evidence: measured pad gap comes from robot proprioception. If it
 collapses toward fully closed during manipulation, recheck contact rather than

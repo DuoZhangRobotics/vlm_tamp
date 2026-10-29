@@ -60,19 +60,31 @@ def source_reference_mode(run,attempt=1):
     protocol=read_json(Path(run)/'protocol.json') if (Path(run)/'protocol.json').exists() else {}
     if protocol.get('controller_reference_mode'):return protocol['controller_reference_mode']
     path=Path(run)/f'attempt{attempt:02d}/initial/controller-changes.json'
-    if path.exists():
+    if path.exists() or path.with_suffix('.json.gz').exists():
         changes=read_json(path)
         if changes and changes[0].get('reference_mode'):return changes[0]['reference_mode']
     return 'measured_delta'
 
 
+def source_case(run,attempt=1):
+    """A practice curriculum can use a different case on each reset."""
+    from vlm_tamp.subscription_tasks import task_spec,DEFAULT_TASK
+    run=Path(run);protocol=read_json(run/'protocol.json');case=protocol.get('case',{})
+    path=run/f'attempt{attempt:02d}/summary.json'
+    summary=read_json(path) if path.exists() or path.with_suffix('.json.gz').exists() else {}
+    task=summary.get('task',case.get('task',DEFAULT_TASK));spec=task_spec(task)
+    return {'task':task,'task_name':spec['task_name'],'suite':spec['suite'],
+        'state_index':summary.get('state_index',case.get('state_index')),
+        'maximum_control_steps':summary.get('maximum_control_steps',protocol.get('maximum_control_steps_per_attempt',600))}
+
+
 def run_replays(source,attempt,output,repetitions=5):
     source=Path(source).resolve();output=Path(output).resolve();output.mkdir(exist_ok=False)
     commands=source_commands(source,attempt)
-    protocol=read_json(source/'protocol.json');state_index=protocol['case']['state_index']
+    protocol=read_json(source/'protocol.json');case=source_case(source,attempt);state_index=case['state_index']
     write_json(output/'protocol.json',{'source':str(source),'source_attempt':attempt,
-        'task':'KITCHEN_SCENE7_open_the_microwave','state_index':state_index,'seed':0,
-        'repetitions':repetitions,'maximum_steps':600,'initialization':'Same reset, settling, 60-step open hold, then joint servo kp=300',
+        'task':case['task_name'],'state_index':state_index,'seed':0,
+        'repetitions':repetitions,'maximum_steps':case['maximum_control_steps'],'initialization':'Same reset, settling, 60-step open hold, then joint servo kp=300',
         'commands':[{'event':x['event'],'gripper':x['gripper'],'references':len(x['references']),
                      'sha256':hashlib.sha256(Path(x['path']).read_bytes()).hexdigest()} for x in commands],
         'scope':'Exact physical command replay, no agent reasoning or generalization test'})
@@ -82,8 +94,8 @@ def run_replays(source,attempt,output,repetitions=5):
         started=time.perf_counter()
         try:
             sim=ProfiledClient(folder/'simulator.log')
-            state=sim.request('reset',task_name='KITCHEN_SCENE7_open_the_microwave',state_index=state_index,
-                output_dir=str(folder/'initial'),seed=0,suite_name='libero_90',scene_variant=protocol.get('scene_variant','nominal'))
+            state=sim.request('reset',task_name=case['task_name'],state_index=state_index,
+                output_dir=str(folder/'initial'),seed=0,suite_name=case['suite'],maximum_control_steps=case['maximum_control_steps'],scene_variant=protocol.get('scene_variant','nominal'))
             state=sim.action(state['metadata']['eef_pose_world_xyzw'],gripper=-1,max_steps=60,output_dir=folder/'opened')
             with np.load(folder/'opened/obs.npz') as a,np.load(source/f'attempt{attempt:02d}/opened/obs.npz') as b:
                 checks={k:bool(k in b and np.array_equal(a[k],b[k],equal_nan=True)) for k in a.files}

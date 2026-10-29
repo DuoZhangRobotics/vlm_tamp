@@ -139,6 +139,19 @@ def test_fixed_world_joint_can_be_reused_without_claiming_current_pose_evidence(
     assert not result['robot_motion_executed']
 
 
+@pytest.mark.parametrize('override,expected',[(None,-1),(1,1),(-1,-1)])
+def test_generic_joint_reinstall_keeps_retained_signed_axis(monkeypatch,override,expected):
+    robot,_=model_service();robot.retained_articulated_model=robot.spec
+    robot.spec=None;robot.scene=None;robot.contact_scene_kind='surface'
+    received=[]
+    def install(service,value,part,sign):
+        received.append(sign);return {}
+    monkeypatch.setattr('vlm_tamp.observed_joint_scene.install_joint_part',install)
+    result=robot.apply_joint_estimate('joint1',motion_sign=override)
+    assert received==[expected]
+    assert result['signed_direction_preserved']==(override is None)
+
+
 def test_manual_hinge_replacement_clears_measured_provenance():
     robot,_=model_service();robot.apply_joint_estimate('joint1')
     robot.set_model(axis_world=[0.,0.,1.])

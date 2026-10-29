@@ -171,3 +171,10 @@ def test_surface_measurement_values_survive_compaction():
         'values':{'plane_angle_deg':45.},'control_steps':90}
     result=compact_response({'ok':True,'result':value})['result']
     assert result['measurement_id']=='m1' and result['values']['plane_angle_deg']==45.
+def test_compact_plan_keeps_executor_stage_contract_and_search_timing():
+    from vlm_tamp.compact_robot_interface import compact_response
+    value={'plan_id':'p1','kind':'approach','expected_executor':'execute',
+        'grasp_stage_contract':{'approach_gripper_command':-1,'close_after_arrival':True},
+        'search_timing_seconds':{'ik_generation_and_queue':1.,'approach_queries':2.}}
+    result=compact_response({'ok':True,'result':value})['result']
+    for key in value:assert result[key]==value[key]

@@ -1,5 +1,20 @@
 # VLM grounding for constraint-aware TAMP — Stage 1
 
+## Luna contact recovery (29 October 2026)
+
+The current experimental branch adds push/hook skills, observed-motion joint
+tools, configurable recovery budgets and corrected joint-reference tracking.
+Read the [implementation and evidence handoff](docs/restriction_fixes_20261029.md)
+and [restriction audit](docs/restriction_audit_20261029.md). The local runtime page
+is `results/restriction-fixes-20261029/watch.html`; open it with VS Code Live Preview.
+Versioned learner memories and their provenance live under `prompts/learned/`.
+
+The experiments retain zero added collision padding and physical simulator
+contacts. Luna chooses strategies from public observations; native object state
+is reserved for offline grading. Local repeatability, fresh actor outcomes and
+memory transfer are reported separately. Acceptance as a replacement for the
+original seven-task reference still requires the paired regression described below.
+
 ## Episodic memory prototype (19 October 2026)
 
 `scripts/run_subscription_remembered_agent.py` starts a fresh Luna/high subscription

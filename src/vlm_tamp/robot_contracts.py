@@ -8,7 +8,7 @@ import json
 import math
 from numbers import Real
 
-VERSION = 'robot-request-contract-v11'
+VERSION = 'robot-request-contract-v12'
 GROUND_FIELDS = ('camera', 'contact_box_xyxy', 'moving_panel_box_xyxy',
                  'hinge_pixels_xy', 'initial_image_direction_xy')
 GROUND_HELP = '''- ground(regions): fit an upright door and vertical handle from current RGB-D.
@@ -131,6 +131,8 @@ PART_MOTION_HELP = '''- segment_parts(observation_id, camera, points_xy=null, po
 - apply_part_motion(track_id, reference_observation_id, current_observation_id):
   Apply measured selected-part rigid motion to the existing moving/contact
   geometry. The reference capture must match scene_reference_control_step; the
+  inactive scene retained after contact uses retained_scene_reference_control_step.
+  Stale history is available for this explicit measurement update, never direct planning.
   final capture must be current. This changes part pose, not the fixed hinge.
   No hand-motion substitution or robot motion occurs.
   The update is rejected if it would move the fixed hinge beyond the configured
@@ -278,7 +280,8 @@ def operation_schemas(image_sizes=None):
             'degrees':angle,'refined':{'type':'boolean'},'grasp_constraint':nullable(grasp),
             'position_tolerance_m':nullable({'type':'number','exclusiveMinimum':0}),
             'orientation_tolerance_deg':nullable({'type':'number','minimum':0,'maximum':180}),
-            'max_wrist_reorientation_deg':nullable({'type':'number','exclusiveMinimum':0,'maximum':180}),'collision_policy':policy},['degrees'])),
+            'max_wrist_reorientation_deg':nullable({'type':'number','exclusiveMinimum':0,'maximum':180}),'collision_policy':policy,
+            'budget_seconds':nullable(number(exclusiveMinimum=0,maximum=1800))},['degrees'])),
         'plan_joint': ('Plan simulation free motion under the declared environment prediction policy to seven joint angles in radians.', parameters({'joints': array(7),'collision_policy':policy}, ['joints'])),
         'ik': ('Compute IK proposals for your world TCP pose; no robot motion.', parameters({'pose_world_xyzw': pose}, ['pose_world_xyzw'])),
         'plan_pose': ('Plan simulation free motion under the declared environment prediction policy to your world TCP pose.', parameters({'pose_world_xyzw': pose,'collision_policy':policy}, ['pose_world_xyzw'])),

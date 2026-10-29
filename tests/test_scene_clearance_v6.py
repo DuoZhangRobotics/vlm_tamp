@@ -46,7 +46,7 @@ def test_only_inward_pad_face_can_touch_selected_surface():
 
 
 def test_point_goal_is_checked_in_object_point_frame():
-    record = json.loads((ROOT / 'tests/data/panda_chain_v4.json').read_text())
+    record = json.loads((ROOT / 'tests/fixtures/calibrated_panda.json').read_text())
     config = json.loads((ROOT / 'configs/physical_tasks_v6.json').read_text())
     ik = TaskIK(record, config)
     seed = ik.chain.reference_joints

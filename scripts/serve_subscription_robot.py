@@ -276,6 +276,7 @@ class RobotService:
         self.spec = self.scene = self.tracker = None
         self.scene_reference_control_step=None
         self.retained_articulated_model=None
+        self.retained_articulated_scene=None
         self.epoch = 0
         if not (self.stop_on_success and self.state.get('evaluation',{}).get('task_success')):
             self.state = self.sim.action(self.state['metadata']['eef_pose_world_xyzw'], gripper=-1,
@@ -437,7 +438,13 @@ class RobotService:
             raise ValueError('Estimate evidence is stale for the current pose. To explicitly reuse its fixed-world hinge, set reuse_fixed_joint=true; this does not refresh contact or object pose.')
         if self.spec is None or getattr(self,'contact_scene_kind','articulated')!='articulated' or self.spec.get('generic_part_joint_model') or current_part_id is not None:
             from vlm_tamp.observed_joint_scene import install_joint_part
-            return install_joint_part(self,result,current_part_id,1 if motion_sign is None else motion_sign)
+            previous=self.spec or getattr(self,'retained_articulated_model',None) or {}
+            previous_axis=previous.get('joint_axis_world')
+            sign=(1 if previous_axis is None or vector(previous_axis,3)@vector(fit['axis_world_unsigned'],3)>=0 else -1) if motion_sign is None else motion_sign
+            installed=install_joint_part(self,result,current_part_id,sign)
+            installed.update(signed_direction_preserved=motion_sign is None and previous_axis is not None,
+                motion_supported=supported,provisional=not supported,historical_fixed_joint_reused=bool(reuse_fixed_joint))
+            return installed
         current_axis=vector(self.spec['joint_axis_world'],3);unsigned=vector(fit['axis_world_unsigned'],3)
         denominator=np.linalg.norm(current_axis)*np.linalg.norm(unsigned)
         if denominator<1e-9:raise ValueError('Joint axes must be nonzero')
@@ -478,12 +485,19 @@ class RobotService:
     def apply_part_motion(self,track_id,reference_observation_id,current_observation_id):
         engine=getattr(self,'_perception_tools',None)
         if engine is None or track_id not in engine.tracks:raise ValueError('Use a part-motion track ID from this episode')
-        if self.spec is None or self.contact_scene_kind!='articulated':raise ValueError('An articulated scene is required')
+        history=None
+        if self.spec is None or self.contact_scene_kind!='articulated':
+            history=getattr(self,'retained_articulated_scene',None)
+            if history is None:raise ValueError('An active or retained observed articulated scene is required')
+        scene=history['scene'] if history is not None else self.scene
+        model_spec=history['spec'] if history is not None else self.spec
+        anchors=history['anchors'] if history is not None else self.anchors
+        reference_step=history['reference_control_step'] if history is not None else getattr(self,'scene_reference_control_step',None)
         track=engine.tracks[track_id];ids=track['observation_ids']
         if not(reference_observation_id<current_observation_id) or any(i not in ids for i in [reference_observation_id,current_observation_id]):
             raise ValueError('Choose an ordered pair of observation IDs present in this track')
         first,last=(engine._record(i) for i in [reference_observation_id,current_observation_id])
-        if first['control_steps']!=getattr(self,'scene_reference_control_step',None):
+        if first['control_steps']!=reference_step:
             raise ValueError('The reference capture must match scene_reference_control_step; do not apply motion twice')
         if last['control_steps']!=self.state['control_steps']:raise ValueError('The final capture must be from the current physical state')
         from vlm_tamp.part_motion import fit_upright,pair_points
@@ -494,9 +508,9 @@ class RobotService:
         if fit is None:fit=fit_upright(track['world'],track['valid'],*indices)
         transform=measured_pose(fit)
         if transform is None:raise ValueError('Selected part motion is not observable: '+fit.get('reason','unknown'))
-        updated=transport_scene(self.scene,transform,source='rgbd_rigid_motion',
+        updated=transport_scene(scene,transform,source='rgbd_rigid_motion',
             reference_step=int(self.state['control_steps']),fit=fit)
-        displacement=float(np.linalg.norm(transform[:3,:3]@self.scene.origin+transform[:3,3]-self.scene.origin))
+        displacement=float(np.linalg.norm(transform[:3,:3]@scene.origin+transform[:3,3]-scene.origin))
         allowance=float(self.config.get('arc_position_tolerance_m',.006))
         support={name:depth_support(getattr(updated,field),self.cameras)[0]
             for name,field in [('moving','moving_reference'),('contact','contact_reference')]}
@@ -510,10 +524,13 @@ class RobotService:
                 'scene_observation_support':support,'physical_motion_issued':False,'model_changed':False}
             raise error
         self.scene=updated;self.spec=updated.spec;self.cloud=updated.contact_reference
-        self.anchors=transform_points(self.anchors,transform).tolist()
+        self.anchors=transform_points(anchors,transform).tolist()
+        if history is not None:self.choices,self.mask=history['choices'],history['mask']
+        self.contact_scene_kind='articulated';self.retained_articulated_scene=None
         self.scene_reference_control_step=int(self.state['control_steps']);self.epoch+=1;self.tracker=None
         result=self.export_geometry({'observed_pose_fit':fit})
         result.update(observed_part_pose_applied=True,hinge_preserved=True,signed_direction_preserved=True,
+            retained_observed_scene_reused=history is not None,
             fixed_hinge_displacement_mm=1000*displacement,
             track_id=track_id,source_observation_ids=[reference_observation_id,current_observation_id],
             robot_motion_executed=False,physical_contact_verified=False,
@@ -719,6 +736,7 @@ class RobotService:
                 'global_queries':len(result.get('global_queries',[]))}
         return {'plan_id': token, 'joint_path': str(dest.relative_to(self.workspace)),
                 'kind': kind, 'result': result,
+                'expected_executor':'execute_sequence' if kind=='sequence' else 'execute',
                 'planning_details':details,
                 'note': 'Planning makes no robot motion. Execute explicitly.'}
 
@@ -862,12 +880,17 @@ class RobotService:
 
     def plan_arc(self, degrees, refined=False, grasp_constraint=None,
                  position_tolerance_m=None, max_wrist_reorientation_deg=None,
-                 orientation_tolerance_deg=None,collision_policy=None):
+                 orientation_tolerance_deg=None,collision_policy=None,budget_seconds=None):
         if getattr(self,'contact_scene_kind','articulated')!='articulated':
             raise ValueError('An observed surface patch is not a hinge model; use pose or joint planning')
         angle = float(degrees)
         if not np.isfinite(angle) or angle==0:
             raise ValueError('Specify a finite nonzero signed relative angle')
+        search_budget=float(self.config.get('arc_search_seconds',20.) if budget_seconds is None else budget_seconds)
+        if not np.isfinite(search_budget) or search_budget<=0:raise ValueError('Arc search budget must be finite and positive')
+        if budget_seconds is not None:
+            remaining=self.episode_status().get('remaining_wall_seconds')
+            if remaining is not None:search_budget=min(search_budget,remaining)
         mode = grasp_constraint or self.config.get('grasp_constraint', 'point')
         if mode not in {'point','rigid','jaw_axis'}:
             raise ValueError('Choose point, rigid or jaw_axis grasp constraint')
@@ -896,6 +919,7 @@ class RobotService:
             'max_wrist_reorientation_deg':max_wrist_reorientation_deg,
             'environment_collision_policy':collision_policy or self.config.get('environment_collision_policy','advisory'),
             'collision_padding_m':0.,'collision_free_certificate':False,
+            'arc_search_budget_seconds':search_budget,
             'refined_flag':'deprecated; does not change constraints or estimate a hinge',
             'refined':bool(refined)}
         folder = self.folder('arc')
@@ -903,6 +927,7 @@ class RobotService:
             path, result = plan_signed_arc(self.ik, measured_robot_scene(self), self.record, self.state['metadata'],
                 np.asarray(self.state['metadata']['joint_positions']), angle, folder,
                 config={**self.config,'grasp_constraint':mode,
+                    'arc_search_seconds':search_budget,
                     'arc_position_tolerance_m':tolerance,
                     'arc_orientation_tolerance_rad':float(np.radians(angular)),
                     'max_wrist_reorientation_deg':max_wrist_reorientation_deg,

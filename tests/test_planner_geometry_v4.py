@@ -15,7 +15,7 @@ from vlm_tamp.rekep_libero.task_geometry_v4 import bind_bowl_goal, joint_residua
 
 @pytest.fixture
 def chain():
-    return RobotChain(json.loads((Path(__file__).parent / 'data/panda_chain_v4.json').read_text()))
+    return RobotChain(json.loads((Path(__file__).parent / 'fixtures/calibrated_panda.json').read_text()))
 
 
 @pytest.mark.parametrize('seed', [0, 1, 2, 3])

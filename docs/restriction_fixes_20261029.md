@@ -111,3 +111,93 @@ imports in the planner environment, or the optional Google provider package.
 They are retained in `results/restriction-fixes-20261029/test-validation.json`;
 the complete suite is **not** claimed to pass. Updated controller, recovery,
 sequence, contact, budget, schema and isolation checks pass.
+
+## Frozen comparison before the follow-up repairs
+
+These six fresh actors used commit `8eb4503`, Luna/high and the unchanged prior learner memory. Each case/budget has one rollout, not a statistical success-rate estimate. The source-integrity checks passed.
+
+| Case | Budget | Native success | Controls | Actor wall (s) | Services (s) | Outside services (s) |
+| --- | ---: | --- | ---: | ---: | ---: | ---: |
+| close_microwave / 17 | 600 | False | 600 | 1007.0 | 435.5 | 571.5 |
+| close_microwave / 49 | 600 | False | 600 | 1309.4 | 419.3 | 890.2 |
+| open_microwave / 13 | 600 | True | 425 | 537.9 | 252.5 | 285.4 |
+| close_microwave / 17 | 1200 | True | 135 | 489.4 | 130.2 | 359.2 |
+| close_microwave / 49 | 1200 | False | 1200 | 1395.8 | 581.9 | 813.9 |
+| open_microwave / 13 | 1200 | True | 1097 | 1023.9 | 511.1 | 512.8 |
+
+Outside-service time includes model calls, transport and local analysis. GPU 3 carried another workload during the later tests; wall times include those hardware conditions. See `hardware-conditions.json`.
+
+The 600-control condition succeeded in 1/3 runs; the 1,200-control condition in 2/3. The latter opening rollout needed 1,097 controls, while closing state 17 succeeded at 135 and did not use the extra allowance. Closing state 49 failed at both limits. Do not infer that budget alone caused the differences between independent actor decisions.
+
+### Concrete failure and success mechanisms
+
+- Closing state 17 / 600: early pushes opened the door slightly; grasped motion and later approaches reduced the opening to 32.25 degrees, but engagement and tracking failed before closure. The first automatic hinge update fit tiny 1.77/2.24-degree motions better while worsening native axis-location error from 23.9 to 36.2 mm.
+
+- Closing state 49 / 600: it ended 120.37 degrees open from 107.26. Requested local progress often served the opposite task direction.
+
+- Closing state 49 / 1,200: the observed-motion hinge estimate was accurate to 0.708 mm, yet all seven physically attempted signed joint pushes requested the opening direction. It ended 86.86 degrees open. Accurate grounding alone did not solve task-direction selection. These native comparisons are offline grading only.
+
+- Closing state 17 / 1,200: native success occurred during approach, with measured peak hand speed 0.173 m/s, before the requested controlled contact stroke. It is task success, not a validated 3 cm/s controlled-stroke result. Separate withdrawal/coasting validation is required.
+
+### Follow-up implementation under validation
+
+Preserve a signed axis when reinstalling a generic part model. Retain prior observed geometry as inactive, timestamped history for explicit measured part-motion updates. Use a combined initial motion baseline and a third checking interval before automatic hinge revision. Make the expected plan executor and arc search budget explicit. Preserve detailed grasp and specialized arc IK timings in the report.
+
+The earlier suspicion that compact replies omitted `grasp_stage_contract` was incorrect: the field was present in actual actor logs. The wrong-executor call was an action-selection error. The response now names the expected executor directly for clarity.
+
+The first two physical follow-up diagnostics completed their motion but hit a reporting-harness error afterwards: direct `RobotService.dispatch` returns the result itself, not the RPC envelope. Original exit codes and logs are retained. Recovered data showed an 8.6 mm hinge error with the longer baseline, but grasp loss persisted; without revision, subsequent planning was incomplete. Intermediate replanned probes were not identical, so this is not a strict matched causal comparison. Corrected harness checks and local contact replays follow under fresh tags.
+
+## Repaired implementation and local validation
+
+The promoted repair preserves signed joint directions during model reuse and
+retains inactive observed geometry for explicit measured-motion recovery. A
+track can originate from another mask of the same object; mask-ID equality is
+not a motion constraint. Timestamp, rigid-fit, fixed-hinge and observed-depth
+checks remain. Arc search budgets and expected plan executors are explicit.
+
+The complete repaired server suite passed **1,513 tests**, skipped 36, and failed
+42 because historical recordings or optional dependencies were unavailable.
+There were no fixture-setup errors after the numerical geometry tests switched
+to the versioned calibrated-Panda fixture. The LIBERO parser tests separately
+passed all nine checks in the simulator environment. The full suite is not
+claimed to be green; see `test-validation-repaired.json`.
+
+All 15 local physical checks completed under fresh output names:
+
+| Local condition | Replays | Native closure | Retained closure | No robot/environment contact during release coast |
+| --- | ---: | ---: | ---: | ---: |
+| Controlled push, 3 cm/s | 3 | 3 | 3 | 0 (final pose held) |
+| Push-and-release, 3 cm/s | 3 | 3 | 3 | 3 |
+| Push-and-release, 6 cm/s | 3 | 3 | 3 | 3 |
+| Push-and-release, 12 cm/s | 3 | 3 | 3 | 3 |
+
+Hook-pull reached its separate non-pinching motion goal in 3/3 replays: about
+2.72 degrees for a 3-degree request, with a minimum gripper joint span of
+79.4 mm. It deliberately pulled in a closing-task scene, so native closing
+success is not that skill's criterion.
+
+The release strokes commanded 30 mm and measured approximately 21 mm of forward
+hand travel. Mean measured peak speeds were 2.87, 5.43 and 9.39 cm/s, with first
+native success 0.75, 0.45 and 0.30 simulated seconds after the pulse began.
+Push replays also used palm contact. They establish these local outcomes, not
+strict fingertip-only execution qualification or general task success. The
+physical source files were preserved and verified against all 12 recorded hashes.
+A later change clarifies validation-status wording; contact motion code is unchanged.
+
+The five-degree feedback experiment retained a roughly 22 mm pad gap but
+stopped after 19 commanded degrees: eight endpoint goals were admitted and
+eight connection searches returned no path. This does not prove physical
+infeasibility and did not justify changing the default feedback interval.
+
+Separate replays of the successful live state-17 rollout matched its robot
+prefix to 1e-14 rad. Closure persisted after 15, 50 and 100 mm withdrawals and
+one second of coasting. At 15 mm, palm/handle contact remained. At 50 and 100 mm,
+microwave contact was gone but finger/mug contact remained. Those three tests
+therefore establish retained closure with the reported contacts, not completely
+contact-free withdrawal. See `retention-summary.json` for forces and geometry names.
+
+Varied practice uses six attempts in one persistent Luna context across the
+three development cases. Freeze and inspect its learner-authored notes before
+fresh evaluation. Final-version evaluation covers the three development
+regressions and two separately declared cases; report those groups separately.
+No native coordinates or successful action sequence is supplied to the learner.

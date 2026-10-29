@@ -22,7 +22,7 @@ def measured_robot_scene(service):
 def execute_sequence(service,plan_id,*,close_steps=40,speed=.35,approach_speed=None,hold=6,
                      manipulation_gripper=1,feedback_degrees=15.,calibrate_joint=True,open_steps=20):
     plan=service.plans[plan_id];extra=plan['extra']
-    if plan['kind']!='sequence':raise ValueError('Use execute for a single-path plan')
+    if plan['kind']!='sequence':raise ValueError(f"Plan {plan_id} is {plan['kind']}, not a sequence. Use execute for this plan; an approach requires gripper=-1, followed by closure at arrival. Use plan_sequence to request automatic staging.")
     if plan['control_steps']!=service.state['control_steps'] or plan['epoch']!=service.epoch:
         raise ValueError('Sequence approach belongs to an earlier state/model; request a fresh approach')
     approach_speed=float(extra.get('approach_speed',.6) if approach_speed is None else approach_speed)
@@ -126,7 +126,12 @@ def execute_sequence(service,plan_id,*,close_steps=40,speed=.35,approach_speed=N
                     calibration_pair={'reference_observation_id':available[0]['reference_observation_id'],
                         'current_observation_id':available[-1]['current_observation_id'],
                         'first':np.asarray(first_points).copy(),'second':np.asarray(current_points).copy()}
-                if len(available)>=2:
+                # A small checking residual over two tiny intervals can still
+                # support a badly located hinge. Use the combined first-to-second
+                # baseline, checked against a third observed interval, before
+                # installing an automatic revision. This changes observation
+                # conditioning; it adds no collision padding or motion veto.
+                if manipulation_count>=3 and calibration_pair is not None and len(available)>=2:
                     from .joint_feedback import revise_from_feedback
                     pair=([calibration_pair,available[-1]] if calibration_pair is not None and
                         calibration_pair['current_observation_id']==available[-1]['reference_observation_id'] else available[-2:])
@@ -147,7 +152,8 @@ def execute_sequence(service,plan_id,*,close_steps=40,speed=.35,approach_speed=N
             last.get('termination_reason','episode_terminated') if result.get('episode_done') else 'partial_execution_returned')
         if result.get('recovery_required'):
             result['recovery_options']=['observe current part and contact','push from current visible surface',
-                'plan_grasp with a local low-cost approach','refresh_contact while retaining fixed joint parameters']
+                'plan_grasp with a local low-cost approach','refresh_contact while retaining fixed joint parameters',
+                'after re-establishing engagement, consider a shorter feedback_degrees interval when the model drifts']
             result['remaining_requested_degrees']=float(extra['goal_degrees'])-commanded
         result['remaining_control_steps']=remaining_controls(service.state)
     return result

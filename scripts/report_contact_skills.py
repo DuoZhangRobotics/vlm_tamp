@@ -191,7 +191,7 @@ body{font:16px system-ui;background:#f4f7fb;color:#192d42;margin:24px auto;max-w
     body+=''.join(cards) if cards else '<p>No completed checks yet.</p>'
     body+='<p>Timing categories inside a search are nested in its total; do not add inclusive totals twice. Geometry checks use observed RGB-D and known robot geometry.</p></body></html>'
     (study/'watch.html').write_text(body);(study/'summary.json').write_text(json.dumps(summary,indent=2)+'\n')
-    if watch:
+    if watch and Path(watch).exists():
         watch=Path(watch);text=watch.read_text();start='<!-- CONTACT_SKILLS_BEGIN -->';end='<!-- CONTACT_SKILLS_END -->'
         block=start+f'<section id="contact-skills"><h2>Push and hook-pull experiments</h2><p>{link(study/"watch.html",watch.parent,"Open contact skills, failures and timing")}</p><iframe title="Contact skill validation" src="{esc(os.path.relpath(study/"watch.html",watch.parent))}" style="width:100%;height:1100px;border:1px solid #ccd7e3"></iframe></section>'+end
         if start in text:text=text[:text.index(start)]+block+text[text.index(end)+len(end):]
