@@ -242,7 +242,7 @@ class NativeScene:
         self.anchor=self.reference_tcp[:3,3]+self.reference_tcp[:3,:3]@self.pad_local
         self.origin=np.asarray(scene.origin,float);self.axis=np.asarray(scene.axis,float)
         gripper,parts=gripper_cover(metadata,self.world_robot)
-        contact_surface=getattr(scene,'skill_contact_surface',None)
+        contact_surface=getattr(scene,'skill_contact_surface',None) or 'fingertips'
         if self.collision_policy=='advisory':
             observed_counts={'stationary':len(scene.static_points),'moving':len(scene.moving_reference),'contact_reference':len(scene.contact_reference)}
             static,moving,contact=(_f(np.empty((0,3))) for _ in range(3))
@@ -367,12 +367,14 @@ class NativeScene:
                 moving_geometry_pose_source=update['source'],
                 moving_geometry_reference_control_step=update['reference_control_step'],
                 fresh_depth_endpoints_after_transport=False)
-        # This never clears the world or exempts the palm wholesale. Only an
-        # existing submillimetre palm/contact overlap may be carried into a
-        # contact-rich replan. Fresh separated starts retain the strict checker.
+        # Only explicit legacy comparisons can carry shallow palm/contact
+        # overlap. Live tools check the palm without this tolerance.
         initial=self.validate(reference_q)
-        self.record['existing_palm_contact']={'enabled':False,'maximum_allowed_depth_m':.0005}
-        if not initial['accepted'] and initial['last_rejected_part']==1000 and initial['last_rejected_surface']==2:
+        legacy_palm_contact=bool(scene.config.get('allow_existing_palm_contact',False))
+        self.record['existing_palm_contact']={'enabled':False,'legacy_opt_in':legacy_palm_contact,
+            'maximum_allowed_depth_m':.0005 if legacy_palm_contact else 0.}
+        if (legacy_palm_contact and not initial['accepted']
+                and initial['last_rejected_part']==1000 and initial['last_rejected_surface']==2):
             from .rekep_libero.scene_state_v7 import bounded_points
             palm=next(v for v in metadata['robot_collision_volumes_world'] if v['robot_geom_name']=='gripper0_hand_collision')
             measured=transform_points(contact,self.world_robot)

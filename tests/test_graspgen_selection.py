@@ -41,9 +41,9 @@ def test_first_executable_pose_stops_search_without_variants(monkeypatch,tmp_pat
             calls.append('path');return np.array([a,b]),{'exact_solution':True,'status':'solved'}
     class IK:
         chain=None
-        def solve(self,pose,initial):
+        def solve_many(self,pose,initial):
             calls.append(pose.copy())
-            return {'joints':np.full(7,.1),'pose_world_xyzw':pose}
+            return [{'joints':np.full(7,.1),'pose_world_xyzw':pose}]
     monkeypatch.setattr(module,'NativeScene',Context)
     monkeypatch.setattr(shared,'virtual_metadata',lambda *args:{})
     state={'metadata':{'joint_positions':np.zeros(7),'robot_calibration':calibration()}}
@@ -55,6 +55,35 @@ def test_first_executable_pose_stops_search_without_variants(monkeypatch,tmp_pat
     assert result['graspgen_index']==1
     assert result['search_summary']['generated_ik_candidates']==1
     assert not result['search_summary']['geometric_fallback_used']
+
+
+def test_closest_scene_valid_ik_is_chosen_without_an_extra_route(monkeypatch,tmp_path):
+    import vlm_tamp.graspgen_selection as module
+    import vlm_tamp.hinged_contact_tools as shared
+    paths=[];permissions=[]
+    class Context:
+        def __init__(self,*args,**kw):
+            self.record={};permissions.append(kw)
+        def __enter__(self):return self
+        def __exit__(self,*args):pass
+        def validate(self,q):return {'accepted':not np.isclose(q[0],.1),'blocking_robot_part':'robot0_link5_collision'}
+        def plan(self,a,b,**kw):
+            paths.append(b.copy());return np.array([a,b]),{'exact_solution':True,'status':'solved'}
+    class IK:
+        chain=None
+        def solve_many(self,pose,initial):
+            return [{'joints':np.full(7,v),'pose_world_xyzw':pose} for v in [.3,.1,.2]]
+    monkeypatch.setattr(module,'NativeScene',Context)
+    monkeypatch.setattr(shared,'virtual_metadata',lambda *args:{})
+    state={'metadata':{'joint_positions':np.zeros(7),'robot_calibration':calibration()}}
+    scene=SimpleNamespace(robot=None)
+    budget={'maximum_joint_speed':.6,'endpoint_hold_steps':6,'available_approach_steps':500,
+        'grasp_closure_steps_reserved':40,'remaining_control_steps':540}
+    result=select_direct_grasp(proposals(),state,IK(),{},scene,scene,.2,tmp_path/'selection',{},budget)
+    assert len(paths)==1 and np.allclose(paths[0],.2)
+    assert result['ik_rank']==1
+    assert permissions[0]['allow_contact'] is True
+    assert all(p['collision_policy']=='veto' for p in permissions)
 
 
 def test_sampling_counts_are_part_of_cache_identity(tmp_path):

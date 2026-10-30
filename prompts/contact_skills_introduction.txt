@@ -8,7 +8,7 @@ configuration is required for push or hook_pull.
   direction_world=null, distance_m=0.03, joint_degrees=null,
   joint_model_epoch=null, mode="controlled", contact_speed_m_s=0.03,
   contact_surface="fingertips", preview=false, budget_seconds=120,
-  collision_policy="advisory", approach_speed_rad_s=0.6, stroke_length_m=null,
+  collision_policy="veto", approach_speed_rad_s=0.6, stroke_length_m=null,
   search_seconds=null, stroke_plan_seconds=null, max_ineffective_strokes=2):
   Select the CURRENT contact region and, preferably, a larger region on the SAME
   moving part for visual feedback. Boxes use original pixels. A world direction
@@ -22,19 +22,12 @@ configuration is required for push or hook_pull.
   another positive stroke_length_m or contact_speed_m_s; timing always respects
   the controller's 1 rad/s joint-reference limit. Feedback occurs between strokes. Choose contact_surface="palm" explicitly
   to plan palm contact with the chosen target patch. preview=true plans without motion.
-  This service operates in simulation. Through approach, contact and withdrawal, environmental
-  collision predictions are ADVISORY by default: they are reported, and the
-  bounded motion is tried with physical simulator contacts still enabled.
-  Joint validity and robot self-collision checks remain part of numerical IK.
-  Approach search prefers an observed clear route when one is found, and falls
-  back to a robot-valid route if that scene prediction/search fails. This is a
-  preference, not an added collision margin or an execution veto.
-  Advisory planning uses robot-valid kinematics and records environment predictions;
-  the physical simulator still decides what moves or makes contact. Use
-  collision_policy="veto" to request the observed-scene collision checks as vetoes.
-  Collision checking uses the configured robot surfaces with zero added padding.
-  Cartesian interpolation deviations are also reported without veto in advisory
-  mode; inspect achieved motion instead of assuming a perfectly straight stroke.
+  Scene collisions block plans through approach, contact and withdrawal.
+  Only distal finger-pad contact with the selected target patch is allowed by
+  default. The arm, palm, proximal fingers and unrelated surfaces are checked.
+  Explicit contact_surface="palm" permits only that selected palm/target pair.
+  The planner's own checks use zero added padding. There is no extra dense
+  validation pass and no automatic robot-only/advisory route fallback.
   Incomplete depth and controller tracking error remain limits of the prediction.
   The current gripper aperture is used for planning and held during execution.
   A supported current contact posture can be reused; a new approach is not
@@ -45,12 +38,12 @@ configuration is required for push or hook_pull.
   controller execution, not a simulator state reset.
   mode="push_and_release" defaults to one pulse up to 3 cm, withdraws by
   withdrawal_distance_m=0.015 (configurable), and allows one
-  second of simulated coasting. The stricter veto mode adds a slow contact test.
+  second of simulated coasting. A slow contact test precedes the pulse.
   distance_m bounds the pulse length in this mode, not the uncertain total
-  object displacement. In veto mode a failed contact test prevents the faster pulse.
+  object displacement. A failed contact test prevents the faster pulse.
   Momentum can
   move the object after release; final displacement is unknown. This mode is
-  available for advisory simulation experiments. Validation is reported separately.
+  available for simulation experiments. Validation is reported separately.
   The 0.03, 0.06 and 0.12 m/s settings have matched replay data. Other positive
   speed requests are allowed experiments; replies report achieved speed.
   Larger signed joint requests are tracked through incremental observed rotations.
@@ -59,12 +52,12 @@ configuration is required for push or hook_pull.
 - hook_pull(observation_id, camera, region_xyxy, target_region_xyxy=null,
   direction_world=null, distance_m=0.03, joint_degrees=null,
   joint_model_epoch=null, contact_speed_m_s=0.03, preview=false,
-  budget_seconds=120, collision_policy="advisory", approach_speed_rad_s=0.6, stroke_length_m=null,
+  budget_seconds=120, collision_policy="veto", approach_speed_rad_s=0.6, stroke_length_m=null,
   search_seconds=null, stroke_plan_seconds=null, max_ineffective_strokes=2): catch a visibly resolved retaining bar/lip without
   pinching, test engagement with a small movement, then pull in bounded strokes.
   Select a retaining feature and desired pulling direction. Hook planning
   searches observed geometry for a retaining posture across candidates,
-  then permits an advisory fallback within the same contact-search budget.
+  using scene collision checks throughout the same contact-search budget.
   It requires observed thickness and a rear contact surface; unseen openings and
   arbitrary flat surfaces are not assumed hookable. no_hookable_feature means
   this tool has no supported catch, not that grasping is impossible. Change the

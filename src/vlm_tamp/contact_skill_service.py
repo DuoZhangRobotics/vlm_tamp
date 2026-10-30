@@ -75,7 +75,7 @@ def feedback_camera_names(tracker,requested,available,previous=()):
 def run_skill(service,kind,*,observation_id,camera,region_xyxy,target_region_xyxy=None,
               direction_world=None,distance_m=.03,joint_degrees=None,joint_model_epoch=None,
               mode='controlled',contact_speed_m_s=.03,contact_surface='fingertips',
-              preview=False,budget_seconds=120.,collision_policy='advisory',approach_speed_rad_s=.6,
+              preview=False,budget_seconds=120.,collision_policy='veto',approach_speed_rad_s=.6,
               stroke_length_m=None,search_seconds=None,stroke_plan_seconds=None,max_ineffective_strokes=2,withdrawal_distance_m=.015):
     started=time.perf_counter();timing=Counter();stages=[];executed=False
     if service.sim is None:raise ValueError('Reset before using contact skills')

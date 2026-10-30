@@ -225,13 +225,13 @@ def operation_schemas(image_sizes=None):
         'approach_speed_rad_s':speed,'stroke_length_m':nullable(number(exclusiveMinimum=0)),
         'search_seconds':nullable(number(exclusiveMinimum=0)),'stroke_plan_seconds':nullable(number(exclusiveMinimum=0)),
         'max_ineffective_strokes':{'type':'integer','minimum':1},
-        'collision_policy':{'type':'string','enum':['advisory','veto']},
+        'collision_policy':{'type':'string','enum':['veto']},
         'preview':{'type':'boolean'},'budget_seconds':number(minimum=.001,maximum=1800)}
-    policy={'type':'string','enum':['advisory','veto']}
+    policy={'type':'string','enum':['veto']}
     definitions = {
         'compare_surface_geometry': ('Compare two currently measured surfaces, including different parts. Returns relative plane angles and offsets; no motion or native goal threshold is supplied.',
             parameters({'first_id':text,'second_id':text},['first_id','second_id'])),
-        'push': ('Plan and execute simulation pushing with RGB-D feedback. Environment collision predictions are advisory through approach, contact and withdrawal by default; physical contacts remain active. preview=true issues no motion.',
+        'push': ('Plan and execute simulation pushing with RGB-D feedback. Scene collisions block approach, contact and withdrawal plans; only the explicitly selected contact surfaces may touch the target. preview=true issues no motion.',
             parameters({**contact_arguments,'mode':{'type':'string','enum':['controlled','push_and_release']},
                 'contact_surface':{'type':'string','enum':['fingertips','palm']},'withdrawal_distance_m':number(exclusiveMinimum=0)},['observation_id','camera','region_xyxy'])),
         'hook_pull': ('Catch an observed retaining feature without pinching; test engagement and pull with feedback. A flat surface is not a hook.',

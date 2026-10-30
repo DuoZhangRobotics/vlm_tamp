@@ -40,8 +40,9 @@ Grasp planning: eight native GraspGen proposals, ranked by learned score; one
 closest valid IK and one approach query per pose. No angle/height/depth sweeps.
 The planner's returned path is used without an extra dense validation pass.
 Contact skills when enabled: push, hook_pull (execute by default; preview=true has no motion)
-push modes: controlled; push_and_release. Simulation contact collision predictions
-are advisory by default; collision_policy="veto" requests the stricter comparison.
+push modes: controlled; push_and_release. Scene collisions block plans
+(collision_policy="veto"). Only intended pad/target contact is exempt by default;
+the arm, palm and proximal fingers remain checked. No extra dense validation.
 Other enabled operations are listed below. help is local and makes no robot call.
 
 Each compact reply preserves success/errors and provides full_response for all

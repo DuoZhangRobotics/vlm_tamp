@@ -46,7 +46,7 @@ COMMON_TOOL_DEFAULTS={
     'minimum_manipulation_steps_reserved':0,'grasp_closure_steps_reserved':40,
     'grasp_budget_speed_rad_s':.6,'grasp_budget_hold_steps':6,
     'grasp_approach_speed_rad_s':.6,'grasp_standoff_distances_m':[0.,.03,.07],
-    'environment_collision_policy':'advisory','command_joint_reserve_rad':0.,'native_joint_reserve_rad':0.,
+    'environment_collision_policy':'veto','command_joint_reserve_rad':0.,'native_joint_reserve_rad':0.,
     'ik_position_tolerance_m':.003,'ik_orientation_tolerance_rad':.01,
     'curobo_backend':'v2','arc_goal_backend':'curobo_v2',
 }
@@ -256,7 +256,7 @@ def select_grasp(generated,anchors,state,ik,record,open_scene,closed_scene,spec,
     ik_generation_seconds=time.perf_counter()-before
     approach_query_seconds=0.
     predicted_initial=virtual_metadata(state,closed_scene.robot,ik.chain,initial)
-    policy=config.get('environment_collision_policy','advisory')
+    policy=config.get('environment_collision_policy','veto')
     with NativeScene(open_scene,record,state['metadata'],initial,goal,articulated=False,allow_contact=False,collision_policy=policy) as context, \
          NativeScene(closed_scene,record,predicted_initial,initial,goal,articulated=False,collision_policy=policy) as contact_context, \
          NativeScene(open_scene,record,state['metadata'],initial,goal,articulated=False,allow_contact=False,collision_policy='veto') as observed, \

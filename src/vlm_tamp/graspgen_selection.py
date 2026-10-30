@@ -42,15 +42,16 @@ def select_direct_grasp(generated,state,ik,record,open_scene,closed_scene,goal,f
     open_scene=copy.copy(open_scene);closed_scene=copy.copy(closed_scene)
     open_scene.skill_contact_surface=closed_scene.skill_contact_surface='fingertips'
     predicted=virtual_metadata(state,closed_scene.robot,ik.chain,initial)
-    policy=config.get('environment_collision_policy','advisory')
+    policy=config.get('environment_collision_policy','veto')
     attempts=[];queries=0;ik_seconds=path_seconds=0.;best=None
     speed=budget['maximum_joint_speed'];hold=budget['endpoint_hold_steps']
     with NativeScene(open_scene,record,state['metadata'],initial,goal,articulated=False,
-                     allow_contact=False,collision_policy=policy) as approach_context, \
+                     allow_contact=True,collision_policy=policy) as approach_context, \
          NativeScene(closed_scene,record,predicted,initial,goal,articulated=False,
                      collision_policy=policy) as contact_context:
         start=approach_context.validate(initial)
-        write_json(folder/'approach-initial-scene.json',{'record':approach_context.record,'start':start})
+        write_json(folder/'approach-initial-scene.json',{'record':approach_context.record,
+            'closed_contact_record':contact_context.record,'start':start})
         if not start['accepted']:
             error=ValueError('Measured start fails the selected robot/collision admission')
             error.planning_diagnostic={'status':'invalid_start','diagnostic':start}
@@ -61,17 +62,30 @@ def select_direct_grasp(generated,state,ik,record,open_scene,closed_scene,goal,f
                 'graspgen_score':row['graspgen_score'],'source':row['source']}
             attempts.append(attempt)
             t=time.perf_counter()
-            # solve() chooses the closest robot-valid returned solution to the
-            # current joints. Internal GPU seeds are not extra route candidates.
-            solution=ik.solve(row['pose'],initial)
+            # One GPU IK query. Choose the closest returned solution that is
+            # valid in this scene at both the open and closed apertures.
+            # Other returned IK branches never become extra path queries.
+            solutions=ik.solve_many(row['pose'],initial)
+            solutions.sort(key=lambda s:np.linalg.norm(np.asarray(s['joints'])-initial))
             ik_seconds+=time.perf_counter()-t
-            if solution is None:
+            if not solutions:
                 attempt['status']='no_ik_solution';continue
+            solution=None;checks=[]
+            for rank,proposal in enumerate(solutions):
+                if time.perf_counter()>=deadline:break
+                q=np.asarray(proposal['joints'])
+                opened=approach_context.validate(q)
+                closed=contact_context.validate(q)
+                checks.append({'rank_by_joint_distance':rank,'joints':q.tolist(),
+                    'open_aperture':opened,'closed_aperture':closed})
+                if opened['accepted'] and closed['accepted']:
+                    solution=proposal;break
+            attempt.update(ik_endpoint_checks=checks,robot_valid_ik_returned=len(solutions))
+            if solution is None:
+                attempt['status']='endpoint_rejected' if len(checks)==len(solutions) else 'endpoint_search_deadline'
+                continue
             q=np.asarray(solution['joints'])
-            check=contact_context.validate(q)
-            attempt.update(joints=q.tolist(),start_scene=check)
-            if not check['accepted']:
-                attempt['status']='endpoint_rejected';continue
+            attempt.update(joints=q.tolist(),ik_rank=rank,start_scene=closed)
             lower=int(np.ceil(np.max(np.abs(q-initial))/speed*20))+hold
             attempt['approach_lower_bound_controls']=lower
             if lower>budget['available_approach_steps']:
@@ -84,7 +98,7 @@ def select_direct_grasp(generated,state,ik,record,open_scene,closed_scene,goal,f
             route={'route':policy,'standoff_m':0.,'one_route_per_learned_pose':True}
             with (folder/'approach-queries.jsonl').open('a') as stream:
                 import json
-                stream.write(json.dumps({'pose_index':ordinal,'ik_rank':0,**route,**result})+'\n')
+                stream.write(json.dumps({'pose_index':ordinal,'ik_rank':rank,**route,**result})+'\n')
             attempt['planner_status']=result.get('status')
             if not result.get('exact_solution'):
                 attempt['status']='approach_search_incomplete';continue
@@ -93,7 +107,7 @@ def select_direct_grasp(generated,state,ik,record,open_scene,closed_scene,goal,f
                 attempt.update(status='approach_exceeds_episode_budget',approach_steps=count);continue
             attempt.update(status='selected',approach_steps=count)
             best={**row,'pose_world_xyzw':solution['pose_world_xyzw'],'joints':q.tolist(),
-                'pose_index':ordinal,'ik_rank':0,'approach':path,'planned_contact':None,
+                'pose_index':ordinal,'ik_rank':rank,'approach':path,'planned_contact':None,
                 'manipulation_plan_requires_measured_closure':True,
                 'requested_manipulation_radians':float(goal),'approach_selection':route,
                 'budget_timing_assumptions':{'speed':speed,'hold':hold,
@@ -105,9 +119,12 @@ def select_direct_grasp(generated,state,ik,record,open_scene,closed_scene,goal,f
     write_json(folder/'grasp-attempts.json',attempts)
     elapsed=time.perf_counter()-began
     summary={'method':'graspgen_direct','learned_pose_count':len(rows),'examined':len(attempts),
-        'generated_ik_candidates':sum('joints' in a for a in attempts),'approach_queries':queries,
+        'generated_ik_candidates':sum(a.get('robot_valid_ik_returned',0) for a in attempts),
+        'scene_valid_ik_selected':sum('joints' in a for a in attempts),'approach_queries':queries,
         'deadline_reached':time.perf_counter()>=deadline,'global_optimality_claimed':False,
-        'geometric_fallback_used':False,'selection':'first executable learned pose by discriminator rank; closest valid returned IK'}
+        'geometric_fallback_used':False,'selection':'first executable learned pose by discriminator rank; closest scene-valid returned IK',
+        'environment_collision_policy':policy,'finger_pad_target_contact_allowed':True,
+        'arm_palm_proximal_fingers_checked':policy=='veto','additional_dense_validation':False}
     timing={'ik_generation_and_queue':ik_seconds,'approach_queries':path_seconds,
         'admission_scene_setup_and_bookkeeping':max(0.,elapsed-ik_seconds-path_seconds)}
     write_json(folder/'search-summary.json',{'search_summary':summary,'search_timing_seconds':timing})

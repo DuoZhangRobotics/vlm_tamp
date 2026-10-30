@@ -1,5 +1,9 @@
 # Small GraspGen experiment and removal of duplicate path validation
 
+Historical experiment: the advisory collision policy described below was
+subsequently replaced for live tools. See [the scene contact fix](scene_contact_policy_20261030.md)
+for the current policy and repeat results.
+
 The active approach now uses eight native GraspGen poses, the closest robot-valid
 returned cuRobo IK solution for each, and one VAMP path query per examined pose.
 It stops at the first executable approach. There is no geometric fallback,

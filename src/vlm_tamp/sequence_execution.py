@@ -60,7 +60,7 @@ def execute_sequence(service,plan_id,*,close_steps=40,speed=.35,approach_speed=N
                 selected=service._select_contact(extra['goal_degrees'],options.get('max_candidates',24),options.get('seed',0),
                     {**grasp_timing_options(approach_speed,int(hold),close_steps),
                      'maximum_grasp_search_seconds':float(options.get('budget_seconds',30)),
-                     'environment_collision_policy':extra.get('collision_policy','advisory')})
+                     'environment_collision_policy':extra.get('collision_policy','veto')})
             except (ValueError,RuntimeError) as error:
                 result.update(stop_reason='approach_replanning_after_opening_incomplete',planning_error=str(error),recovery_required=True)
                 return result
@@ -96,7 +96,7 @@ def execute_sequence(service,plan_id,*,close_steps=40,speed=.35,approach_speed=N
                 path,report=plan_signed_arc(service.ik,measured_robot_scene(service),service.record,
                     service.state['metadata'],np.asarray(service.state['metadata']['joint_positions']),amount,folder,
                     {**service.config,'grasp_constraint':extra['grasp_constraint'],
-                        'environment_collision_policy':extra.get('collision_policy',service.config.get('environment_collision_policy','advisory'))})
+                        'environment_collision_policy':extra.get('collision_policy',service.config.get('environment_collision_policy','veto'))})
             except (ValueError,RuntimeError) as error:
                 result.update(stop_reason='post_closure_planning_incomplete',planning_error=str(error),
                     physical_infeasibility_proved=False,recovery_required=True);break

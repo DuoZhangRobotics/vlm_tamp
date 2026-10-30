@@ -744,7 +744,7 @@ class RobotService:
                 'note': 'Planning makes no robot motion. Execute explicitly.'}
 
     def _query_scene(self,collision_policy=None):
-        policy=collision_policy or self.config.get('environment_collision_policy','advisory')
+        policy=collision_policy or self.config.get('environment_collision_policy','veto')
         if policy not in {'advisory','veto'}:raise ValueError('Unknown environment collision policy')
         scene=copy.copy(self.scene);scene.config={**scene.config,'environment_collision_policy':policy}
         return scene
@@ -753,7 +753,7 @@ class RobotService:
         return {'maximum_control_steps':getattr(self,'maximum_control_steps',control_limit(self.state)),
             'remaining_control_steps':self.episode_status()['remaining_control_steps'],
             'controller_joint_reference_limit_rad_s':1.,'controller_reference_mode':self.reference_mode,'collision_padding_m':0.,
-            'environment_collision_policy':self.config.get('environment_collision_policy','advisory'),
+            'environment_collision_policy':self.config.get('environment_collision_policy','veto'),
             'ik_position_tolerance_m':self.config['ik_position_tolerance_m'],
             'ik_orientation_tolerance_rad':self.config['ik_orientation_tolerance_rad'],
             'joint_reserve_rad':self.config.get('command_joint_reserve_rad',0.),
@@ -840,7 +840,7 @@ class RobotService:
     def plan_grasp(self, probe_degrees=3., max_candidates=8, seed=0, speed=None, hold=6, close_steps=40,approach_speed=None,budget_seconds=30.,collision_policy=None):
         speed=float(approach_speed if approach_speed is not None else speed if speed is not None else self.config.get('grasp_approach_speed_rad_s',.6))
         selected=self._select_contact(probe_degrees,max_candidates,seed,{**grasp_timing_options(speed,hold,close_steps),'maximum_grasp_search_seconds':min(float(budget_seconds),self.episode_status().get('remaining_wall_seconds') or float(budget_seconds)),
-            'environment_collision_policy':collision_policy or self.config.get('environment_collision_policy','advisory')})
+            'environment_collision_policy':collision_policy or self.config.get('environment_collision_policy','veto')})
         result=self.keep_plan(selected['approach'], {'status':'solved',
             'grasp_pose_world_xyzw':selected['pose_world_xyzw'], 'proposal_source':selected['source'],
             'initial_contact_probe_degrees':probe_degrees}, 'approach', {'grasp_joints':selected['joints'],'approach_speed':speed,'contact_depth_offset_m':selected.get('contact_depth_offset_m',0.)})
@@ -850,7 +850,7 @@ class RobotService:
         result['search_timing_seconds']=selected.get('search_timing_seconds')
         result['approach_aperture_qpos']=selected.get('approach_aperture_qpos')
         result['opening_required']=selected.get('opening_required',False)
-        result['environment_collision_policy']=collision_policy or self.config.get('environment_collision_policy','advisory')
+        result['environment_collision_policy']=collision_policy or self.config.get('environment_collision_policy','veto')
         result['grasp_stage_contract']={'plan_contains':'approach only; grasp is not yet acquired',
             'approach_gripper_command':-1,'close_after_arrival':True,
             'note':'For a pinch grasp, open before planning, execute the approach with gripper=-1, then close at arrival and inspect grasp evidence. plan_sequence/execute_sequence stage approach/closure/manipulation automatically.'}
@@ -864,7 +864,7 @@ class RobotService:
             'motion_policy':'full','grasp_constraint':grasp_constraint,
             **grasp_timing_options(approach_speed,hold,close_steps),
             'maximum_grasp_search_seconds':min(float(budget_seconds),self.episode_status().get('remaining_wall_seconds') or float(budget_seconds)),
-            'environment_collision_policy':collision_policy or self.config.get('environment_collision_policy','advisory')})
+            'environment_collision_policy':collision_policy or self.config.get('environment_collision_policy','veto')})
         result=self.keep_plan(selected['approach'],{'status':'approach_ready','goal_degrees':float(degrees),
             'grasp_constraint':grasp_constraint,'search_seconds':selected['search_seconds'],
             'post_closure_replanning_required':True,'physical_grasp_retention_verified':False},'sequence',
@@ -873,13 +873,13 @@ class RobotService:
              'contact_depth_offset_m':selected.get('contact_depth_offset_m',0.),
              'opening_required':selected.get('opening_required',False),
              'selection_options':{'max_candidates':max_candidates,'seed':seed,'budget_seconds':budget_seconds},
-             'collision_policy':collision_policy or self.config.get('environment_collision_policy','advisory')})
+             'collision_policy':collision_policy or self.config.get('environment_collision_policy','veto')})
         result['budget_timing_assumptions']=selected['budget_timing_assumptions']
         result['approach_selection']=selected.get('approach_selection')
         result['search_summary']=selected.get('search_summary')
         result['approach_aperture_qpos']=selected.get('approach_aperture_qpos')
         result['opening_required']=selected.get('opening_required',False)
-        result['environment_collision_policy']=collision_policy or self.config.get('environment_collision_policy','advisory')
+        result['environment_collision_policy']=collision_policy or self.config.get('environment_collision_policy','veto')
         result['note']='Execution observes real closure and replans from the measured aperture; no guessed closed-gripper manipulation path is reused.'
         return result
 
@@ -922,7 +922,7 @@ class RobotService:
             'orientation_tolerance_deg':angular,
             'orientation_tolerance_applies':mode!='point',
             'max_wrist_reorientation_deg':max_wrist_reorientation_deg,
-            'environment_collision_policy':collision_policy or self.config.get('environment_collision_policy','advisory'),
+            'environment_collision_policy':collision_policy or self.config.get('environment_collision_policy','veto'),
             'collision_padding_m':0.,'collision_free_certificate':False,
             'arc_search_budget_seconds':search_budget,
             'refined_flag':'deprecated; does not change constraints or estimate a hinge',
@@ -936,7 +936,7 @@ class RobotService:
                     'arc_position_tolerance_m':tolerance,
                     'arc_orientation_tolerance_rad':float(np.radians(angular)),
                     'max_wrist_reorientation_deg':max_wrist_reorientation_deg,
-                    'environment_collision_policy':collision_policy or self.config.get('environment_collision_policy','advisory')})
+                    'environment_collision_policy':collision_policy or self.config.get('environment_collision_policy','veto')})
         except Exception as error:
             if (folder/'result.json').exists():
                 diagnostic = read_json(folder/'result.json')
@@ -958,7 +958,7 @@ class RobotService:
             path, result = native.plan(start,goal,constrained=False,seconds=8.)
         if not result['exact_solution']:
             return {'planned': False, 'result': result,'scene_observation_support':self.safe_scene_evidence()}
-        result.update(environment_collision_policy=collision_policy or self.config.get('environment_collision_policy','advisory'),collision_free_certificate=False)
+        result.update(environment_collision_policy=collision_policy or self.config.get('environment_collision_policy','veto'),collision_free_certificate=False)
         return self.keep_plan(path,result,'free')
 
     def _check_surface_freshness(self):
@@ -1007,7 +1007,7 @@ class RobotService:
                     'attempts':read_json(folder/'attempts.json')})
                 error.planning_diagnostic['full_diagnostic']=str(target.relative_to(self.workspace))
             raise
-        result.update(environment_collision_policy=collision_policy or self.config.get('environment_collision_policy','advisory'),collision_free_certificate=False)
+        result.update(environment_collision_policy=collision_policy or self.config.get('environment_collision_policy','veto'),collision_free_certificate=False)
         return self.keep_plan(path,result,'free')
 
     def ik_solutions(self, pose_world_xyzw):
@@ -1016,7 +1016,7 @@ class RobotService:
 
     def push(self,observation_id,camera,region_xyxy,target_region_xyxy=None,direction_world=None,
              distance_m=.03,joint_degrees=None,joint_model_epoch=None,mode='controlled',
-             contact_speed_m_s=.03,contact_surface='fingertips',preview=False,budget_seconds=120.,collision_policy='advisory',
+             contact_speed_m_s=.03,contact_surface='fingertips',preview=False,budget_seconds=120.,collision_policy='veto',
              approach_speed_rad_s=.6,stroke_length_m=None,search_seconds=None,stroke_plan_seconds=None,max_ineffective_strokes=2,withdrawal_distance_m=.015):
         from vlm_tamp.contact_skill_service import run_skill
         arguments={key:value for key,value in locals().items() if key not in {'self','run_skill'}}
@@ -1024,7 +1024,7 @@ class RobotService:
 
     def hook_pull(self,observation_id,camera,region_xyxy,target_region_xyxy=None,direction_world=None,
                   distance_m=.03,joint_degrees=None,joint_model_epoch=None,
-                  contact_speed_m_s=.03,preview=False,budget_seconds=120.,collision_policy='advisory',
+                  contact_speed_m_s=.03,preview=False,budget_seconds=120.,collision_policy='veto',
                   approach_speed_rad_s=.6,stroke_length_m=None,search_seconds=None,stroke_plan_seconds=None,max_ineffective_strokes=2):
         from vlm_tamp.contact_skill_service import run_skill
         arguments={key:value for key,value in locals().items() if key not in {'self','run_skill'}}
