@@ -58,6 +58,7 @@ function updateOverview(next){
  el('totals').replaceChildren();for(const [name,v] of Object.entries(state.totals||{})){
   const d=node('div');d.append(node('b',v.finished+' / '+v.planned),document.createTextNode(name));el('totals').append(d);
  }
+ if(state.task_outcomes){const d=node('div');d.append(node('b',state.task_outcomes.successes+' / '+state.task_outcomes.completed),document.createTextNode('task successes / completed episodes'));el('totals').append(d)}
  el('studyLinks').replaceChildren();for(const [name,path] of Object.entries(state.links||{}))link(el('studyLinks'),name,path);
  for(const row of state.runs||[]){
   let entry=rows.get(row.id);

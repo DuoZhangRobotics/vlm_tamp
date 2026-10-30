@@ -104,3 +104,23 @@ def test_timeout_and_wrong_direction_explanations_name_the_failed_stage():
     assert 'contact insertion' in text and '20.00s left' in text
     text=dashboard.issue_explanation({'point_attempts':[{'reason':'wrong_side_contact'}]*4})
     assert 'all 4' in text and 'requested push direction' in text
+
+
+def test_rerun_shows_scored_success_and_small_resource_snapshot(tmp_path,monkeypatch):
+    study,run,manifest=fixture(tmp_path,monkeypatch)
+    manifest.update(scheduled_stages=['baseline'],baseline_completed=True,
+        completed_runs=[{'run':'case','stage':'baseline','attempts':[
+            {'official_task_success':True},{'official_task_success':False}]}])
+    (study/'study-manifest.json').write_text(json.dumps(manifest))
+    sample=tmp_path/'sample.json';sample.write_text(json.dumps({'time':1,'job_memory_gib':8.,
+        'job_memory_peak_gib':11.,'io_full_avg10':.1,'processes':[{'large':'x'*10000}]}))
+    (study/'resource-monitor.json').write_text(json.dumps({'latest_sample':str(sample),'policy':'test watchdog'}))
+    monkeypatch.setattr(dashboard,'_live_process',lambda _:False)
+    dashboard.publish(study,force=True)
+    status=json.loads((study/'watch-status.json').read_text())
+    assert status['task_outcomes']=={'successes':1,'completed':2}
+    assert list(status['totals'])==['baseline'] and status['status_text'].startswith('Complete')
+    assert 'peak 11.0 GiB' in status['health_text']
+    resource=json.loads((study/'resource-summary.json').read_text())
+    assert resource['sample_interval_seconds']==2 and 'processes' not in resource
+    assert (study/'resource-summary.json').stat().st_size<2500

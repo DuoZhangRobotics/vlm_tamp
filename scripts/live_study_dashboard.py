@@ -181,10 +181,16 @@ def publish(study,*,force=False,now=None):
     counts=Counter(r['stage'] for r in completed);plan=manifest.get('plan',{})
     totals={key:{'finished':counts[key],'planned':count} for key,count in
             [('baseline',len(plan.get('baseline',[]))),('practice',1),('transfer',len(plan.get('transfer',[])))]}
+    scheduled=manifest.get('scheduled_stages')
+    if scheduled:totals={key:value for key,value in totals.items() if key in scheduled}
+    scored=[attempt for row in completed if not scheduled or row.get('stage') in scheduled
+            for attempt in row.get('attempts',[])]
+    task_outcomes={'completed':len(scored),'successes':sum(bool(a.get('official_task_success')) for a in scored)}
     phase=manifest.get('phase','preflight')
     message=manifest.get('stop_reason','') if stopped else manifest.get('problem',{}).get('reason','')
     if not message:message=f"{plan.get('model','Luna')} / {plan.get('reasoning','high')} · {plan.get('control_steps',600)} controls per episode. Only public observations are supplied to the actor."
     status='Experiments stopped' if stopped else 'Running' if running else 'Complete' if manifest.get('completed') else 'Waiting / no live actor'
+    if not running and scheduled==['baseline'] and manifest.get('baseline_completed'):status='Complete'
     capacity=read(study/'capacity-wait.json',{})
     if capacity.get('waiting') and not stopped:
         status='Waiting for shared memory capacity'
@@ -203,9 +209,19 @@ def publish(study,*,force=False,now=None):
         label='Latest experiment sample' if running else 'Last recorded experiment sample before shutdown (not a current server reading)'
         memory=resource.get('job_memory_gib')
         memory=f'{memory:.1f}' if isinstance(memory,(int,float)) else 'unavailable'
-        health=f"{label}: I/O pressure {resource.get('io_full_avg10','unavailable')}%; job memory {memory} GiB."
+        peak=resource.get('job_memory_peak_gib')
+        peak=f'{peak:.1f}' if isinstance(peak,(int,float)) else 'unavailable'
+        health=f"{label}: I/O pressure {resource.get('io_full_avg10','unavailable')}%; job memory {memory} GiB, peak {peak} GiB. Watchdog sampling: every 2 seconds."
+        summary={k:resource.get(k) for k in ('time','io_full_avg10','io_some_avg10','memory_full_avg10',
+            'job_memory_full_avg10','job_memory_gib','job_memory_peak_gib','job_anon_and_shmem_gib',
+            'job_memory_max_events','job_memory_oom_kills','host_available_memory_gib',
+            'shared_headroom_including_clean_inactive_file_gib','health_read_seconds')}
+        summary.update(sample_scope='memory is this experiment job; I/O pressure is host-wide',
+            running=running,sample_interval_seconds=2,stop_policy=monitor.get('policy'))
+        written+=_json(study/'resource-summary.json',summary)
+        links['Memory and I/O measurements']='resource-summary.json'
     payload={'checked_at':time.time(),'running':running,'status_text':status+' · '+phase,
-             'message':message,'totals':totals,'runs':runs,'active_run':active.get('run') if running else None,
+             'message':message,'totals':totals,'task_outcomes':task_outcomes,'runs':runs,'active_run':active.get('run') if running else None,
              'links':links,'health_text':health,'publish_interval_seconds':INTERVAL_SECONDS}
     written+=_json(study/'watch-status.json',payload)
     result={'published':True,'html_bytes_written':html_bytes,'client_bytes_written':client_bytes,'bytes_written':written,

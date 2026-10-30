@@ -290,7 +290,7 @@ def run(study,stages,*,first_run=None,log_tag=None):
 
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--study',required=True,type=Path)
-    p.add_argument('--stage',choices=['first','remaining','transfer','qualify-and-continue'],default='first')
+    p.add_argument('--stage',choices=['first','remaining','transfer','qualify-and-continue','baseline-rerun'],default='first')
     p.add_argument('--first-run',help='Declared baseline run to use for the first resource qualification')
     p.add_argument('--log-tag',help='Distinct orchestration log name for an investigated continuation')
     a=p.parse_args();study=a.study.resolve()
@@ -298,8 +298,9 @@ def main():
     study.mkdir(parents=True,exist_ok=True)
     if os.environ.get('CUDA_VISIBLE_DEVICES')!='3' or os.environ.get('MUJOCO_EGL_DEVICE_ID')!='3':raise ValueError('GPU 3 only')
     stages={'first':[('baseline',1)],'remaining':[('baseline',None),('practice',None)],
+            'baseline-rerun':[('baseline',1),('baseline',None)],
             'transfer':[('transfer',None)],'qualify-and-continue':[('baseline',1),('baseline',None),('practice',None)]}[a.stage]
-    if a.first_run and a.stage not in {'first','qualify-and-continue'}:raise ValueError('--first-run requires an initial qualification stage')
+    if a.first_run and a.stage not in {'first','qualify-and-continue','baseline-rerun'}:raise ValueError('--first-run requires an initial qualification stage')
     if a.log_tag and (not a.log_tag.replace('-','').replace('_','').isalnum()):raise ValueError('Use a simple log tag')
     raise SystemExit(run(study,stages,first_run=a.first_run,log_tag=a.log_tag))
 
