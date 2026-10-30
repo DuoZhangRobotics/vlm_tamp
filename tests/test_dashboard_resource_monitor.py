@@ -4,7 +4,9 @@ import time
 import pytest
 
 
-def row(io=0,memory=0):return {'io_full_avg10':io,'memory_full_avg10':memory}
+def row(io=0,memory=0,**kwargs):
+    return {'io_full_avg10':io,'memory_full_avg10':memory,'host_available_memory_gib':40,
+            'shared_headroom_including_clean_inactive_file_gib':25,**kwargs}
 
 
 def test_transient_pressure_does_not_interrupt_a_trial():
@@ -14,7 +16,15 @@ def test_transient_pressure_does_not_interrupt_a_trial():
 
 def test_recurring_server_strain_is_an_infrastructure_stop():
     assert pressure_stop([row(11),row(12),row(13)])=='sustained_host_io_pressure'
-    assert pressure_stop([row(0,6)]*3)=='sustained_host_memory_pressure'
+    assert pressure_stop([row(0,6,host_available_memory_gib=4)]*3)=='sustained_memory_pressure_with_shortage_or_job_limit'
+
+
+def test_host_memory_pressure_with_available_capacity_does_not_abort_healthy_job():
+    samples=[row(0,value,host_available_memory_gib=34.5,
+                 shared_headroom_including_clean_inactive_file_gib=23.1) for value in [6.09,6.43,5.27]]
+    assert pressure_stop(samples) is None
+    samples[0]['job_memory_max_event_delta']=1
+    assert pressure_stop(samples)=='sustained_memory_pressure_with_shortage_or_job_limit'
 
 
 def test_blocked_process_inspection_cannot_block_health_loop(monkeypatch):

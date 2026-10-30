@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import random
+import re
 import shutil
 import subprocess
 import time
@@ -61,18 +62,29 @@ def collect(study,entry,stage,out):
 
 
 def pending_baselines(manifest,requested=None,limit=None):
-    declared=manifest['plan']['baseline'];done={r['run'] for r in manifest['completed_runs']}
+    declared=manifest['plan']['baseline'];done={r.get('scheduled_run',r['run']) for r in manifest['completed_runs']}
     if requested and requested not in {r['run'] for r in declared}:
         raise ValueError('Requested qualification run is not in the declared baseline cases')
     pending=[r for r in declared if r['run'] not in done and (requested is None or r['run']==requested)]
     return pending[:limit] if limit is not None else pending
 
 
+def attempt_run_name(study,manifest,entry):
+    scheduled=entry['run'];retry=manifest.get('retry_runs',{}).get(scheduled)
+    if not retry:return scheduled
+    name=retry.get('run','')
+    if not retry.get('reason') or not re.fullmatch(r'[A-Za-z0-9_-]+',name) or name==scheduled:
+        raise ValueError('An explicit retry needs a new directory name and a recorded reason')
+    if not (Path(study)/'trials'/scheduled/'operator-interruption.json').exists():
+        raise ValueError('Only a preserved interrupted run can receive a replacement attempt')
+    return name
+
+
 def run_entry(study,manifest,entry,stage,arguments,expected_attempts,memory_hash=None):
-    require_frozen(manifest);out=study/'trials'/entry['run']
-    manifest.update(phase=stage,active_run=entry['run']);manifest.pop('problem',None)
+    require_frozen(manifest);name=attempt_run_name(study,manifest,entry);out=study/'trials'/name
+    manifest.update(phase=stage,active_run=name);manifest.pop('problem',None)
     write_json(study/'study-manifest.json',manifest)
-    print(json.dumps({'event':'started','stage':stage,'run':entry['run']}),flush=True)
+    print(json.dumps({'event':'started','stage':stage,'run':name,'scheduled_run':entry['run']}),flush=True)
     if out.exists():
         if not (out/'agent-exit.json').exists():raise RuntimeError('Existing unfinished run requires investigation: '+str(out))
         agent=read_json(out/'agent-exit.json');evaluation=read_json(out/'evaluation-private.json')
@@ -81,12 +93,13 @@ def run_entry(study,manifest,entry,stage,arguments,expected_attempts,memory_hash
             interrupted=(out/'operator-interruption.json').exists())
         runner.audit_memory_input(out,memory_hash)
     else:
-        out=runner.run_actor(study,entry['run'],arguments,control_steps=600,episode_seconds=1800,
+        out=runner.run_actor(study,name,arguments,control_steps=600,episode_seconds=1800,
             expected_attempts=expected_attempts,expected_memory_hash=memory_hash)
     require_frozen(manifest)
     write_json(out/'source-integrity.json',{'sources_unchanged_during_run':True,
         'checked_files':len(manifest['source_sha256']),'native_binary_unchanged':True})
     row=collect(study,entry,stage,out)
+    row['scheduled_run']=entry['run']
     expected=(manifest['plan']['practice_cases']*2 if stage=='practice' else [entry])
     if [(a['task'],a['state_index']) for a in row['attempts']] != [(a['task'],a['state_index']) for a in expected]:
         raise RuntimeError('Completed episode labels differ from the declared cases')
@@ -150,7 +163,7 @@ def main():
         write_json(path,manifest)
     if declared!=plan() or read_json(study/'plan.json')!=declared or read_json(study/'practice-cases.json')!=declared['practice_cases']:
         raise RuntimeError('The declared case schedule changed')
-    done={r['run'] for r in manifest['completed_runs']}
+    done={r.get('scheduled_run',r['run']) for r in manifest['completed_runs']}
     active=read_json(study/'active-process.json') if (study/'active-process.json').exists() else {}
     if active.get('status')=='running' and Path(f'/proc/{active["pid"]}/cmdline').exists():
         command=Path(f'/proc/{active["pid"]}/cmdline').read_bytes()
@@ -160,7 +173,7 @@ def main():
             for entry in pending_baselines(manifest,args.baseline_run,args.limit):
                 run_entry(study,manifest,entry,'baseline',['--task',entry['task'],'--state',str(entry['state_index']),
                     '--attempts','1','--agent-seconds','1800','--evaluation-case','--clean-start'],1)
-            manifest['baseline_completed']=all(e['run'] in {r['run'] for r in manifest['completed_runs']} for e in declared['baseline'])
+            manifest['baseline_completed']=not pending_baselines(manifest)
         elif args.stage=='practice':
             if not manifest.get('baseline_completed'):raise RuntimeError('Complete the frozen regression first')
             if 'clean-practice' not in done:

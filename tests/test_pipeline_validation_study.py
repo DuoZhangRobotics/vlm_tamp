@@ -35,6 +35,20 @@ def test_selected_canary_is_one_declared_case_and_is_not_repeated_in_the_batch()
     assert len(remaining)==11 and name not in {r['run'] for r in remaining}
 
 
+def test_investigated_retry_preserves_original_directory_and_counts_scheduled_case(tmp_path):
+    import json
+    name='baseline-r1-close_microwave-state017-600';replacement=name+'-monitor-v2'
+    original=tmp_path/'trials'/name;original.mkdir(parents=True)
+    (original/'operator-interruption.json').write_text(json.dumps({'reason':'host-only pressure signal'}))
+    manifest={'plan':study.plan(),'completed_runs':[],
+              'retry_runs':{name:{'run':replacement,'reason':'Investigated monitoring interruption'}}}
+    entry=next(r for r in manifest['plan']['baseline'] if r['run']==name)
+    assert study.attempt_run_name(tmp_path,manifest,entry)==replacement
+    assert original.exists()
+    manifest['completed_runs'].append({'run':replacement,'scheduled_run':name})
+    assert name not in {r['run'] for r in study.pending_baselines(manifest)}
+
+
 def test_supplied_tool_help_matches_live_grasp_and_collision_contract():
     for method in ['plan_grasp','plan_sequence']:
         count=inspect.signature(getattr(RobotService,method)).parameters['max_candidates'].default

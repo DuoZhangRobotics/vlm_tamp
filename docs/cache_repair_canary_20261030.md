@@ -33,7 +33,8 @@ query-handle cleanup from the resource repair.
   COMMIT counters are sampled separately every 15 seconds. They cannot block
   the critical loop. NFS traffic is not attributed solely to this job.
 - Three consecutive full-I/O pressure readings at least 10%, or full-memory
-  pressure readings at least 5%, stop the job. Infrastructure interruptions are
+  pressure readings at least 5% accompanied by actual host/shared-pool shortage
+  or new hits on the job's memory limit, stop the job. Infrastructure interruptions are
   separate from task failures, and are never silently retried.
 
 ## Qualification and continuation
@@ -57,3 +58,26 @@ Source and native-binary hashes are frozen at the first run. The dashboard
 remains manual-refresh by default, with all available videos in the gallery.
 Use `study-manifest.json`, `resource-qualification.json`, `resource-monitor.json`
 and per-run terminal records to continue work without guessing from stale status.
+
+## Monitoring-only amendment after the first three completions
+
+The canary completed normally with 11.04 GiB peak memory and no sampling gap
+over 2.004 seconds. Opening 37 then succeeded at 305 controls and opening 13
+at 444. The original host-wide memory-pressure rule interrupted closing 17 at
+its last returned state of 500 controls. At that point the job used about
+12 GiB (14.02 GiB lifetime peak), I/O pressure was zero, host available memory
+was about 34.5 GiB, and shared effective headroom was about 23.1 GiB. The
+monitor remained responsive. Those readings did not establish renewed cache
+growth, a job-limit hit, or a host memory shortage.
+
+The monitor now records job-local memory pressure and limit-event counters.
+A host-wide pressure signal with available capacity is no longer sufficient
+to abort an episode. The 16 GiB kernel limit, whole-group OOM kill and I/O stop
+remain. The original partial attempt is kept at its original path; a fresh
+replacement uses a distinct directory and maps to the same scheduled case.
+It is not a task failure or an extra scored repetition.
+
+This amendment changes monitoring/orchestration and observer display only.
+The study records the exact before/after hashes. Numerical tools, prompts,
+controller settings, case schedule and native binaries remain pinned. No
+evaluator notebooks or interrupted-agent context are supplied to the retry.

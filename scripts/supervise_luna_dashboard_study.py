@@ -28,8 +28,12 @@ def write(path,value):
 
 
 def pressure(kind):
+    return pressure_file(Path('/proc/pressure',kind))
+
+
+def pressure_file(path):
     rows={}
-    for line in Path('/proc/pressure',kind).read_text().splitlines():
+    for line in Path(path).read_text().splitlines():
         name,*parts=line.split();rows[name]={k:float(v) for k,v in (p.split('=') for p in parts)}
     return rows
 
@@ -73,6 +77,8 @@ def process_details(group):
 def sample(group):
     started=time.monotonic();io=pressure('io');memory=pressure('memory')
     own={k:int(v) for k,v in (line.split() for line in (group/'memory.stat').read_text().splitlines())}
+    events={k:int(v) for k,v in (line.split() for line in (group/'memory.events').read_text().splitlines())}
+    own_pressure=pressure_file(group/'memory.pressure')
     pool=Path('/sys/fs/cgroup/user.slice');headroom=None
     if (pool/'memory.high').exists():
         high=(pool/'memory.high').read_text().strip()
@@ -84,6 +90,9 @@ def sample(group):
     return {'time':time.time(),'io_full_avg10':io.get('full',{}).get('avg10',0),
             'io_some_avg10':io.get('some',{}).get('avg10',0),
             'memory_full_avg10':memory.get('full',{}).get('avg10',0),
+            'job_memory_full_avg10':own_pressure.get('full',{}).get('avg10',0),
+            'job_memory_max_events':events.get('max',0),
+            'job_memory_oom_kills':events.get('oom_kill',0),
             'job_memory_gib':int((group/'memory.current').read_text())/1024**3,
             'job_memory_peak_gib':int((group/'memory.peak').read_text())/1024**3,
             'job_anon_and_shmem_gib':(own.get('anon',0)+own.get('shmem',0))/1024**3,
@@ -158,7 +167,13 @@ def pressure_stop(samples):
     tail=samples[-3:]
     if len(tail)<3:return None
     if all(s['io_full_avg10']>=10 for s in tail):return 'sustained_host_io_pressure'
-    if all(s['memory_full_avg10']>=5 for s in tail):return 'sustained_host_memory_pressure'
+    if all(max(s['memory_full_avg10'],s.get('job_memory_full_avg10',0))>=5 for s in tail):
+        shortage=any(s.get('host_available_memory_gib',0)<8
+                     or (s.get('shared_headroom_including_clean_inactive_file_gib') is not None
+                         and s['shared_headroom_including_clean_inactive_file_gib']<2)
+                     for s in tail)
+        hit_limit=any(s.get('job_memory_max_event_delta',0)>0 for s in tail)
+        if shortage or hit_limit:return 'sustained_memory_pressure_with_shortage_or_job_limit'
     return None
 
 
@@ -184,17 +199,17 @@ def mark_interruption(study,reason):
         write(status_path,status)
 
 
-def run(study,stages,*,first_run=None):
+def run(study,stages,*,first_run=None,log_tag=None):
     group=cgroup_path();limit=require_memory_limit(group)
     local=Path(tempfile.mkdtemp(prefix='vlm-luna-resource-monitor-'));details=ProcessSampler(group)
     state={'pid':os.getpid(),'started_at':time.time(),'status':'running','local_directory':str(local),
            'sample_interval_seconds':SAMPLE_SECONDS,'detail_interval_seconds':DETAIL_SECONDS,
-           'memory_limit_bytes':limit,'stages':stages,'first_run':first_run,
-           'stop_policy':'Three consecutive samples with host full I/O pressure >=10% or full memory pressure >=5%. Infrastructure interruption; no automatic retries.'}
+           'memory_limit_bytes':limit,'stages':stages,'first_run':first_run,'log_tag':log_tag,
+           'stop_policy':'Three consecutive full I/O pressure samples >=10%; or memory pressure >=5% with host/shared-pool shortage or new job-limit hits. Kernel memory/whole-group OOM limits remain mandatory. No automatic retries.'}
     write(study/'resource-monitor.json',{'latest_sample':str(local/'latest.json'),'samples':str(local/'samples.jsonl'),
                                        'supervisor':str(local/'supervisor.json'),'policy':state['stop_policy']})
     write(study/'supervisor-state.json',state);write(local/'supervisor.json',state)
-    history=[];child=None;interrupted=None
+    history=[];child=None;interrupted=None;last_max_events=0
     def stop(signum,frame):
         nonlocal interrupted
         interrupted='supervisor_signal_'+str(signum)
@@ -205,6 +220,8 @@ def run(study,stages,*,first_run=None):
             health={'samples':0,'maximum_sample_gap_seconds':0.,'peak_job_memory_gib':0.,
                     'maximum_io_full_avg10':0.,'maximum_memory_full_avg10':0.};last_active_sample=None
             label=stage+('-first' if limit else '-rest' if stage=='baseline' else '')
+            if log_tag:label+='-'+log_tag
+            state['driver_log']=str(study/(label+'-driver.log'))
             command=[sys.executable,str(ROOT/'scripts/run_luna_pipeline_validation.py'),'--study',str(study),'--stage',stage]
             if limit:command+=['--limit',str(limit)]
             if stage=='baseline' and limit==1 and first_run:command+=['--baseline-run',first_run]
@@ -215,6 +232,8 @@ def run(study,stages,*,first_run=None):
                 state['driver_pid']=child.pid;write(local/'supervisor.json',state)
                 while child.poll() is None:
                     row=sample(group);extra=details.read()
+                    row['job_memory_max_event_delta']=max(0,row['job_memory_max_events']-last_max_events)
+                    last_max_events=row['job_memory_max_events']
                     row.update(processes=extra.get('processes',[]),process_io_sum=extra.get('process_io_sum',{}),
                                nfs_counters=extra.get('nfs_counters',{}),
                                nfs_sample_time=extra.get('time'),
@@ -273,6 +292,7 @@ def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--study',required=True,type=Path)
     p.add_argument('--stage',choices=['first','remaining','transfer','qualify-and-continue'],default='first')
     p.add_argument('--first-run',help='Declared baseline run to use for the first resource qualification')
+    p.add_argument('--log-tag',help='Distinct orchestration log name for an investigated continuation')
     a=p.parse_args();study=a.study.resolve()
     if not study.is_relative_to(ROOT/'results'):raise ValueError('Use a study under results/')
     study.mkdir(parents=True,exist_ok=True)
@@ -280,7 +300,8 @@ def main():
     stages={'first':[('baseline',1)],'remaining':[('baseline',None),('practice',None)],
             'transfer':[('transfer',None)],'qualify-and-continue':[('baseline',1),('baseline',None),('practice',None)]}[a.stage]
     if a.first_run and a.stage not in {'first','qualify-and-continue'}:raise ValueError('--first-run requires an initial qualification stage')
-    raise SystemExit(run(study,stages,first_run=a.first_run))
+    if a.log_tag and (not a.log_tag.replace('-','').replace('_','').isalnum()):raise ValueError('Use a simple log tag')
+    raise SystemExit(run(study,stages,first_run=a.first_run,log_tag=a.log_tag))
 
 
 if __name__=='__main__':main()

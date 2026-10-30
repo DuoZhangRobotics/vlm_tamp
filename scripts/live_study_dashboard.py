@@ -140,6 +140,8 @@ def publish(study,*,force=False,now=None):
     started=time.perf_counter();html_bytes=_write(study/'watch.html',HTML_PATH.read_text())
     client_bytes=_write(study/'watch.js',CLIENT_PATH.read_text());written=html_bytes+client_bytes
     completed=manifest.get('completed_runs',[]);entries={r['run']:r for r in completed}
+    for interrupted in manifest.get('interrupted_runs',[]):
+        if interrupted.get('run'):entries.setdefault(interrupted['run'],interrupted)
     if active.get('run') not in entries and active.get('run'):entries[active['run']]={'run':active['run'],'memory_condition':'none'}
     runs=[]
     for name,entry in entries.items():
