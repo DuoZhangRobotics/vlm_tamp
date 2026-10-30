@@ -223,7 +223,10 @@ def operation_schemas(image_sizes=None):
         'joint_model_epoch':nullable(integer(0,2**31-1)),
         'contact_speed_m_s':number(exclusiveMinimum=0),
         'approach_speed_rad_s':speed,'stroke_length_m':nullable(number(exclusiveMinimum=0)),
-        'search_seconds':nullable(number(exclusiveMinimum=0)),'stroke_plan_seconds':nullable(number(exclusiveMinimum=0)),
+        'search_seconds':{**nullable(number(exclusiveMinimum=0)),
+            'description':'Initial contact-search allowance; default 30 seconds, capped by remaining skill/episode time.'},
+        'stroke_plan_seconds':{**nullable(number(exclusiveMinimum=0)),
+            'description':'Allowance per insertion, stroke or withdrawal plan; default 5 seconds independent of total skill budget, capped by remaining time.'},
         'max_ineffective_strokes':{'type':'integer','minimum':1},
         'collision_policy':{'type':'string','enum':['veto']},
         'preview':{'type':'boolean'},'budget_seconds':number(minimum=.001,maximum=1800)}
@@ -276,7 +279,7 @@ def operation_schemas(image_sizes=None):
         'set_model': ('Set a hinge/axis hypothesis; existing plans become stale.', parameters({'hinge_world_m': nullable(array(3)), 'axis_world': nullable(array(3))})),
         'plan_grasp': ('Try up to eight original GraspGen poses by learned score. Filter open-hand scene collisions before IK, then check the arm and approach against the full observed scene. Closure is physical contact; plan manipulation from its measured result.', parameters({'probe_degrees': angle, 'max_candidates': candidates, 'seed': seed,
             'speed':speed,'approach_speed':speed,'hold':{'type':'integer','minimum':0},'close_steps':{'type':'integer','minimum':1},'budget_seconds':number(exclusiveMinimum=0,maximum=1800),'collision_policy':policy})),
-        'plan_arc': ('Plan the complete requested relative contact arc with explicit error tolerances; no robot motion.', parameters({
+        'plan_arc': ('Plan the complete requested relative contact arc; no robot motion. Existing measured finger/target contact is allowed to continue even outside the selected patch. New point collisions, arm, palm and stationary obstacles remain checked; contact permission is not proof of a grasp.', parameters({
             'degrees':angle,'refined':{'type':'boolean'},'grasp_constraint':nullable(grasp),
             'position_tolerance_m':nullable({'type':'number','exclusiveMinimum':0}),
             'orientation_tolerance_deg':nullable({'type':'number','minimum':0,'maximum':180}),

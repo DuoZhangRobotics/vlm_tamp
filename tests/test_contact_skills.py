@@ -65,11 +65,64 @@ def test_contact_orientation_maps_robot_face_to_requested_force():
         assert np.linalg.det(rotation)==pytest.approx(1.)
 
 
+def test_collision_witness_excludes_permitted_contact_points():
+    from itertools import product
+    from vlm_tamp.contact_collision_evidence import current_collision_witness
+    name='gripper0_finger1_collision'
+    volume={'robot_geom_name':name,'type':'convex','vertices_world':list(product([-.02,.02],repeat=3)),
+        'planes_world':np.c_[np.vstack([np.eye(3),-np.eye(3)]),np.full(6,-.02)]}
+    scene=SimpleNamespace(static_points=np.empty((0,3)),moving_reference=np.array([[0.,0,0],[.015,0,0]]),
+        contact_reference=np.array([[0.,0,0]]))
+    result=current_collision_witness(scene,{'robot_collision_volumes_world':[volume]},
+        {'blocking_robot_part':name,'last_rejected_surface':1,'blocking_surface':'moving target outside contact patch'})
+    assert result['observed_points_inside_volume']==1
+    assert result['overlap_depth_mm_range']==pytest.approx([5.,5.])
+    assert result['distance_to_selected_contact_mm_range']==pytest.approx([15.,15.])
+
+
 def test_expired_budget_and_stale_observation_do_not_issue_motion():
     with pytest.raises(SkillStop,match='budget_exhausted'):Budget(0).check()
     service=SimpleNamespace(sim=object(),latest_observation={'observation_id':2,'control_steps':20},state={'control_steps':20})
     with pytest.raises(ValueError,match='latest observation_id'):
         run_skill(service,'push',observation_id=1,camera='agentview',region_xyxy=[1,1,10,10])
+
+
+@pytest.mark.parametrize('total',[20.,30.,45.,120.])
+def test_short_skill_does_not_shrink_fixed_local_planning_allowance(total):
+    from collections import Counter
+    from vlm_tamp.contact_skill_service import planning_allowances,planning_stage
+    search,stroke=planning_allowances();parent=Budget(total);result={};timing=Counter()
+    assert search==30. and stroke==5.
+    with planning_stage(parent,stroke,'contact_insertion',result,timing,'planning') as (child,nested):
+        assert child.seconds==5.
+    assert result['planning_stages'][0]['status']=='completed'
+    assert planning_allowances(2.,8.)==(2.,8.)
+
+
+@pytest.mark.parametrize('stage,reason',[
+    ('initial_contact_search','contact_search_budget_exhausted'),
+    ('contact_insertion','contact_insertion_budget_exhausted'),
+    ('contact_stroke','stroke_planning_budget_exhausted'),
+    ('withdrawal','withdrawal_planning_budget_exhausted')])
+def test_failed_planning_keeps_its_stage_timing_and_distinguishes_parent_deadline(stage,reason,monkeypatch):
+    from collections import Counter
+    from vlm_tamp.contact_skill_service import planning_stage
+    import vlm_tamp.contact_skills as geometry
+    now=[100.];monkeypatch.setattr(geometry.time,'monotonic',lambda:now[0])
+    parent=Budget(20.,started=100.);result={};timing=Counter()
+    with pytest.raises(SkillStop,match=reason) as caught:
+        with planning_stage(parent,5.,stage,result,timing,'planning') as (child,nested):
+            child.started=100.;nested['ik_seconds']=2.;now[0]+=6.;child.check()
+    row=caught.value.evidence['planning_stage']
+    assert row['effective_seconds']==5. and row['remaining_skill_seconds']==14.
+    assert row['expired_budget_scope']=='local_planning_stage'
+    assert row['timing_seconds']['ik_seconds']==2. and timing['planning']>0
+    assert not caught.value.evidence['physical_infeasibility_proved']
+    now[0]=118.
+    with pytest.raises(SkillStop,match=reason) as caught:
+        with planning_stage(parent,5.,stage,result,timing,'planning') as (child,nested):
+            assert child.seconds==2.;child.started=118.;now[0]=121.;child.check()
+    assert caught.value.evidence['planning_stage']['expired_budget_scope']=='skill_or_episode'
 
 
 def test_public_schemas_accept_contact_skills_and_reject_poses():
@@ -135,6 +188,52 @@ def test_calibrated_contact_offsets_use_actual_aperture(calibrated_robot):
     assert len(pads)==2
     assert all('pad_collision' in p['name'] for p in pads)
     assert pads[0]['normal']@pads[1]['normal']==pytest.approx(-1.)
+
+
+@pytest.mark.parametrize('part,stationary,articulated,allowed',[
+    ('gripper0_finger1_collision',False,True,True),
+    ('gripper0_finger1_collision',False,False,False),
+    ('gripper0_finger1_collision',True,True,False),
+    ('gripper0_hand_collision',False,True,False),
+])
+def test_existing_target_finger_contact_can_continue_but_is_not_a_world_exemption(calibrated_robot,part,stationary,articulated,allowed):
+    from vlm_tamp.coupled_scene import Scene
+    from vlm_tamp.mcvamp_contact_numerical import NativeScene,clear_native_cache
+    meta,record=calibrated_robot
+    volume=next(v for v in meta['robot_collision_volumes_world'] if v['robot_geom_name']==part)
+    point=np.asarray(volume['vertices_world']).mean(0,keepdims=True);far=point+3
+    spec={'joint_origin_world_m':point[0].tolist(),'joint_axis_world':[0,0,1],
+        'front_plane':{'point_world_m':point[0].tolist()},'panel_normal_world':[1,0,0]}
+    scene=Scene.from_points(point if stationary else np.empty((0,3)),far if stationary else point,far,spec)
+    scene.skill_contact_surface='fingertips'
+    with NativeScene(scene,record,meta,meta['joint_positions'],.05,articulated=articulated) as context:
+        assert context.validate(meta['joint_positions'])['accepted']==allowed
+        assert context.record['existing_finger_target_contact']['additional_contact_padding_m']==0.
+    clear_native_cache()
+
+
+def test_continuation_does_not_permit_a_new_finger_collision(calibrated_robot):
+    from vlm_tamp.coupled_scene import Scene,RobotVolumes
+    from vlm_tamp.mcvamp_contact_numerical import NativeScene,clear_native_cache
+    from vlm_tamp.rekep_libero.robot_chain_v4 import RobotChain
+    meta,record=calibrated_robot;chain=RobotChain(record);q=np.asarray(meta['joint_positions']);later=q.copy();later[0]+=.25
+    robot=RobotVolumes(chain,meta['robot_collision_volumes_world'],q)
+    volume=next(v for v in robot.forward(later) if v['robot_geom_name']=='gripper0_finger1_collision')
+    point=np.asarray(volume['vertices_world']).mean(0,keepdims=True);far=point+3
+    for initial in meta['robot_collision_volumes_world']:
+        if 'gripper' not in initial['robot_geom_name']:continue
+        planes=np.asarray(initial['planes_world'])
+        assert np.max(point@planes[:,:3].T+planes[:,3])>0
+    # This target point lies on its rotation axis, so it stays fixed as the
+    # hand moves. It was not touching the finger at the actual reference state.
+    spec={'joint_origin_world_m':point[0].tolist(),'joint_axis_world':[0,0,1],
+        'front_plane':{'point_world_m':point[0].tolist()},'panel_normal_world':[1,0,0]}
+    scene=Scene.from_points(np.empty((0,3)),point,far,spec);scene.skill_contact_surface='fingertips'
+    with NativeScene(scene,record,meta,q,.05,articulated=True) as context:
+        assert context.validate(q)['accepted']
+        failure=context.validate(later)
+        assert not failure['accepted'] and failure['moving_rejections']>0
+    clear_native_cache()
 
 
 def test_occupancy_refresh_clears_measured_free_space_but_keeps_occlusion(monkeypatch):

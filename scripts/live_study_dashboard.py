@@ -45,9 +45,33 @@ def _live_process(active):
     except (OSError,KeyError,ValueError):return False
 
 
+def issue_explanation(diagnostic):
+    """Keep the failed module and cause visible without opening a large JSON log."""
+    if not isinstance(diagnostic,dict):return None
+    start=diagnostic.get('start_rejection')
+    if start:
+        text=f"Start-state collision check: {start.get('blocking_robot_part','robot')} / {start.get('blocking_surface','bounds or self collision')}."
+        depth=start.get('overlap_evidence',{}).get('overlap_depth_mm_range')
+        if depth:text+=f' Observed-model overlap {depth[0]:.3f}–{depth[1]:.3f} mm.'
+        return text+' No goal search was attempted.'
+    stage=diagnostic.get('planning_stage')
+    if stage:
+        return (f"{stage['stage'].replace('_',' ')}: {stage.get('elapsed_seconds',0):.2f}s elapsed; "
+            f"{stage.get('effective_seconds',0):.2f}s local allowance; "
+            f"{stage.get('remaining_skill_seconds',0):.2f}s left in the whole skill. "
+            'An incomplete search does not establish that the motion is impossible.')
+    attempts=diagnostic.get('point_attempts',[])
+    if attempts:
+        counts=Counter(a.get('reason','unknown') for a in attempts)
+        if set(counts)=={'wrong_side_contact'}:
+            return f'Contact selection: all {len(attempts)} sampled points have a surface normal incompatible with the requested push direction. No robot motion was issued.'
+        return 'Contact candidates: '+', '.join(f'{key}: {value}' for key,value in counts.items())+'.'
+    return None
+
+
 def _run_data(study,run,entry,active):
     watched=['tool-events.jsonl','live-episode-status.json','agent-exit.json','evaluation-private.json',
-             'operator-interruption.json','protocol.json']
+             'operator-interruption.json','protocol.json','evaluator-diagnostics.json']
     stamp=(active,*[file_stamp(run/name) for name in watched])
     previous=_DETAILS.get(str(run))
     if previous is not None and previous[0]==stamp:return previous[1],0
@@ -61,14 +85,18 @@ def _run_data(study,run,entry,active):
     success=sum(bool(a.get('official_task_success')) for a in attempts)
     outcome=(f'{success}/{len(attempts)} success' if attempts else 'Interrupted' if interruption else 'In progress' if active else 'No terminal result')
     controls=attempts[-1].get('control_steps') if attempts else status.get('control_steps')
+    addenda=read(run/'evaluator-diagnostics.json',{}).get('events',{})
     issues=[];skills=[]
     for event in events:
         op=event['request']['operation'];response=event.get('response',{});value=response.get('result',{})
         if op in {'push','hook_pull','execute_sequence','execute','gripper'}:skills.append(event)
         reason=response.get('error') if response.get('ok') is False else value.get('stop_reason')
         if reason and reason!='preview_only':
+            diagnostic=response.get('planning_diagnostic',value.get('diagnostic'))
+            addendum=addenda.get(str(event['sequence']))
             issues.append({'event':event['sequence'],'operation':op,'reason':str(reason)[:1800],
-                           'diagnostic':brief_evidence(response.get('planning_diagnostic',value.get('diagnostic')))})
+                           'diagnostic':brief_evidence(diagnostic),'explanation':issue_explanation(diagnostic),
+                           'evaluator_addendum':addendum})
     last=skills[-1] if skills else {};args=last.get('request',{}).get('arguments',{})
     result=last.get('response',{}).get('result',{});progress=result.get('observed_progress')
     if progress is not None:
@@ -109,6 +137,8 @@ def _run_data(study,run,entry,active):
             ('Episode report','report/index.html'),('Findings','agent-workspace/findings.txt'),
             ('Learner notes','agent-workspace/guidelines.json'),('Timing JSON','timing-breakdown.json')]
            if (run/path).exists()}
+    if (study/'failure-summary.html').exists():links['Task failure explanations']='failure-summary.html'
+    if (run/'evaluator-diagnostics.json').exists():links['Evaluator diagnosis']=_relative(run/'evaluator-diagnostics.json',study)
     timing=cached_profile_run(run,events,agent.get('wall_seconds'))
     timing={k:v for k,v in timing.items() if not k.startswith('_')}
     reason=interruption.get('reason') or status.get('termination_reason') or status.get('last_completed_operation') or 'Waiting for first observation'
@@ -163,6 +193,8 @@ def publish(study,*,force=False,now=None):
         message=f"The next Luna actor has not started. Additional headroom needed: {capacity['additional_headroom_needed_gib']:.1f} GiB; available shared-pool headroom including clean inactive file cache: {shared}. Waiting does not consume the episode budget."
     if active.get('status')=='running' and not running and not stopped:message='The saved process is no longer alive; its last result is recorded below.'
     links={'Study protocol':'study-manifest.json','Declared cases':'plan.json'}
+    if (study/'failure-summary.html').exists():links['Task failure explanations']='failure-summary.html'
+    if manifest.get('repair_report'):links['Contact repair tests']=manifest['repair_report']
     if manifest.get('superseded_by'):links['Open the new rerun']=manifest['superseded_by']
     monitor=read(study/'resource-monitor.json',{})
     resource=read(Path(monitor['latest_sample']),{}) if monitor.get('latest_sample') else {}

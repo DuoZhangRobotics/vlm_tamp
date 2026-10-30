@@ -93,6 +93,10 @@ def summarize_arc_failure(result,native_scene=None):
     return {'status':result.get('status'),'grasp_constraint':result.get('grasp_constraint','point'),
         'requested_relative_angle_deg':math.degrees(result.get('goal_angle_rad',0.)),
         'start_collision_free':result.get('start',{}).get('accepted'),
+        'start_rejection':({k:result['start'][k] for k in (
+            'blocking_robot_part','blocking_surface','joint_bound_violations',
+            'self_rejections','static_rejections','moving_rejections','bounds_rejections','overlap_evidence')
+            if k in result['start']} if result.get('start',{}).get('accepted') is False else None),
         'goal_proposals_tried':len(goals),'goal_projection_successes':len(projected),
         'collision_free_goals':result.get('admissible_goals',0),
         'projected_goals_rejected_by_collision':sum(not g['scene']['accepted'] for g in checked),

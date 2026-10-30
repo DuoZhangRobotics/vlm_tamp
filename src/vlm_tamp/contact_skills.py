@@ -20,6 +20,7 @@ from .rekep_libero.geometry import pose_matrix,matrix_pose,transform_points
 from .rekep_libero.scene_state_v7 import observed_points
 from .surface_contact_tools import contact_snapshot
 from .timed_execution import schedule,schedule_contact
+from .contact_collision_evidence import current_collision_witness
 
 
 class SkillStop(Exception):
@@ -313,27 +314,6 @@ def fresh_collision_snapshot(scene,cameras,metadata):
         'current_static_points':int((~belongs).sum()),'current_target_points':int(belongs.sum()),
         'historical_unobserved_points_retired':True,'unknown_space_is_unmodeled':True,
         'simulator_object_state_used':False,'robot_filter':filtering}
-
-
-def current_collision_witness(scene,metadata,diagnostic):
-    """Quantify a reported overlap using observed points and known robot geometry."""
-    name=diagnostic.get('blocking_robot_part')
-    volume=next((v for v in metadata['robot_collision_volumes_world'] if v['robot_geom_name']==name),None)
-    if volume is None or volume.get('type')!='convex':return {'available':False,'reason':'no_matching_configured_convex_volume'}
-    surface=int(diagnostic.get('last_rejected_surface',-1))
-    points=scene.static_points if surface==0 else scene.moving_reference
-    from .rekep_libero.scene_state_v7 import voxel_points
-    points=voxel_points(points,.0075 if surface==0 else .003)
-    vertices=np.asarray(volume['vertices_world']);center=vertices.mean(0)
-    ids=cKDTree(points).query_ball_point(center,np.linalg.norm(vertices-center,axis=1).max())
-    nearby=points[ids];planes=np.asarray(volume['planes_world'])
-    distances=np.max(nearby@planes[:,:3].T+planes[:,3],axis=1) if len(nearby) else np.empty(0)
-    inside=distances<=0;depths=-distances[inside]*1000
-    return {'available':True,'robot_part':name,'observed_points_inside_volume':int(inside.sum()),
-        'overlap_depth_mm_range':[float(depths.min()),float(depths.max())] if len(depths) else None,
-        'sample_points_world_m':nearby[inside][:3].tolist(),
-        'added_collision_padding_m':0.,'physical_contact_measurement':False,
-        'source':'observed point cloud versus configured robot convex planes at measured joint state'}
 
 
 def cartesian_path(ik,scene,record,metadata,start,target_pose,budget,*,displacement=None,angle=0.,timing=None,contact_local=None):

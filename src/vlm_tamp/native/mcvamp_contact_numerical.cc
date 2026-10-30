@@ -49,6 +49,7 @@ struct ConvexGripper {
     Eigen::Vector3f center;
     float radius=0;
     bool finger=false;
+    bool configured_finger=false;
     int first=0,end=0;
 };
 struct Scene {
@@ -75,6 +76,8 @@ struct Scene {
     bool aligned_jaws = true;
     int grasp_constraint = 0; // 0 point, 1 rigid relative pose, 2 contact-line direction
     Eigen::Matrix3f reference_rotation;
+    Eigen::Matrix3f reference_eef_rotation;
+    Eigen::Vector3f reference_eef_translation;
     Clock::time_point deadline;
     bool timed_out = false;
     size_t checks = 0, self_rejects = 0, static_rejects = 0, moving_rejects = 0;
@@ -102,7 +105,22 @@ bool convex_collision(const Scene& s,const ConvexGripper& volume,int surface,
             bool inside=true;
             for(const auto& plane:volume.planes)
                 if(plane.head<3>().dot(local)+plane[3]>((surface==2 && !volume.finger && volume.first==0) ? -s.existing_palm_tolerance : s.gripper_point_padding)) {inside=false;break;}
-            if(inside) return true;
+            if(inside) {
+                // A measured finger/target contact is already present in the
+                // physical start. Carry that particular point/robot-part pair
+                // through an articulated continuation, even if visual patch
+                // selection did not tag it. No radius or penetration buffer is
+                // added. New points, stationary obstacles, palm and arm retain
+                // their normal checks. Free approaches do not get this policy.
+                if(s.articulated && s.allow_contact && surface>0 && volume.configured_finger) {
+                    const Eigen::Vector3f initial=s.reference_eef_rotation.transpose()*(point-s.reference_eef_translation);
+                    bool existing=true;
+                    for(const auto& plane:volume.planes)
+                        if(plane.head<3>().dot(initial)+plane[3]>0.F) {existing=false;break;}
+                    if(existing) continue;
+                }
+                return true;
+            }
         }
     }
     return false;
@@ -355,7 +373,10 @@ void mcvamp_configure(Scene* s,const float* config,const float* gripper,int ng) 
     s->articulated=config[42]>.5; s->allow_contact=config[43]>.5;
     std::array<float,7> reference;
     std::copy_n(config+44,7,reference.begin());
-    s->reference_rotation=(Panda::eefk(reference)[0].matrix()*s->eef_to_tcp).block<3,3>(0,0);
+    const auto reference_eef=Panda::eefk(reference)[0];
+    s->reference_eef_rotation=reference_eef.linear();
+    s->reference_eef_translation=reference_eef.translation();
+    s->reference_rotation=(reference_eef.matrix()*s->eef_to_tcp).block<3,3>(0,0);
     s->goal_angle=config[51];s->aligned_jaws=config[52]>.5;s->grasp_constraint=0;
     s->gripper.resize(ng);
     for(int i=0;i<ng;++i) std::copy_n(gripper+5*i,5,s->gripper[i].begin());
@@ -401,7 +422,8 @@ int mcvamp_set_gripper_convex(void* p,const float* planes,const int* offsets,con
             v.center=Eigen::Map<const Eigen::Vector3f>(bounds+7*i);
             v.radius=bounds[7*i+3];v.finger=bounds[7*i+4]>.5F;
             v.first=int(bounds[7*i+5]);v.end=int(bounds[7*i+6]);
-            if(v.planes.empty() || v.first<0 || v.end>int(s.gripper.size()) || v.radius<=0) return 0;
+            if(v.planes.empty() || v.first<0 || v.end<=v.first || v.end>int(s.gripper.size()) || v.radius<=0) return 0;
+            v.configured_finger=s.gripper[v.first][4]>.5F;
             s.gripper_convex.push_back(std::move(v));
         }
         return count>0;

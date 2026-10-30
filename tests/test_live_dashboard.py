@@ -80,3 +80,27 @@ def test_video_index_contains_every_saved_episode(tmp_path,monkeypatch):
     videos=json.loads((study/'watch-status.json').read_text())['runs'][0]['videos']
     assert len(videos)==3
     assert [v['partial'] for v in videos]==[False,False,True]
+
+
+def test_failure_cause_and_evaluator_recheck_stay_separate_from_actor_log(tmp_path,monkeypatch):
+    study,run,_=fixture(tmp_path,monkeypatch)
+    event={'sequence':50,'request':{'operation':'plan_arc','arguments':{}},'wall_seconds':1,
+        'response':{'ok':False,'error':'invalid_start','planning_diagnostic':{
+            'start_rejection':{'blocking_robot_part':'finger','blocking_surface':'moving target',
+                'overlap_evidence':{'overlap_depth_mm_range':[.2,.9]}}}}}
+    original=json.dumps(event)+'\n';(run/'tool-events.jsonl').write_text(original)
+    (run/'evaluator-diagnostics.json').write_text(json.dumps({'events':{'50':{
+        'summary':'The repaired query produced a complete plan. Physical execution untested.'}}}))
+    dashboard.publish(study,force=True)
+    issue=json.loads((run/'watch-data.json').read_text())['issues'][0]
+    assert 'finger / moving target' in issue['explanation'] and '0.200' in issue['explanation']
+    assert 'Physical execution untested' in issue['evaluator_addendum']['summary']
+    assert (run/'tool-events.jsonl').read_text()==original
+
+
+def test_timeout_and_wrong_direction_explanations_name_the_failed_stage():
+    text=dashboard.issue_explanation({'planning_stage':{'stage':'contact_insertion',
+        'elapsed_seconds':1.9,'effective_seconds':1.8,'remaining_skill_seconds':20.}})
+    assert 'contact insertion' in text and '20.00s left' in text
+    text=dashboard.issue_explanation({'point_attempts':[{'reason':'wrong_side_contact'}]*4})
+    assert 'all 4' in text and 'requested push direction' in text

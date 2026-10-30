@@ -53,6 +53,21 @@ def test_sequence_checks_approach_and_closure_budget_before_motion(tmp_path):
         robot.execute_sequence('test')
 
 
+def test_sequence_returns_current_observation_when_approach_loses_target(tmp_path):
+    _,robot=service(tmp_path);install_sequence(robot);calls=[]
+    robot.scene_reference_control_step=0
+    def issue(refs,gripper,label,**kwargs):
+        calls.append(label);robot.state['control_steps']+=len(refs)
+        return {'task_success':False,'episode_done':False,'observation':{'control_steps':robot.state['control_steps']},
+            'scene_pose_observation':{'source':'unresolved_rgbd_motion','fit':{'reason':'insufficient_moving_landmarks'}}}
+    robot.issue=issue
+    result=robot.execute_sequence('test',close_steps=40,hold=0)
+    assert calls==['test-approach']
+    assert result['stop_reason']=='approach_target_pose_unresolved' and not result['closure_issued']
+    assert result['recovery_required'] and not result['physical_infeasibility_proved']
+    assert result['remaining_control_steps']>=598
+
+
 @pytest.mark.parametrize('gripper',[0,1])
 def test_neutral_and_closing_arc_commands_both_synchronize_geometry(tmp_path,monkeypatch,gripper):
     module,robot=service(tmp_path)

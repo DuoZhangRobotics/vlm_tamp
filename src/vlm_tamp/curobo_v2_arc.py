@@ -213,7 +213,14 @@ class CuroboV2ArcProposer:
 
         report['start'] = context.validate(previous)
         if not report['start']['accepted']:
-            return finish('invalid_start', 'start_admission', 'The current robot state fails scene admission.')
+            from .contact_collision_evidence import current_collision_witness
+            start=report['start']
+            start['overlap_evidence']=current_collision_witness(context.scene,context.metadata,start)
+            detail=(f"{start['blocking_robot_part']} overlaps {start['blocking_surface']}"
+                if start.get('blocking_robot_part') and start.get('blocking_surface') else
+                'joint bounds' if start.get('joint_bound_violations') else 'robot self-collision or scene admission')
+            return finish('invalid_start', 'start_admission',
+                f'The measured start is rejected: {detail}. No goal IK or path search was attempted.')
         for index, angle in enumerate(np.linspace(0., goal, self.steps+1)[1:]):
             report['attempted_angle_deg'] = float(np.degrees(angle))
             if time.perf_counter() >= deadline:

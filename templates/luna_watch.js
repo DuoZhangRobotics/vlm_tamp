@@ -96,6 +96,9 @@ function renderDetail(data,row){
  el('issues').replaceChildren();for(const issue of data.issues||[]){
   const d=node('details');d.dataset.openKey='issue:'+issue.event+':'+issue.operation;
   d.append(node('summary','Event '+issue.event+' · '+issue.operation+' · '+issue.reason));
+  if(issue.explanation)d.append(node('p',issue.explanation));
+  if(issue.evaluator_addendum){d.append(node('p','Evaluator diagnosis: '+issue.evaluator_addendum.summary));
+   if(issue.evaluator_addendum.report)link(d,'Repair test details',issue.evaluator_addendum.report);}
   if(issue.diagnostic)d.append(node('pre',JSON.stringify(issue.diagnostic,null,2)));el('issues').append(d);
  }
  restoring=true;for(const d of el('detailPanel').querySelectorAll('details[data-open-key]'))d.open=!!saved.open?.[chosen]?.[d.dataset.openKey];restoring=false;

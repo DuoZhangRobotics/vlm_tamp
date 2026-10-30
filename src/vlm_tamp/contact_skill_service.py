@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 from collections import Counter
+from contextlib import contextmanager
 from pathlib import Path
 import time
 
@@ -23,8 +24,54 @@ from .execution_limits import control_limit
 ROOT=Path(__file__).resolve().parents[2]
 
 
+def planning_allowances(search_seconds=None,stroke_plan_seconds=None):
+    """Local work costs do not shrink when the caller shortens the whole skill."""
+    search=float(30. if search_seconds is None else search_seconds)
+    stroke=float(5. if stroke_plan_seconds is None else stroke_plan_seconds)
+    if not np.isfinite([search,stroke]).all() or min(search,stroke)<=0:
+        raise ValueError('Planning budgets must be positive')
+    return search,stroke
+
+
+@contextmanager
+def planning_stage(parent,seconds,stage,result,timing,timing_key):
+    """Account for failed searches as well as successful plans, under one deadline."""
+    child=parent.child(seconds);nested=Counter();started=time.perf_counter()
+    row={'stage':stage,'requested_seconds':float(seconds),'effective_seconds':child.seconds,
+        'capped_by_remaining_skill_budget':child.seconds<float(seconds),'status':'running'}
+    result.setdefault('planning_stages',[]).append(row)
+    try:
+        child.check()
+        yield child,nested
+        child.check()
+        row['status']='completed'
+    except SkillStop as error:
+        row.update(status='stopped',stop_reason=error.reason)
+        if error.reason.endswith('budget_exhausted'):
+            reason={'initial_contact_search':'contact_search_budget_exhausted',
+                'contact_insertion':'contact_insertion_budget_exhausted',
+                'contact_stroke':'stroke_planning_budget_exhausted',
+                'withdrawal':'withdrawal_planning_budget_exhausted'}[stage]
+            row['stop_reason']=reason
+            # Keep this same row in the evidence; the finally block completes it.
+            raise SkillStop(reason,**{**error.evidence,'search_complete':False,
+                'planning_stage':row,'physical_infeasibility_proved':False}) from error
+        error.evidence['planning_stage']=row
+        raise
+    except Exception:
+        row['status']='error'
+        raise
+    finally:
+        elapsed=time.perf_counter()-started
+        timing[timing_key]+=elapsed
+        row.update(elapsed_seconds=elapsed,remaining_local_seconds=child.remaining,
+            remaining_skill_seconds=parent.remaining,timing_seconds=dict(nested))
+        if row.get('stop_reason','').endswith('budget_exhausted'):
+            row['expired_budget_scope']='skill_or_episode' if parent.remaining<=0 else 'local_planning_stage'
+
+
 def qualification_sources():
-    paths=['src/vlm_tamp/contact_skills.py','src/vlm_tamp/contact_skill_service.py',
+    paths=['src/vlm_tamp/contact_skills.py','src/vlm_tamp/contact_skill_service.py','src/vlm_tamp/contact_collision_evidence.py',
         'src/vlm_tamp/timed_execution.py','src/vlm_tamp/mcvamp_contact_numerical.py',
         'src/vlm_tamp/native/mcvamp_contact_numerical.cc','src/vlm_tamp/rigid_hinge_tracking.py',
         'src/vlm_tamp/profiled_sim_worker.py','src/vlm_tamp/profiled_sim_client.py',
@@ -96,9 +143,7 @@ def run_skill(service,kind,*,observation_id,camera,region_xyxy,target_region_xyx
     if not np.isfinite(budget_seconds) or not 0<budget_seconds<=1800:raise ValueError('Budget must be (0,1800] seconds')
     stroke_length_m=float((.03 if mode=='push_and_release' else .01) if stroke_length_m is None else stroke_length_m)
     if not np.isfinite(stroke_length_m) or stroke_length_m<=0:raise ValueError('Stroke length must be finite and positive')
-    search_seconds=float(budget_seconds/4 if search_seconds is None else search_seconds)
-    stroke_plan_seconds=float(budget_seconds/24 if stroke_plan_seconds is None else stroke_plan_seconds)
-    if not np.isfinite([search_seconds,stroke_plan_seconds]).all() or min(search_seconds,stroke_plan_seconds)<=0:raise ValueError('Planning budgets must be positive')
+    search_seconds,stroke_plan_seconds=planning_allowances(search_seconds,stroke_plan_seconds)
     if type(max_ineffective_strokes) is not int or max_ineffective_strokes<1:raise ValueError('Use a positive ineffective-stroke count')
     if not np.isfinite(withdrawal_distance_m) or withdrawal_distance_m<=0:raise ValueError('Withdrawal distance must be positive')
     if joint_degrees is not None:
@@ -152,15 +197,10 @@ def run_skill(service,kind,*,observation_id,camera,region_xyxy,target_region_xyx
             return (7 if collision_policy=='veto' else 0)+max(1,int(np.ceil(length/contact_speed_m_s*20)))+2+int(np.ceil(withdrawal_distance_m/.03*20))+20
         _overlay(service,camera,region_xyxy,target_region_xyxy,evidence['point_world_m'],direction,root/'contact.png')
         result['images']=[str((root/'contact.png').relative_to(service.workspace))]
-        phase=time.perf_counter()
-        search_budget=budget.child(search_seconds)
-        try:engagement=plan_engagement(service.ik,scene,service.record,service.state['metadata'],evidence,selected,kind,search_budget,
-            maximum_approach_controls=lambda p:max(0,control_steps_limit-service.state['control_steps']-following_controls(p)))
-        except SkillStop as error:
-            timing['contact_search_seconds']+=time.perf_counter()-phase
-            if error.reason=='budget_exhausted':raise SkillStop('contact_search_budget_exhausted',**error.evidence)
-            raise
-        timing['contact_search_seconds']+=time.perf_counter()-phase
+        with planning_stage(budget,search_seconds,'initial_contact_search',result,timing,'contact_search_seconds') as (search_budget,nested):
+            engagement=plan_engagement(service.ik,scene,service.record,service.state['metadata'],evidence,selected,kind,search_budget,
+                maximum_approach_controls=lambda p:max(0,control_steps_limit-service.state['control_steps']-following_controls(p)))
+            nested.update(engagement.get('timing_seconds',{}))
         if collision_policy=='advisory' and budget.remaining>2.:
             phase=time.perf_counter()
             try:
@@ -323,9 +363,8 @@ def run_skill(service,kind,*,observation_id,camera,region_xyxy,target_region_xyx
             meta=service.state['metadata'];start=np.asarray(meta['joint_positions'])
             insertion_goal=np.eye(4);insertion_goal[:3,:3]=engagement['rotation']
             insertion_goal[:3,3]=point-engagement['rotation']@contact_local
-            nested=Counter();phase=time.perf_counter()
-            insertion=cartesian_path(service.ik,scene,service.record,meta,start,matrix_pose(insertion_goal),budget.child(stroke_plan_seconds),timing=nested)
-            timing['stroke_planning_seconds']+=time.perf_counter()-phase
+            with planning_stage(budget,stroke_plan_seconds,'contact_insertion',result,timing,'stroke_planning_seconds') as (planning,nested):
+                insertion=cartesian_path(service.ik,scene,service.record,meta,start,matrix_pose(insertion_goal),planning,timing=nested)
             stage=issue(schedule_contact(insertion,chain,contact_local,contact_speed_m_s=.03,endpoint_hold_steps=3),'contact-insertion',
                 requested_contact_speed_m_s=.03,planning_timing_seconds=dict(nested))
             measured=observe_motion(tracker);stage['object_motion']=measured
@@ -393,13 +432,8 @@ def run_skill(service,kind,*,observation_id,camera,region_xyxy,target_region_xyx
                 delta=scene.origin+rotation@(point-scene.origin)-point
             goal=tcp.copy();goal[:3,3]+=delta
             scene.skill_contact_collision_log['stage']='contact_test' if acquiring_release_contact else 'contact_stroke'
-            planning=budget.child(stroke_plan_seconds);nested=Counter();phase=time.perf_counter()
-            try:path,search=plan_contact_stroke(service.ik,scene,service.record,meta,contact_local,delta,planning,angle=angle,timing=nested)
-            except SkillStop as error:
-                timing['stroke_planning_seconds']+=time.perf_counter()-phase
-                if error.reason=='budget_exhausted':raise SkillStop('stroke_planning_budget_exhausted',search_complete=False,timing_seconds=dict(nested))
-                raise
-            timing['stroke_planning_seconds']+=time.perf_counter()-phase
+            with planning_stage(budget,stroke_plan_seconds,'contact_stroke',result,timing,'stroke_planning_seconds') as (planning,nested):
+                path,search=plan_contact_stroke(service.ik,scene,service.record,meta,contact_local,delta,planning,angle=angle,timing=nested)
             if collision_policy=='advisory' and budget.remaining>2.:
                 phase=time.perf_counter();log=scene.skill_contact_collision_log
                 try:
@@ -457,9 +491,8 @@ def run_skill(service,kind,*,observation_id,camera,region_xyxy,target_region_xyx
                 timing['tracker_initialization_seconds']+=time.perf_counter()-phase
                 meta=service.state['metadata'];start=np.asarray(meta['joint_positions']);tcp=pose_matrix(chain.forward(start))
                 retreat=tcp.copy();retreat[:3,3]-=withdrawal_distance_m*direction
-                planning=budget.child(stroke_plan_seconds);nested=Counter();phase=time.perf_counter()
-                path=cartesian_path(service.ik,scene,service.record,meta,start,matrix_pose(retreat),planning,timing=nested)
-                timing['stroke_planning_seconds']+=time.perf_counter()-phase
+                with planning_stage(budget,stroke_plan_seconds,'withdrawal',result,timing,'stroke_planning_seconds') as (planning,nested):
+                    path=cartesian_path(service.ik,scene,service.record,meta,start,matrix_pose(retreat),planning,timing=nested)
                 refs=schedule_contact(path,chain,contact_local,contact_speed_m_s=.03,endpoint_hold_steps=0)
                 stage=issue(refs,'push-release-withdrawal',planning_timing_seconds=dict(nested),requested_contact_speed_m_s=.03)
                 result['release_evidence']={'requested_withdrawal_m':withdrawal_distance_m,

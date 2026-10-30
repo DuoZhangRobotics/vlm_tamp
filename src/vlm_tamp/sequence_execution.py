@@ -73,11 +73,32 @@ def execute_sequence(service,plan_id,*,close_steps=40,speed=.35,approach_speed=N
             if len(refs)+close_steps>remaining_controls(service.state):
                 result.update(stop_reason='approach_and_closure_exceed_remaining_controls',recovery_required=True);return result
         if issue(refs,'approach',-1):return result
+        # The approach can move the object before any pinch is established.
+        # If its pose tracker lost the part, closing at the old grasp endpoint
+        # silently spends another closure interval on stale geometry. Return
+        # the current observation for recovery; this is not an IK/collision
+        # infeasibility claim and the explicit gripper tool remains available.
+        reference_step=getattr(service,'scene_reference_control_step',None)
+        current_step=int(service.state['control_steps'])
+        feedback=last.get('scene_pose_observation',last.get('scene_pose_update',{}))
+        result['approach_contact_feedback']={
+            'scene_reference_control_step':reference_step,'current_control_step':current_step,
+            'pose_source':feedback.get('source'),
+            'tracking_reason':feedback.get('fit',{}).get('reason'),
+            'correspondences':feedback.get('fit',{}).get('correspondences'),
+            'physical_grasp_verified':False}
+        if (reference_step is not None and reference_step!=current_step
+                and last.get('scene_pose_observation',{}).get('source')=='unresolved_rgbd_motion'):
+            result.update(stop_reason='approach_target_pose_unresolved',recovery_required=True,
+                physical_infeasibility_proved=False,closure_issued=False,
+                explanation='The part tracker lost the target during approach. The automatic sequence needs a current contact estimate before using the old grasp endpoint; inspect or refresh contact, or explicitly command the gripper.')
+            return result
         service.calls+=1
         # Continue holding the intended approach reference during closure; the
         # arm may still be settling. Replanning uses the measured end state.
         target=np.clip(np.asarray(extra['grasp_joints']),service.ik.chain.limits[:,0],service.ik.chain.limits[:,1])
         recovery={'performed':False,'reference':'planned approach endpoint; measured closure state used for the next plan'}
+        result['closure_issued']=True
         if issue(np.repeat(target[None],close_steps,axis=0),'closure',1):return result
         result['closure_joint_limit_recovery']=recovery
         result['measured_closure_aperture_qpos']=service.state['metadata']['gripper_qpos']

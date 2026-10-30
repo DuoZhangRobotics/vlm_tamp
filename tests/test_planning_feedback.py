@@ -2,6 +2,16 @@ from vlm_tamp.planning_feedback import summarize_arc_failure
 from vlm_tamp.planning_feedback import summarize_pose_failure
 
 
+def test_invalid_start_feedback_keeps_the_part_surface_and_overlap():
+    start={'accepted':False,'blocking_robot_part':'gripper0_finger1_collision',
+        'blocking_surface':'moving target outside contact patch','joint_bound_violations':[],
+        'overlap_evidence':{'overlap_depth_mm_range':[.2,.9],'physical_contact_measurement':False}}
+    result=summarize_arc_failure({'status':'invalid_start','start':start})
+    assert result['goal_proposals_tried']==0
+    assert result['start_rejection']['blocking_robot_part']=='gripper0_finger1_collision'
+    assert result['start_rejection']['overlap_evidence']['overlap_depth_mm_range']==[.2,.9]
+
+
 def test_feedback_separates_ik_projection_from_collision_and_unknown_values():
     data={'status':'search_budget_exhausted','goal_angle_rad':1.5,'grasp_constraint':'rigid',
           'start':{'accepted':True},'admissible_goals':0,

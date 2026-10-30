@@ -253,15 +253,8 @@ class NativeScene:
             observed_counts={'stationary':len(scene.static_points),'moving':len(scene.moving_reference),'contact_reference':len(scene.contact_reference)}
             static,moving,contact=(_f(np.empty((0,3))) for _ in range(3))
         else:
-            distance=cKDTree(scene.contact_reference).query(scene.moving_reference)[0]
-            low,high=np.quantile(scene.contact_reference[:,2],[.01,.99])
-            panel_distance=np.abs((scene.moving_reference-scene.panel_origin)@scene.panel_normal)
-            # Preserve the baseline's local finger/bar and finger/mount permissions.
-            # This is not deletion of these points: arm and palm still query them.
-            selected=(distance<.028)|((distance<.065)&(panel_distance<scene.panel_band+.006)
-                &(scene.moving_reference[:,2]>=low-.015)&(scene.moving_reference[:,2]<=high+.015))
-            if contact_surface is not None:
-                selected=distance<=.0035
+            from .contact_collision_evidence import selected_contact_points
+            selected=selected_contact_points(scene)
             static=_f(transform_points(voxel_points(scene.static_points,.0075),robot_world))
             moving=_f(transform_points(voxel_points(scene.moving_reference[~selected],.005),robot_world))
             # The transported handle reference locates the contact region; it is
@@ -374,6 +367,12 @@ class NativeScene:
                 moving_geometry_pose_source=update['source'],
                 moving_geometry_reference_control_step=update['reference_control_step'],
                 fresh_depth_endpoints_after_transport=False)
+        self.record['existing_finger_target_contact']={
+            'enabled':bool(articulated and allow_contact),
+            'scope':'observed target points already inside that configured finger part at the query reference state',
+            'additional_contact_padding_m':0.,'selected_patch_membership_required':False,
+            'new_point_collisions_exempt':False,'stationary_obstacles_exempt':False,
+            'arm_or_palm_exempt':False,'physical_grasp_certified':False}
         # Only explicit legacy comparisons can carry shallow palm/contact
         # overlap. Live tools check the palm without this tolerance.
         initial=self.validate(reference_q)
