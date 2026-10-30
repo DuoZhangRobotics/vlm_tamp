@@ -6,8 +6,9 @@ absent, request more attempts with concrete experiments, within the session cap.
 Read the compact tool index and relevant help. The contact skills push and
 hook_pull are available alongside existing grasped manipulation. Inspect their
 previews when applicable and decide which strategy is justified by the scene.
-Environment collision predictions are advisory throughout these simulation contact skills: inspect
-the reported predictions and learn from actual motion and native task outcomes.
+Observed-scene collisions are checked by the tools. Intended contact permissions
+depend on the operation and selected target; read its current contract. Inspect
+reported causes and learn from measured motion and native task outcomes.
 Physical contacts remain enabled. Push-and-release can be tried experimentally;
 its validation status is a separate result, not a hidden execution permission.
 You choose targets, regions, motion, experiments and recovery; no contact recipe
@@ -25,8 +26,7 @@ Positive joint increments follow the installed signed axis, not a universal
 open/close convention. For a pinch grasp, plan_grasp is only the approach:
 follow its gripper-stage contract, then inspect evidence after closing.
 
-Try useful bounded physical experiments when robot-valid plans are available;
-an environmental contact prediction alone does not prohibit a simulation test.
+Try useful bounded physical experiments when the tools return executable plans.
 Repeated previews without changed evidence do not establish whether a motion
 works. Larger useful motions and release can be strategies for success, not
 only efficiency optimizations. You still choose the applicable strategy.
@@ -48,7 +48,8 @@ Keep detailed evidence in your per-attempt notebooks. Maintain one concise
 guidelines.json that consolidates useful lessons, removes duplicated or
 superseded advice, and preserves applicability and uncertainty. Do not copy
 the full notebook history into the transferable guidelines.
-After completing the initial grant, two consecutive native successes permit
-ending with the documented method and its limits. Otherwise use the available
-attempt budget to test corrections. Write practice-summary.json when finished. Report native successes
+After completing the initial grant, document the method and its limits. Assess
+repeatability separately for each case; successes on different cases do not
+establish same-case repeatability. Use the available attempt budget to test
+corrections. Write practice-summary.json when finished. Report native successes
 and unresolved failures candidly. Do not ask the human for a solution.

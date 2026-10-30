@@ -162,13 +162,20 @@ Tool interfaces (all coordinate conventions are explicit):
   summaries. Use the images and diagnostics when investigating a scene mismatch.
 - motion_settings(): read the effective control budget, speed settings,
   numerical tolerances and environment-collision policy. No motion.
-- plan_grasp(probe_degrees=3, max_candidates=24, seed=0, speed=0.6,
-  hold=6, close_steps=40, budget_seconds=30, collision_policy="advisory"):
-  select a reachable grasp approach by scheduled control cost across IK/posture
-  alternatives. Direct and short standoff approaches are considered. Returns an
-  approach plan ID; no object motion or grasp retention is assumed. Manipulation
-  is planned after actual closure. The search returns its best feasible candidate
-  when its computation budget expires; incomplete search does not prove infeasibility.
+- plan_grasp(probe_degrees=3, max_candidates=8, seed=0, speed=0.6,
+  hold=6, close_steps=40, budget_seconds=30, collision_policy="veto"):
+  generate eight native GraspGen poses from the selected target cloud, ranked
+  by learned score. First check the open hand against the whole observed scene;
+  then select the nearest returned scene-valid IK and try one approach per pose.
+  Stop at the first executable approach. max_candidates limits how many of the
+  eight poses are examined. seed selects the proposal batch: an identical cloud,
+  checkpoint and seed reuse the cached proposals; a different seed requests a
+  new learned batch. There is no angle/height/depth menu or geometric fallback.
+  Returns an approach plan ID; no object motion or grasp retention is assumed.
+  Closed-hand target contact is not a free-space admission test. Execute the
+  approach with open fingers, close physically, then inspect measured contact
+  evidence. Manipulation is planned from the measured post-closure state.
+  Incomplete search does not prove infeasibility.
 - execute(plan_id, gripper=1, speed=0.35, hold=6): execute that complete joint
   trajectory; gripper=-1 opens, 0 holds, +1 closes. Speed is maximum joint rad/s.
   For an approach you can request open fingers. Returns new sensor observation.
@@ -206,12 +213,11 @@ Tool interfaces (all coordinate conventions are explicit):
   refine the hinge or certify attachment. Explicit tracking/model tools remain
   available. No update vetoes an executing trajectory.
 - ik(pose_world_xyzw): return robot-valid IK proposals for a chosen TCP pose.
-- plan_joint(joints, collision_policy="advisory"): free-motion plan to seven
-  arm joint angles. Environment predictions are advisory in simulation by default;
-  veto can be explicitly requested. Real joint limits and self checks remain.
-- plan_sequence(degrees, max_candidates=24, seed=0, grasp_constraint="jaw_axis",
+- plan_joint(joints, collision_policy="veto"): free-motion plan to seven
+  arm joint angles, checking the observed scene, real joint limits and self geometry.
+- plan_sequence(degrees, max_candidates=8, seed=0, grasp_constraint="jaw_axis",
   speed=0.35, approach_speed=0.6, hold=6, close_steps=40, budget_seconds=30,
-  collision_policy="advisory"): plan and price a low-cost approach and retain
+  collision_policy="veto"): plan the same open-hand GraspGen approach and retain
   the signed manipulation intent. The exact manipulation cost remains unknown
   until real closure is observed. Both motion directions and requests above 90
   degrees are supported; physical reachability and the episode budget still apply.
@@ -238,6 +244,9 @@ commands during an arc. The neutral command does not disable scene updates.
 The planners check the observed point cloud. Intended finger contact with the
 selected part is allowed; arm/palm and other surfaces are checked. Every issued
 trajectory executes fully. Observation/model revisions occur BETWEEN trajectories.
+Grasped manipulation permits finger bodies and pads against the selected handle;
+unrelated surfaces and the arm/palm remain checked. The planner's own checked
+path is used without an extra dense validation pass.
 The numerical tools inherit existing robot calibration, upright geometry priors,
 grasp proposal/filtering and contact/collision implementations. These are supplied
 tools, not discoveries by you. You cannot inspect their source or prior solutions.
@@ -251,7 +260,9 @@ will be scored independently with the native simulator predicate afterward.
 
 When finished, write findings.txt and guidelines.json: observations, hypotheses,
 experiments, observed results, limitations, and reusable conditional guidelines.
-For each guideline, include its supporting tool-event numbers or filenames.
+For each guideline, cite supporting attempt/tool-event numbers. Keep raw evidence
+paths, pixel regions and world/joint coordinates in findings or notebooks rather
+than transferable guidelines.
 Clearly distinguish the supplied example from anything you discovered. Preserve
 useful analysis code and images. Avoid storing repeated full point-cloud copies.
 Do not request another language model or use network services. Reason within
