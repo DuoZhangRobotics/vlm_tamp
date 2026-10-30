@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import weakref
@@ -20,6 +21,98 @@ POLICY = {'version': 1, 'raw_observations': 'opened and latest',
           'large_diagnostics': 'lossless gzip; outcomes/actions/constraints stay readable',
           'automatic_post_episode_cleanup': True}
 _SCENES = weakref.WeakKeyDictionary()
+
+
+def public_observation_dependencies(workspace, run=None):
+    """Protect explicitly measured/reference depth and custom-analysis inputs."""
+    workspace=Path(workspace);run=Path(run) if run is not None else workspace.parent
+    numbers=set();paths=set();uncertain=False;latest=None
+    def observation_numbers(value):
+        if isinstance(value,dict):
+            for key,item in value.items():
+                if 'observation' in key:
+                    values=item if isinstance(item,list) else [item]
+                    numbers.update(x for x in values if type(x) is int)
+                observation_numbers(item)
+        elif isinstance(value,list):
+            for item in value:observation_numbers(item)
+    events=run/'tool-events.jsonl'
+    if events.exists():
+        with events.open() as stream:
+            for line in stream:
+                try:event=json.loads(line)
+                except ValueError:continue
+                request=event.get('request',{});result=event.get('response',{}).get('result',{})
+                observation_numbers(request.get('arguments',{}))
+                observation=result.get('observation',result) if isinstance(result,dict) else {}
+                latest=observation.get('observation_id',latest)
+                if request.get('operation','').startswith('dino_') and type(latest) is int:numbers.add(latest)
+    def inspect_code(code):
+        nonlocal uncertain
+        if not any(token in code for token in ['np.load','numpy.load','sensors.npz','read_bytes(']):return
+        observed=re.findall(r'robot_data/attempt\d+/obs\d+',code)
+        paths.update(observed)
+        known_other=bool(re.search(r'(matches\d*\.npz|/p\d+\.npy|geometry\d+/points\.npz)',code))
+        if not observed and not known_other and any(token in code for token in ['np.load','numpy.load','read_bytes(']):uncertain=True
+    events=run/'agent-events.jsonl'
+    if events.exists():
+        with events.open() as stream:
+            for line in stream:
+                try:event=json.loads(line)
+                except ValueError:continue
+                item=event.get('item',{})
+                if item.get('type')=='command_execution':inspect_code(item.get('command',''))
+    for script in workspace.glob('*.py'):
+        if script.name=='robot.py' or script.is_symlink():continue
+        # The supplied viewer hashes captured PNGs; it never opens depth arrays.
+        # Exempt the exact known implementation, not arbitrary code with its name.
+        if (script.name=='visual.py'
+                and _digest(script)==_digest(Path(__file__).with_name('visual_inspection.py'))):continue
+        inspect_code(script.read_text())
+    return numbers,paths,uncertain
+
+
+def compact_public_observations(workspace, *, finished=False, run=None):
+    """Apply post-episode retention to the public copy as well as private data.
+
+    RGB images, calibration, proprioception, tool records and learner files stay
+    intact. Only intermediate sensor-array exports are removed, after the actor
+    has exited. Tracking may need every export while the actor is still active.
+    """
+    if not finished:
+        raise ValueError('Public sensor retention requires a finished or verified-stopped actor')
+    workspace=Path(workspace).resolve();public=workspace/'robot_data'
+    if public.is_symlink():raise ValueError('Public data root cannot be a symlink')
+    numbers,paths,uncertain=public_observation_dependencies(workspace,run)
+    kept=[];removed=[]
+    for attempt in sorted(public.glob('attempt*')):
+        if attempt.is_symlink() or not attempt.is_dir():continue
+        snapshots=[]
+        for folder in attempt.glob('obs*'):
+            match=re.fullmatch(r'obs(\d+)',folder.name)
+            path=folder/'sensors.npz'
+            if match and not folder.is_symlink() and not path.is_symlink() and path.is_file():
+                snapshots.append((int(match.group(1)),path))
+        snapshots.sort()
+        preserve={row[1] for row in snapshots[:1]+snapshots[-1:]}
+        preserve.update(path for number,path in snapshots if uncertain or number in numbers
+                        or str(path.parent.relative_to(workspace)) in paths)
+        for _,path in snapshots:
+            row={'path':str(path.relative_to(workspace)),'bytes':path.stat().st_size}
+            if path in preserve:kept.append(row)
+            else:
+                path.unlink();removed.append(row)
+    record={'policy':'First/latest exports and explicit measurement/reference/custom-analysis inputs; all RGB and text retained; keep all depth when dependencies are uncertain',
+            'actor_finished_or_shutdown_verified':True,'kept':kept,'removed':removed,
+            'raw_input_dependencies_uncertain':uncertain,'explicit_observation_ids':sorted(numbers),
+            'bytes_reclaimed_this_pass':sum(row['bytes'] for row in removed),
+            'historical_intermediate_depth_replay_available':False if removed else None}
+    path=workspace/'public-observation-retention.json'
+    if path.exists():
+        prior=read_json(path)
+        record['prior_bytes_reclaimed']=prior.get('prior_bytes_reclaimed',0)+prior.get('bytes_reclaimed_this_pass',0)
+    write_json(path,record)
+    return record
 
 
 def read_json(path):

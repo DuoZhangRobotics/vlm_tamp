@@ -5,9 +5,22 @@ import html
 import json
 import os
 from pathlib import Path
-from report_contact_skills import read,timing_table,skill_card
+from report_contact_skills import read,timing_table,skill_card,read_events,file_stamp
 
 ROOT=Path(__file__).resolve().parents[1]
+
+
+def cached_profile_run(run,events,actor_wall):
+    """Timing artifacts are complete before the corresponding event is appended."""
+    source={'events':file_stamp(run/'tool-events.jsonl'),
+            'actor_exit':file_stamp(run/'agent-exit.json'),'profile_version':2}
+    source=json.loads(json.dumps(source))
+    path=run/'timing-breakdown.json';previous=read(path,{})
+    if previous.get('_profile_source')==source:return previous
+    profiling=profile_run(run,events,actor_wall)
+    profiling['_profile_source']=source
+    path.write_text(json.dumps(profiling,indent=2)+'\n')
+    return profiling
 
 
 def profile_run(run,events,actor_wall):
@@ -161,16 +174,10 @@ img,video{max-width:100%;max-height:480px}a{color:#1264a2}.note{background:#e8f1
         evaluation=read(run/'evaluation-private.json',{}).get('attempts',[])
         interruption=read(run/'operator-interruption.json',{})
         status_row=read(run/'live-episode-status.json',{})
-        events=[]
-        try:
-            for line in (run/'tool-events.jsonl').read_text().splitlines():
-                try:events.append(json.loads(line))
-                except ValueError:pass
-        except OSError:pass
+        events=read_events(run/'tool-events.jsonl')
         service_seconds=sum(e.get('wall_seconds',0) for e in events)
         wall=agent.get('wall_seconds');calls=Counter(e['request']['operation'] for e in events)
-        profiling=profile_run(run,events,wall)
-        (run/'timing-breakdown.json').write_text(json.dumps(profiling,indent=2)+'\n')
+        profiling=cached_profile_run(run,events,wall)
         if evaluation:
             for a in evaluation:
                 if protocol.get('learning_practice'):

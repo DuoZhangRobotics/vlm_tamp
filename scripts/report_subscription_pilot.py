@@ -12,6 +12,7 @@ import numpy as np
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'src'))
 from vlm_tamp.tool_event_audit import operation_name
+from vlm_tamp.coupled_storage import compact_public_observations
 
 
 def read(path, default=None):
@@ -59,6 +60,7 @@ def main():
         if protocol.get('private_practice_curriculum'):
             scope='Adaptive practice across declared training cases in one persistent agent session. Only task instructions, current public observations and native success are supplied; these are learning attempts, not held-out transfer results.'
     episodes=evaluation['attempts']
+    retention=compact_public_observations(work,finished=True,run=run)
     archive=run/'agent-workspace'
     retained=archive_workspace(work,archive)
     issued_audit=[]
@@ -101,6 +103,10 @@ def main():
             if operation_name(r).startswith('dino_')],
         'agent_exit':read(run/'agent-exit.json'),'operator_interruption':interruption or None,
         'scope':scope}
+    audit['public_sensor_retention']={
+        'policy':retention['policy'],'removed_exports':len(retention['removed']),
+        'bytes_reclaimed_this_pass':retention['bytes_reclaimed_this_pass'],
+        'record':'agent-workspace/public-observation-retention.json'}
     (run/'audit.json').write_text(json.dumps(audit,indent=2)+'\n')
     report=Path(a.report).resolve() if a.report else run/'report'
     report.mkdir(parents=True,exist_ok=True)

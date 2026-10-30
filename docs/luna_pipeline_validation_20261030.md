@@ -61,4 +61,37 @@ reported failure evidence; recovered errors are not automatically treated as
 the cause of eventual task failure. Outside-service time includes Luna calls,
 transport and local analysis, not isolated reasoning time.
 
-Results and limitations will be appended when the declared phases complete.
+The study was stopped by the user during baseline evaluation because of severe
+server I/O stalls. Five baseline episodes completed; practice and transfer did
+not run. See the [I/O incident and cleanup](io_storage_incident_20261030.md).
+There is no automatic restart. Reporting/storage repairs ended the original
+source freeze; preserve the existing results as the interrupted version.
+
+## In-progress recovery on October 30
+
+Five regression episodes completed normally, all at the 600-control limit
+without native success. Two subsequent attempts at the sixth scheduled case
+were interrupted without an actor exit record, at 578 and 136 controls. Their
+directories and logs are preserved under the study's `interrupted/` directory;
+they are not counted as completed task outcomes. The cause of process loss was
+not established. A saved `status: running` value was stale and must not be used
+as proof that a process is alive.
+
+The remaining regression was subsequently launched through the user service
+`vlm-tamp-luna-validation-20261030.service`. The user stopped that service at
+10:59:56 a.m. Eastern because of server I/O stalls. The third interrupted
+attempt's last returned state was 418 controls. All six leftover actor
+workspaces were archived during cleanup. Check actual service/process state
+and recent activity together; stale JSON status is not proof of a live job.
+The numerical tools, model settings and episode budgets stayed fixed during
+the recorded episodes. The later reporting/storage repairs are documented
+separately and no further episode has been launched.
+
+An offline audit of the first opening-13 episode found contact on both finger
+pads during 32 of 40 initial closure controls and all 15 extra-close controls.
+Luna then reopened before probing object motion. The public feedback field
+`physical_contacts_observed: false` represents unavailable contact sensing,
+not a measured absence of contact; its wording can be misinterpreted. This
+does not prove the grasp could transmit opening motion. The evidence is in
+that trial's `offline-grasp-contact-audit.json`, excluded from all learner
+inputs. No interface change has been made during the frozen study.

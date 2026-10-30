@@ -5,17 +5,16 @@ import json
 from pathlib import Path
 
 from report_restriction_fixes import render as render_details
-from report_contact_skills import read
+from report_contact_skills import read,read_events,file_stamp
 from vlm_tamp.coupled_storage import write_json
+_RENDER_STAMPS={}
+_ISSUE_STAMPS={}
 
 
 def observed_issues(run):
-    events=[]
-    try:
-        for line in (run/'tool-events.jsonl').read_text().splitlines():
-            try:events.append(json.loads(line))
-            except ValueError:pass
-    except OSError:pass
+    stamp=file_stamp(run/'tool-events.jsonl')
+    if _ISSUE_STAMPS.get(str(run))==stamp and (run/'observed-issues.json').exists():return
+    events=read_events(run/'tool-events.jsonl')
     rows=[];counts=Counter();gap_reports=[]
     for event in events:
         op=event['request']['operation'];response=event.get('response',{});value=response.get('result',{})
@@ -41,11 +40,20 @@ def observed_issues(run):
         'all_logged_grasp_search_seconds':dict(search_times),
         'scope':'Reported issues may have been recovered from; this is evidence, not automatic root-cause attribution.'}
     write_json(run/'observed-issues.json',result)
+    _ISSUE_STAMPS[str(run)]=stamp
     return result
 
 
 def render(study):
-    study=Path(study);render_details(study,embed=False)
+    study=Path(study)
+    active=read(study/'active-process.json',{})
+    watched=[study/name for name in ['study-manifest.json','active-process.json','implementation-status.json']]
+    if active.get('run'):
+        watched.extend(study/'trials'/active['run']/name for name in
+                       ['live-episode-status.json','tool-events.jsonl','agent-exit.json'])
+    stamp=tuple(file_stamp(p) for p in watched)
+    if _RENDER_STAMPS.get(str(study))==stamp and (study/'watch.html').exists():return
+    render_details(study,embed=False)
     manifest=read(study/'study-manifest.json',{});rows=manifest.get('completed_runs',[])
     plan=manifest.get('plan',{});phase=manifest.get('phase','preflight')
     counts=Counter(r['stage'] for r in rows)
@@ -53,6 +61,9 @@ def render(study):
 <p>Regression: {counts['baseline']}/12 fresh no-memory actors. Practice: {counts['practice']}/1 persistent six-episode learner. Transfer: {counts['transfer']}/8 fresh paired memory/no-memory actors.</p>
 <p>Only generic, current tool contracts are supplied. Evaluation notebooks are archived and never fed to subsequent actors. Held-out states are excluded from this study's practice and regression, not claimed globally unseen.</p>
 <p><a href="study-manifest.json">Protocol, frozen sources and progress</a> · <a href="plan.json">Declared cases</a></p></article>'''
+    stopped=manifest.get('experiments_stopped_by_user',False)
+    if stopped:
+        intro+='<article><h2>Experiments stopped</h2><p>'+html.escape(manifest.get('stop_reason','Stopped by the user.'))+'</p><p>No automatic restart is scheduled. Images and videos below are recorded evidence.</p></article>'
     if manifest.get('problem'):
         intro+='<article><h2>Run interruption</h2><pre>'+html.escape(json.dumps(manifest['problem'],indent=2))+'</pre></article>'
     grouped={}
@@ -66,7 +77,6 @@ def render(study):
         for (task,state),items in grouped.items():
             intro+=f'<tr><td>{html.escape(task)} / {state}</td><td>{sum(x["official_task_success"] for x in items)}/{len(items)}</td><td>'+', '.join(str(x['control_steps']) for x in items)+'</td></tr>'
         intro+='</table></article>'
-    active=read(study/'active-process.json',{})
     if active.get('status')=='running':
         run=study/'trials'/active['run'];status=read(run/'live-episode-status.json',{})
         intro+='<article><h2>Current actor</h2><p>'+html.escape(active['run'])+'</p><pre>'+html.escape(json.dumps(status,indent=2))+'</pre>'
@@ -77,9 +87,10 @@ def render(study):
         intro+='</article>'
     page=study/'watch.html';text=page.read_text();at=text.index('</style>')+len('</style>')
     text=text[:at]+intro+text[at:]
-    if not manifest.get('completed'):
+    if not manifest.get('completed') and not stopped:
         text+='''<script>setTimeout(()=>{if(!Array.from(document.querySelectorAll('video')).some(v=>!v.paused))location.reload();},15000);</script>'''
     page.write_text(text)
+    _RENDER_STAMPS[str(study)]=stamp
 
 
 if __name__=='__main__':

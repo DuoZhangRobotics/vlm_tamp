@@ -9,6 +9,43 @@ from pathlib import Path
 import shutil
 
 ROOT=Path(__file__).resolve().parents[1]
+_EVENT_CACHE={}
+
+
+def file_stamp(path):
+    try:
+        stat=Path(path).stat()
+        return (stat.st_mtime_ns,stat.st_size)
+    except OSError:
+        return None
+
+
+def read_events(path):
+    """Reuse unchanged logs while a live dashboard polls the filesystem."""
+    path=Path(path);stamp=file_stamp(path);key=str(path)
+    previous=_EVENT_CACHE.get(key)
+    if previous is not None and previous[0]==stamp:return previous[1]
+    rows=[]
+    if stamp is not None:
+        with path.open() as stream:
+            for line in stream:
+                try:rows.append(json.loads(line))
+                except ValueError:pass  # A writer may not have finished its last line.
+    _EVENT_CACHE[key]=(stamp,rows)
+    return rows
+
+
+def brief_evidence(value,depth=0):
+    """Keep readable diagnostics in HTML; large arrays stay in linked records."""
+    if isinstance(value,dict):
+        if depth>=4:return {'fields':list(value),'details':'See complete evidence'}
+        return {k:brief_evidence(v,depth+1) for k,v in value.items()}
+    if isinstance(value,list):
+        if len(value)>8:
+            return {'items':len(value),'preview':[brief_evidence(v,depth+1) for v in value[:2]],
+                    'details':'See complete evidence'}
+        return [brief_evidence(v,depth+1) for v in value]
+    return value
 
 
 def read(path,default=None):
@@ -91,11 +128,7 @@ def render(study,watch=None):
     for run in sorted((study/'trials').glob('*')) if (study/'trials').exists() else []:
         protocol=read(run/'protocol.json',{});evaluation=read(run/'evaluation-private.json',{})
         episodes=evaluation.get('attempts',[]);agent=read(run/'agent-exit.json',{})
-        events=[]
-        if (run/'tool-events.jsonl').exists():
-            for line in (run/'tool-events.jsonl').read_text().splitlines():
-                try:events.append(json.loads(line))
-                except json.JSONDecodeError:continue
+        events=read_events(run/'tool-events.jsonl')
         tool_seconds=sum(e.get('wall_seconds',0) for e in events)
         actor_wall=agent.get('wall_seconds')
         timing={'service_calls_inclusive':tool_seconds}
@@ -248,7 +281,8 @@ def skill_card(name,result,path,study,replay):
         speed=stage.get('measured_contact_speed',{})
         label='Approach (contact possible in advisory mode)' if stage['stage']=='free-approach' else stage['stage']
         text+=f'<tr><td>{esc(label)}</td><td>{esc(stage.get("requested_contact_speed_m_s","—"))}</td><td>{esc(speed.get("mean_m_s","—"))} / {esc(speed.get("peak_m_s","—"))}</td><td>{esc(stage.get("observed_contact_progress_m","unresolved"))}</td><td>{esc(stage.get("engagement",{}).get("status","unverified"))}</td></tr>'
-    text+='</table><details><summary>Contact, candidates and failure evidence</summary><pre>'+esc(json.dumps({k:result.get(k) for k in ['contact','diagnostic','search','stages']},indent=2))+'</pre></details>'
+    evidence=brief_evidence({k:result.get(k) for k in ['contact','diagnostic','search']})
+    text+='</table><details><summary>Contact and failure summary</summary><p>Full candidate arrays and stage records are in the linked evidence.</p><pre>'+esc(json.dumps(evidence,indent=2))+'</pre></details>'
     return text+link(path,study,'Complete evidence')+'</article>'
 
 

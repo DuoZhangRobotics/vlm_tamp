@@ -128,7 +128,10 @@ def main():
         write_json(path,manifest)
         write_json(study/'implementation-status.json',{'title':'Luna full-task validation — frozen tools, 600 controls',
             'steps':[{'id':'tool_contracts_and_memory_isolation','status':'validated before study'}]})
-    manifest=read_json(path);require_frozen(manifest);declared=manifest['plan']
+    manifest=read_json(path)
+    if manifest.get('experiments_stopped_by_user'):
+        raise RuntimeError('This study was stopped by the user. Preserve it; do not restart it during I/O investigation or cleanup.')
+    require_frozen(manifest);declared=manifest['plan']
     if declared!=plan() or read_json(study/'plan.json')!=declared or read_json(study/'practice-cases.json')!=declared['practice_cases']:
         raise RuntimeError('The declared case schedule changed')
     done={r['run'] for r in manifest['completed_runs']}

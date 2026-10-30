@@ -1,8 +1,18 @@
 # VLM grounding for constraint-aware TAMP — Stage 1
 
+## Experiments stopped for I/O investigation (30 October 2026)
+
+The user stopped the full-task Luna study after severe server I/O stalls.
+No experiment restart is scheduled. Read the
+[I/O investigation and cleanup handoff](docs/io_storage_incident_20261030.md)
+before another long run. About 61 GB of allocated project storage was reclaimed;
+the report and post-episode sensor retention were repaired. The current
+`results/luna-pipeline-validation-20261030/watch.html` shows the stopped study
+and its five completed baseline episodes. Practice and transfer remain unrun.
+
 ## Luna contact recovery (29 October 2026)
 
-The current experiment is [clean practice with 600 controls](docs/clean_start_600_20261029.md):
+The preceding pilot is [clean practice with 600 controls](docs/clean_start_600_20261029.md):
 one learner starts without inherited task memory, then fresh agents are evaluated
 with and without its frozen notes. Evaluator notebooks are retained separately.
 Open `results/clean-start-600-20261029/watch.html` with VS Code Live Preview.
