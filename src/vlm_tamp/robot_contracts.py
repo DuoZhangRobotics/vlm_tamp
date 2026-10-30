@@ -274,7 +274,7 @@ def operation_schemas(image_sizes=None):
         'measure_tracking': ('Measure tracked RGB-D motion without changing the planning model.', parameters()),
         'apply_tracking': ('Apply measured geometry motion, optionally with your updated hinge hypothesis.', parameters({'hinge_world_m': nullable(array(3))})),
         'set_model': ('Set a hinge/axis hypothesis; existing plans become stale.', parameters({'hinge_world_m': nullable(array(3)), 'axis_world': nullable(array(3))})),
-        'plan_grasp': ('Try up to eight original GraspGen poses by learned score, closest returned valid IK and one approach per pose. Stop at the first executable approach. Manipulation is planned after actual closure.', parameters({'probe_degrees': angle, 'max_candidates': candidates, 'seed': seed,
+        'plan_grasp': ('Try up to eight original GraspGen poses by learned score. Filter open-hand scene collisions before IK, then check the arm and approach against the full observed scene. Closure is physical contact; plan manipulation from its measured result.', parameters({'probe_degrees': angle, 'max_candidates': candidates, 'seed': seed,
             'speed':speed,'approach_speed':speed,'hold':{'type':'integer','minimum':0},'close_steps':{'type':'integer','minimum':1},'budget_seconds':number(exclusiveMinimum=0,maximum=1800),'collision_policy':policy})),
         'plan_arc': ('Plan the complete requested relative contact arc with explicit error tolerances; no robot motion.', parameters({
             'degrees':angle,'refined':{'type':'boolean'},'grasp_constraint':nullable(grasp),

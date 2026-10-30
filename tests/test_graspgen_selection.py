@@ -36,6 +36,7 @@ def test_first_executable_pose_stops_search_without_variants(monkeypatch,tmp_pat
         def __init__(self,*args,**kw):self.record={}
         def __enter__(self):return self
         def __exit__(self,*args):pass
+        def validate_hand_pose(self,pose):return {'accepted':True}
         def validate(self,q):return {'accepted':True}
         def plan(self,a,b,**kw):
             calls.append('path');return np.array([a,b]),{'exact_solution':True,'status':'solved'}
@@ -50,11 +51,13 @@ def test_first_executable_pose_stops_search_without_variants(monkeypatch,tmp_pat
     scene=SimpleNamespace(robot=None)
     budget={'maximum_joint_speed':.6,'endpoint_hold_steps':6,'available_approach_steps':500,
         'grasp_closure_steps_reserved':40,'remaining_control_steps':540}
-    result=select_direct_grasp(proposals(),state,IK(),{},scene,scene,.2,tmp_path/'selection',{},budget)
+    result=select_direct_grasp(proposals(),state,IK(),{},scene,.2,tmp_path/'selection',{},budget)
     assert len(calls)==2 and calls[1]=='path'
     assert result['graspgen_index']==1
     assert result['search_summary']['generated_ik_candidates']==1
     assert not result['search_summary']['geometric_fallback_used']
+    assert result['search_summary']['admission_aperture']=='open'
+    assert not result['search_summary']['closed_hand_admission_used']
 
 
 def test_closest_scene_valid_ik_is_chosen_without_an_extra_route(monkeypatch,tmp_path):
@@ -66,6 +69,7 @@ def test_closest_scene_valid_ik_is_chosen_without_an_extra_route(monkeypatch,tmp
             self.record={};permissions.append(kw)
         def __enter__(self):return self
         def __exit__(self,*args):pass
+        def validate_hand_pose(self,pose):return {'accepted':True}
         def validate(self,q):return {'accepted':not np.isclose(q[0],.1),'blocking_robot_part':'robot0_link5_collision'}
         def plan(self,a,b,**kw):
             paths.append(b.copy());return np.array([a,b]),{'exact_solution':True,'status':'solved'}
@@ -79,11 +83,39 @@ def test_closest_scene_valid_ik_is_chosen_without_an_extra_route(monkeypatch,tmp
     scene=SimpleNamespace(robot=None)
     budget={'maximum_joint_speed':.6,'endpoint_hold_steps':6,'available_approach_steps':500,
         'grasp_closure_steps_reserved':40,'remaining_control_steps':540}
-    result=select_direct_grasp(proposals(),state,IK(),{},scene,scene,.2,tmp_path/'selection',{},budget)
+    result=select_direct_grasp(proposals(),state,IK(),{},scene,.2,tmp_path/'selection',{},budget)
     assert len(paths)==1 and np.allclose(paths[0],.2)
     assert result['ik_rank']==1
     assert permissions[0]['allow_contact'] is True
+    assert len(permissions)==1  # No hypothetical closed-hand veto context.
     assert all(p['collision_policy']=='veto' for p in permissions)
+
+
+def test_hand_collision_is_rejected_without_calling_ik(monkeypatch,tmp_path):
+    import vlm_tamp.graspgen_selection as module
+    queried=[]
+    class Context:
+        def __init__(self,*args,**kwargs):self.record={}
+        def __enter__(self):return self
+        def __exit__(self,*args):pass
+        def validate_hand_pose(self,pose):
+            return {'accepted':not np.isclose(pose[0],.2),'blocking_robot_part':'gripper0_hand_collision'}
+        def validate(self,q):return {'accepted':True}
+        def plan(self,a,b,**kwargs):return np.array([a,b]),{'exact_solution':True,'status':'solved'}
+    class IK:
+        chain=None
+        def solve_many(self,pose,initial):
+            queried.append(pose.copy());return [{'joints':np.full(7,.1),'pose_world_xyzw':pose}]
+    monkeypatch.setattr(module,'NativeScene',Context)
+    state={'metadata':{'joint_positions':np.zeros(7),'robot_calibration':calibration()}}
+    budget={'maximum_joint_speed':.6,'endpoint_hold_steps':6,'available_approach_steps':500,
+        'grasp_closure_steps_reserved':40,'remaining_control_steps':540}
+    result=select_direct_grasp(proposals(),state,IK(),{},SimpleNamespace(robot=None),.2,tmp_path/'selection',{},budget)
+    assert len(queried)==1 and np.isclose(queried[0][0],.3)
+    assert result['graspgen_index']==2
+    assert result['search_summary']['hand_filter_rejections']==1
+    attempts=json.loads((tmp_path/'selection/grasp-attempts.json').read_text())
+    assert attempts[0]['status']=='hand_pose_rejected_before_ik'
 
 
 def test_sampling_counts_are_part_of_cache_identity(tmp_path):

@@ -142,8 +142,12 @@ def gripper_convex(metadata,world_robot,parts,point_radius,contact_surface=None)
         pieces=[(local,vertices,allowed)]
         name=part['robot_geom_name']
         if contact_surface is not None:
-            if contact_surface not in {'fingertips','palm'}:raise ValueError('Unknown contact surface')
-            if 'finger' in name and not name.endswith('_pad_collision'):
+            if contact_surface not in {'fingertips','palm','grasped_fingers'}:raise ValueError('Unknown contact surface')
+            if contact_surface=='grasped_fingers':
+                # Closure establishes contact along the selected handle. Finger
+                # bodies may share that contact; palm/arm and other surfaces do not.
+                pieces=[(local,vertices,'finger' in name)]
+            elif 'finger' in name and not name.endswith('_pad_collision'):
                 # z_tcp = axis_eef dot (p_eef - tcp_origin_eef).
                 axis=tcp_in_eef[:3,2];cut=tip_start+axis@tcp_in_eef[:3,3]
                 pieces=[]
@@ -224,6 +228,7 @@ class NativeScene:
         self.lib.mcvamp_set_orientation_tolerance.argtypes=[ctypes.c_void_p,ctypes.c_float]
         self.lib.mcvamp_constraint_error.argtypes=[ctypes.c_void_p,FLOAT,FLOAT,DOUBLE]
         self.lib.mcvamp_validate.argtypes=[ctypes.c_void_p,FLOAT,DOUBLE]
+        self.lib.mcvamp_validate_hand_pose.argtypes=[ctypes.c_void_p,FLOAT,DOUBLE]
         self.lib.mcvamp_project.argtypes=[ctypes.c_void_p,FLOAT,FLOAT,FLOAT,DOUBLE]
         self.lib.mcvamp_plan.argtypes=[ctypes.c_void_p,FLOAT,FLOAT,FLOAT,ctypes.c_int,ctypes.c_int,ctypes.c_double,FLOAT,ctypes.c_int,DOUBLE]
         self.world_robot,self.native_tcp,frames=calibrated_frames(record)
@@ -357,10 +362,14 @@ class NativeScene:
                 local_mount_plane_association_extra_m=None)
         if contact_surface is not None:
             self.record.update(contact_exemption='distal fingertips/pads and explicitly selected palm versus selected target patch only',
-                skill_contact_surface=contact_surface,proximal_fingers_checked=True,
+                skill_contact_surface=contact_surface,proximal_fingers_checked=contact_surface!='grasped_fingers',
+                proximal_fingers_checked_against_other_surfaces=True,
+                finger_body_target_contact_allowed=contact_surface=='grasped_fingers',
                 palm_contact_allowed=contact_surface=='palm',contact_association_m=.0035,
                 bar_contact_distance_m=None,local_mount_distance_m=None,
                 local_mount_plane_association_extra_m=None)
+            if contact_surface=='grasped_fingers':
+                self.record['contact_exemption']='finger bodies/pads versus selected handle during grasped manipulation; arm, palm and unrelated surfaces checked'
         update=getattr(scene,'pose_update',None)
         if update is not None:
             self.record.update(contact_geometry_source='observed endpoints transported to the current query frame',
@@ -406,16 +415,31 @@ class NativeScene:
         result=self.lib.mcvamp_validate(self.handle,_pointer(self.q(q)),statistics.ctypes.data_as(DOUBLE))
         joints=np.asarray(q,np.float32)
         violated=np.where((joints<self.joint_bounds[:,0])|(joints>self.joint_bounds[:,1]))[0]
-        stats=self.statistics(statistics);code=int(stats['last_rejected_part'])
+        return {**self._collision_report(result,self.statistics(statistics)),
+            'joint_bound_violations':[{'joint':int(j+1),'value_rad':float(joints[j]),
+                'allowed_range_rad':self.joint_bounds[j].tolist()} for j in violated]}
+
+    def validate_hand_pose(self,pose_world_xyzw):
+        """Configured open hand vs the full observed scene; no IK or arm claim."""
+        if self.record['moving_cloud_rotates_with_hand_implied_hinge_progress']:
+            raise ValueError('Pre-IK hand filtering requires a fixed current scene')
+        native_eef=_f(np.linalg.inv(self.world_robot)@pose_matrix(pose_world_xyzw)@np.linalg.inv(self.native_tcp))
+        statistics=np.zeros(13,np.float64)
+        result=self.lib.mcvamp_validate_hand_pose(self.handle,_pointer(native_eef),statistics.ctypes.data_as(DOUBLE))
+        if result<0:raise ValueError('Invalid hand-pose collision query')
+        return {**self._collision_report(result,self.statistics(statistics)),
+            'scope':'configured hand versus observed scene before IK','arm_posture_checked':False,
+            'pose_world_xyzw':np.asarray(pose_world_xyzw).tolist()}
+
+    def _collision_report(self,result,stats):
+        code=int(stats['last_rejected_part'])
         part=(f'robot0_link{code-2000}_collision' if 2001<=code<=2007 else
             next((p['robot_geom_name'] for p in getattr(self,'record',{}).get('gripper_cover',[])
                   if 1000+p['sphere_range'][0]==code),None))
         return {'accepted':bool(result),**stats,
             'blocking_robot_part':part if not result else None,
             'blocking_surface':({0:'observed stationary geometry',1:'moving target outside contact patch',2:'selected contact patch'}
-                .get(int(stats['last_rejected_surface'])) if not result else None),
-            'joint_bound_violations':[{'joint':int(j+1),'value_rad':float(joints[j]),
-                'allowed_range_rad':self.joint_bounds[j].tolist()} for j in violated]}
+                .get(int(stats['last_rejected_surface'])) if not result else None)}
 
     @staticmethod
     def statistics(stats):
@@ -484,6 +508,7 @@ class NativeScene:
             'total_seconds':time.perf_counter()-before,**statistics,
             'path_validation':'upstream planner checks only',
             'additional_dense_validation':False,'post_plan_projection':False,
+            'dynamic_domain_pruning':bool(constrained),
             'planner_motion_resolution':32,'continuous_collision_certificate':False,
             'maximum_solve_seconds':seconds,'maximum_planning_seconds':seconds,
             'deadline_scope':'upstream planner search','maximum_iterations':iterations}

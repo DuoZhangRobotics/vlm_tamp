@@ -118,6 +118,38 @@ std::shared_ptr<CAPT> tree(const float* xyz, int n, float radius) {
     return std::make_shared<CAPT>(points, .006F, .081F, radius);
 }
 
+// Shared by hand-pose filtering before IK and the full robot planner checks.
+bool gripper_scene_clear(Scene& s,const Eigen::Matrix3f& eef_rotation,
+                         const Eigen::Vector3f& eef_translation,
+                         const Eigen::Matrix3f& inverse_rotation) {
+    for(const auto& volume:s.gripper_convex) {
+        for(int surface=0;surface<3;++surface) {
+            if(surface==2 && volume.finger && s.allow_contact) continue;
+            const auto& index=(surface==0?s.stationary:surface==1?s.moving:s.contact);
+            if(!index) continue;
+            Eigen::Matrix3f rotation=eef_rotation;
+            Eigen::Vector3f translation=eef_translation;
+            if(surface) {
+                rotation=inverse_rotation*rotation;
+                translation=s.origin+inverse_rotation*(translation-s.origin);
+            }
+            bool broad=false;
+            for(int i=volume.first;i<volume.end;++i) {
+                const auto& g=s.gripper[i];
+                const Eigen::Vector3f center=rotation*Eigen::Vector3f(g[0],g[1],g[2])+translation;
+                if(index->collides(Point{center.x(),center.y(),center.z()},g[3])) {broad=true;break;}
+            }
+            if(broad && convex_collision(s,volume,surface,rotation,translation)) {
+                s.last_part=1000+volume.first;s.last_surface=surface;
+                if(surface==0) ++s.static_rejects;else ++s.moving_rejects;
+                return false;
+            }
+        }
+    }
+    s.last_part=s.last_surface=-1;
+    return true;
+}
+
 struct ObservedPanda : Panda {
     template<size_t rake>
     static bool fkcc(const vamp::collision::Environment<vamp::FloatVector<rake>>&,
@@ -188,34 +220,7 @@ struct ObservedPanda : Panda {
                     }
                 }
             }
-            // Cell balls are only a broad phase. Their overhang must not become
-            // physical palm/finger geometry. Confirm hits against the calibrated
-            // convex volume. Gripper padding is explicit and independently
-            // configurable; contact-rich runs use the configured boundary.
-            for(const auto& volume:s.gripper_convex) {
-                for(int surface=0;surface<3;++surface) {
-                    if(surface==2 && volume.finger && s.allow_contact) continue;
-                    const auto& index=(surface==0?s.stationary:surface==1?s.moving:s.contact);
-                    if(!index) continue;
-                    Eigen::Matrix3f rotation=eef.linear();
-                    Eigen::Vector3f translation=eef.translation();
-                    if(surface) {
-                        rotation=inverse_rotation*rotation;
-                        translation=s.origin+inverse_rotation*(translation-s.origin);
-                    }
-                    bool broad=false;
-                    for(int i=volume.first;i<volume.end;++i) {
-                        const auto& g=s.gripper[i];
-                        const Eigen::Vector3f center=rotation*Eigen::Vector3f(g[0],g[1],g[2])+translation;
-                        if(index->collides(Point{center.x(),center.y(),center.z()},g[3])) {broad=true;break;}
-                    }
-                    if(broad && convex_collision(s,volume,surface,rotation,translation)) {
-                        s.last_part=1000+volume.first;s.last_surface=surface;
-                        if(surface==0) ++s.static_rejects;else ++s.moving_rejects;
-                        return false;
-                    }
-                }
-            }
+            if(!gripper_scene_clear(s,eef.linear(),eef.translation(),inverse_rotation)) return false;
         }
         s.last_part = s.last_surface = -1;
         return true;
@@ -450,6 +455,16 @@ int mcvamp_validate(void* p,const float* q,double* stats) {
     const bool ok=ObservedPanda::fkcc<lanes>(empty,block(q));
     statistics(s,stats); return ok;
 }
+int mcvamp_validate_hand_pose(void* p,const float* eef_transform,double* stats) {
+    auto& s=*static_cast<Scene*>(p);
+    // This filter applies to a fixed observed scene, before an approach IK call.
+    if(s.articulated) return -1;
+    const Eigen::Map<const Eigen::Matrix<float,4,4,Eigen::RowMajor>> pose(eef_transform);
+    if(!pose.allFinite()) return -1;
+    ++s.checks;
+    const bool ok=gripper_scene_clear(s,pose.block<3,3>(0,0),pose.block<3,1>(0,3),Eigen::Matrix3f::Identity());
+    statistics(s,stats);return ok;
+}
 // Project and test candidates during planning; never called by the executor.
 int mcvamp_project(void* p,const float* tsr,const float* q,float* result,double* residual) {
     auto& s=*static_cast<Scene*>(p); active=&s;
@@ -488,6 +503,10 @@ int mcvamp_plan(void* p,const float* start,const float* goal,const float* tsr,in
         } else {
             vamp::planning::RRTCSettings settings;
             settings.range=.15F;settings.max_iterations=max_iterations;settings.max_samples=100000;
+            // Use ordinary RRT-Connect exploration for near-contact approaches.
+            // Dynamic-domain pruning can reject all later samples after a few
+            // failed expansions, exhausting iterations without testing motion.
+            settings.dynamic_domain=false;
             solved=vamp::planning::RRTC<ObservedPanda,lanes,32>::solve(a,b,empty,settings,rng);
         }
         const auto resample=Clock::now();

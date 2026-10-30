@@ -100,7 +100,8 @@ def main():
     resources=CoupledResources(out/'grasp-cache')
     write_json(out/'protocol.json',{'samples':args.samples,'grasp_seed':args.seed,'cases':args.cases,'method':'graspgen_direct',
         'source_study':'clean-start-600-20261029','one_model_across_cases':True,
-        'one_ik_and_route_per_pose':True,'additional_dense_validation':False,'maximum_control_steps':600,
+        'one_ik_and_route_per_pose':True,'hand_filter_before_ik':True,'admission_aperture':'open',
+        'additional_dense_validation':False,'maximum_control_steps':600,
         'collision_padding_m':0.,'environment_collision_policy':args.collision_policy,'all_started_cases_retained':True,
         'frozen_grasp_cache_source':str(args.reuse_grasps_from) if args.reuse_grasps_from else None})
     files=list((ROOT/'src/vlm_tamp').rglob('*.py'))+[ROOT/'src/vlm_tamp/native/mcvamp_contact_numerical.cc',

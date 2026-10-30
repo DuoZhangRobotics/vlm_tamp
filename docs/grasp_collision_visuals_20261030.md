@@ -1,5 +1,10 @@
 # Visual inspection of the rejected grasp poses
 
+Update: the [open-hand admission correction and physical test](open_hand_grasp_admission_20261030.md)
+subsequently admitted candidate 1 and established a local grasp-and-motion
+probe. The closed-hand rejection shown here is historical and is no longer
+used to admit a grasp approach.
+
 The user requested pictures to judge the reported “scene collisions.” Scene
 means the observed environment; it does not mean a sink. The pictures are
 planner predictions at hypothetical grasp endpoints, not executed collisions.

@@ -222,7 +222,7 @@ def select_grasp(generated,anchors,state,ik,record,open_scene,closed_scene,spec,
     method=config.get('grasp_selection_method','graspgen_direct')
     if method=='graspgen_direct':
         from .graspgen_selection import select_direct_grasp
-        return select_direct_grasp(generated,state,ik,record,open_scene,closed_scene,goal,folder,config,budget)
+        return select_direct_grasp(generated,state,ik,record,open_scene,goal,folder,config,budget)
     if method!='historical_hybrid':
         raise ValueError('Unknown grasp selection method')
     folder.mkdir();base_rows,pad=grasp_poses(generated,anchors,np.asarray(spec['panel_normal_world']),state['metadata'])

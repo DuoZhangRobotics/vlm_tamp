@@ -1,5 +1,9 @@
 # Environment collision checking restored for live robot tools
 
+Current refinement: [open-hand admission and the successful local probe](open_hand_grasp_admission_20261030.md)
+remove the hypothetical closed-hand veto and permit intended finger/handle
+contact during grasped manipulation. The arm/palm environment checks remain.
+
 The subsequent [empty-grasp audit](empty_grasp_diagnosis_20261030.md) explains
 the remaining grasp failure and separates pad-tip clearance from the 22 mm
 pad-midpoint-to-handle-axis distance reported below.

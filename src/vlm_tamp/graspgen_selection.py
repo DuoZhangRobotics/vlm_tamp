@@ -32,26 +32,22 @@ def learned_poses(generated, calibration, maximum=8):
             'contact_depth_offset_m':0.,'predicted_contact_pose_preserved':True}
 
 
-def select_direct_grasp(generated,state,ik,record,open_scene,closed_scene,goal,folder,config,budget):
-    from .hinged_contact_tools import virtual_metadata
+def select_direct_grasp(generated,state,ik,record,open_scene,goal,folder,config,budget):
     folder.mkdir()
     began=time.perf_counter();deadline=began+float(config.get('maximum_grasp_search_seconds',30.))
     initial=np.asarray(state['metadata']['joint_positions'])
     rows=list(learned_poses(generated,state['metadata']['robot_calibration'],
         maximum=int(config.get('maximum_grasp_poses',8))))
-    open_scene=copy.copy(open_scene);closed_scene=copy.copy(closed_scene)
-    open_scene.skill_contact_surface=closed_scene.skill_contact_surface='fingertips'
-    predicted=virtual_metadata(state,closed_scene.robot,ik.chain,initial)
+    open_scene=copy.copy(open_scene)
+    open_scene.skill_contact_surface='fingertips'
     policy=config.get('environment_collision_policy','veto')
-    attempts=[];queries=0;ik_seconds=path_seconds=0.;best=None
+    attempts=[];queries=0;hand_seconds=ik_seconds=path_seconds=0.;best=None
     speed=budget['maximum_joint_speed'];hold=budget['endpoint_hold_steps']
     with NativeScene(open_scene,record,state['metadata'],initial,goal,articulated=False,
-                     allow_contact=True,collision_policy=policy) as approach_context, \
-         NativeScene(closed_scene,record,predicted,initial,goal,articulated=False,
-                     collision_policy=policy) as contact_context:
+                     allow_contact=True,collision_policy=policy) as approach_context:
         start=approach_context.validate(initial)
-        write_json(folder/'approach-initial-scene.json',{'record':approach_context.record,
-            'closed_contact_record':contact_context.record,'start':start})
+        write_json(folder/'approach-initial-scene.json',{'record':approach_context.record,'start':start,
+            'admission_aperture':'open','closure_policy':'execute closure and inspect measured engagement'})
         if not start['accepted']:
             error=ValueError('Measured start fails the selected robot/collision admission')
             error.planning_diagnostic={'status':'invalid_start','diagnostic':start}
@@ -62,8 +58,15 @@ def select_direct_grasp(generated,state,ik,record,open_scene,closed_scene,goal,f
                 'graspgen_score':row['graspgen_score'],'source':row['source']}
             attempts.append(attempt)
             t=time.perf_counter()
+            hand=approach_context.validate_hand_pose(row['pose'])
+            hand_seconds+=time.perf_counter()-t
+            attempt['open_hand_scene_check']=hand
+            if not hand['accepted']:
+                attempt['status']='hand_pose_rejected_before_ik';continue
+            t=time.perf_counter()
             # One GPU IK query. Choose the closest returned solution that is
-            # valid in this scene at both the open and closed apertures.
+            # valid in this scene with the open hand used for the approach.
+            # Closure is a physical contact operation, not a second free-space goal.
             # Other returned IK branches never become extra path queries.
             solutions=ik.solve_many(row['pose'],initial)
             solutions.sort(key=lambda s:np.linalg.norm(np.asarray(s['joints'])-initial))
@@ -75,17 +78,16 @@ def select_direct_grasp(generated,state,ik,record,open_scene,closed_scene,goal,f
                 if time.perf_counter()>=deadline:break
                 q=np.asarray(proposal['joints'])
                 opened=approach_context.validate(q)
-                closed=contact_context.validate(q)
                 checks.append({'rank_by_joint_distance':rank,'joints':q.tolist(),
-                    'open_aperture':opened,'closed_aperture':closed})
-                if opened['accepted'] and closed['accepted']:
+                    'open_aperture':opened})
+                if opened['accepted']:
                     solution=proposal;break
             attempt.update(ik_endpoint_checks=checks,robot_valid_ik_returned=len(solutions))
             if solution is None:
                 attempt['status']='endpoint_rejected' if len(checks)==len(solutions) else 'endpoint_search_deadline'
                 continue
             q=np.asarray(solution['joints'])
-            attempt.update(joints=q.tolist(),ik_rank=rank,start_scene=closed)
+            attempt.update(joints=q.tolist(),ik_rank=rank,start_scene=opened)
             lower=int(np.ceil(np.max(np.abs(q-initial))/speed*20))+hold
             attempt['approach_lower_bound_controls']=lower
             if lower>budget['available_approach_steps']:
@@ -124,9 +126,14 @@ def select_direct_grasp(generated,state,ik,record,open_scene,closed_scene,goal,f
         'deadline_reached':time.perf_counter()>=deadline,'global_optimality_claimed':False,
         'geometric_fallback_used':False,'selection':'first executable learned pose by discriminator rank; closest scene-valid returned IK',
         'environment_collision_policy':policy,'finger_pad_target_contact_allowed':True,
-        'arm_palm_proximal_fingers_checked':policy=='veto','additional_dense_validation':False}
-    timing={'ik_generation_and_queue':ik_seconds,'approach_queries':path_seconds,
-        'admission_scene_setup_and_bookkeeping':max(0.,elapsed-ik_seconds-path_seconds)}
+        'arm_palm_proximal_fingers_checked':policy=='veto','additional_dense_validation':False,
+        'admission_aperture':'open','closed_hand_admission_used':False,
+        'graspgen_input':'selected target cloud','collision_input':'observed stationary, moving and selected-contact clouds',
+        'hand_filter_before_ik':True,'hand_filter_rejections':sum(a['status']=='hand_pose_rejected_before_ik' for a in attempts),
+        'native_scene_point_counts':{key:approach_context.record.get(key) for key in
+            ['static_points','moving_noncontact_points','selected_contact_points']}}
+    timing={'hand_scene_filter':hand_seconds,'ik_generation_and_queue':ik_seconds,'approach_queries':path_seconds,
+        'admission_scene_setup_and_bookkeeping':max(0.,elapsed-hand_seconds-ik_seconds-path_seconds)}
     write_json(folder/'search-summary.json',{'search_summary':summary,'search_timing_seconds':timing})
     if best is None:
         error=ValueError('No executable approach in the small GraspGen batch')

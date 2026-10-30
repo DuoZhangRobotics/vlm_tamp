@@ -17,6 +17,7 @@ def audit(folder):
     grasp=next(folder.glob('attempt01/*-grasp'))
     profile=read_json(grasp/'profiling.json')
     generation=read_json(grasp/'generation/generation-timing.json')
+    search=read_json(grasp/'selection/search-summary.json') if (grasp/'selection/search-summary.json').exists() else {}
     queries=[]
     if (grasp/'selection/approach-queries.jsonl').exists():
         queries=[json.loads(line) for line in (grasp/'selection/approach-queries.jsonl').read_text().splitlines()]
@@ -39,6 +40,7 @@ def audit(folder):
     summary={'evaluation_only':True,'excluded_from_policy_input':True,
         'grasp_call_seconds':next(e['wall_seconds'] for e in events if e['request']['operation']=='plan_grasp'),
         'generation':generation,'phases':profile['phases'],
+        'hand_filter_seconds':search.get('search_timing_seconds',{}).get('hand_scene_filter'),
         'ik_queries':profile['grasp_ik_query_count'],'ik_total_seconds':profile['grasp_ik_total_seconds'],
         'path_queries':len(queries),'path_total_seconds':sum(q['total_seconds'] for q in queries),
         'native_solve_seconds':sum(q.get('solve_seconds',0.) for q in queries),
@@ -73,16 +75,24 @@ def main():
             ('Native planner solve (inside path calls)',a['native_solve_seconds']),
             ('Extra dense validation (inside path calls)',a['extra_validation_seconds'])]
         table=''.join(f'<tr><td>{html.escape(k)}</td><td>{v:.3f} s</td></tr>' for k,v in rows)
+        if a.get('hand_filter_seconds') is not None:
+            table+=f'<tr><td>Hand/scene filter before IK</td><td>{a["hand_filter_seconds"]*1000:.3f} ms</td></tr>'
         error='' if not a['error'] else '<p>'+html.escape(a['error'])+'</p>'
         gap=closure.get('pad_gap_mm');gap_text='not measured' if gap is None else f'{max(0.,gap):.2f} mm'
         grasp_status=('Grasp failed: fingers closed empty.' if closure.get('status')=='near_closed_without_bar_width_support'
-            else closure.get('status','No grasp executed.'))
+            else 'Closure finished with separated pads; see the motion evidence below.' if gap is not None
+            else 'No grasp executed.')
+        motion=a.get('probe_evidence') or {}
+        hand=motion.get('hand_rotation_deg');part=motion.get('observed_region_rotation_deg')
+        motion_text=(f'Hand motion: {hand:.2f}°. Observed part motion: {part:.2f}°.' if hand is not None and part is not None
+            else 'Part motion was not measured in this probe.')
         endpoint='not executed' if a['approach_endpoint_error_m'] is None else f'{a["approach_endpoint_error_m"]*1000:.1f} mm'
         contacts=''.join(f'<li>{html.escape(r["pair"])}: peak {r["peak_normal_force_n"]:.1f} N</li>' for r in a['robot_scene_contacts'][:4])
         cards.append(f'''<article><h2>{case}</h2>{error}
 <p><b>IK calls: {a['ik_queries']}; path calls: {a['path_queries']}.</b> Eight learned poses available; stop at first executable approach.</p>
 <table>{table}</table><p>Gap after closure: <b>{gap_text}</b>. Approach endpoint error: <b>{endpoint}</b>.</p>
 <p><b>{html.escape(grasp_status)}</b> Native task success: {a['native_success']}.</p>
+<p>{motion_text}</p>
 <p>This is a grasp + 10° probe test. A completed RPC is not a verified grasp or a full-task evaluation.</p>
 <details><summary>Offline physical contacts</summary><ul>{contacts}</ul></details>
 <video controls preload="metadata" src="{case}/attempt01/initial/rollout.mp4"></video>

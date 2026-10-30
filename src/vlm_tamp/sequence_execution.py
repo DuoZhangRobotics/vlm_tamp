@@ -15,7 +15,8 @@ def measured_robot_scene(service):
     scene.robot=RobotVolumes(service.ik.chain,service.state['metadata']['robot_collision_volumes_world'],
         service.state['metadata']['joint_positions'])
     scene.config={**scene.config,'grasp_contact_depth_offset_m':getattr(service,'active_grasp_contact_offset_m',0.)}
-    scene.skill_contact_surface='fingertips'
+    scene.skill_contact_surface=('grasped_fingers' if getattr(service,'last_gripper_command',-1)==1
+        and getattr(service,'spec',None) is not None else 'fingertips')
     return scene
 
 

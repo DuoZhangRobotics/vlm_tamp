@@ -796,19 +796,21 @@ class RobotService:
                 num_grasps=int(self.config.get('graspgen_samples',8)),
                 topk=int(self.config.get('graspgen_topk',8)))
         with measured_phase('scene_preparation'):
-            aperture = self.spec['observed_handle_radius_m']+.001
-            predicted = self.sim.fk(self.state['metadata']['joint_positions'], include_volumes=True,
-                                    gripper_qpos=[aperture,-aperture])
-            robot = RobotVolumes(self.ik.chain, predicted['robot_collision_volumes_world'],
-                                 self.state['metadata']['joint_positions'])
-            closed_scene = ArcContactScene(self.cameras, self.state['metadata'], self.spec,
-                self.cloud, self.mask, self.choices, self.config, robot=robot)
-        open_qpos=getattr(self,'open_gripper_reference_qpos',self.state['metadata']['gripper_qpos'])
-        opened=self.sim.fk(self.state['metadata']['joint_positions'],include_volumes=True,gripper_qpos=open_qpos)
-        approach_state={**self.state,'metadata':{**self.state['metadata'],'gripper_qpos':list(open_qpos),
-            'robot_collision_volumes_world':opened['robot_collision_volumes_world']}}
-        approach_scene=copy.copy(self.scene)
-        approach_scene.robot=RobotVolumes(self.ik.chain,opened['robot_collision_volumes_world'],self.state['metadata']['joint_positions'])
+            closed_scene=None
+            if self.config.get('grasp_selection_method')=='historical_hybrid':
+                aperture = self.spec['observed_handle_radius_m']+.001
+                predicted = self.sim.fk(self.state['metadata']['joint_positions'], include_volumes=True,
+                                        gripper_qpos=[aperture,-aperture])
+                robot = RobotVolumes(self.ik.chain, predicted['robot_collision_volumes_world'],
+                                     self.state['metadata']['joint_positions'])
+                closed_scene = ArcContactScene(self.cameras, self.state['metadata'], self.spec,
+                    self.cloud, self.mask, self.choices, self.config, robot=robot)
+            open_qpos=getattr(self,'open_gripper_reference_qpos',self.state['metadata']['gripper_qpos'])
+            opened=self.sim.fk(self.state['metadata']['joint_positions'],include_volumes=True,gripper_qpos=open_qpos)
+            approach_state={**self.state,'metadata':{**self.state['metadata'],'gripper_qpos':list(open_qpos),
+                'robot_collision_volumes_world':opened['robot_collision_volumes_world']}}
+            approach_scene=copy.copy(self.scene)
+            approach_scene.robot=RobotVolumes(self.ik.chain,opened['robot_collision_volumes_world'],self.state['metadata']['joint_positions'])
         try:
             with measured_phase('selection'):
                 selected = select_grasp(generated, self.anchors, approach_state, self.ik, self.record,
