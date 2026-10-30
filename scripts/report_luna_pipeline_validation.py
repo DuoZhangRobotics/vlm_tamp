@@ -1,13 +1,9 @@
-"""Live study overview around the existing detailed robot timing/video report."""
+"""Publish the compact live dashboard and retain optional issue summaries."""
 from collections import Counter
-import html
-import json
 from pathlib import Path
 
-from report_restriction_fixes import render as render_details
 from report_contact_skills import read,read_events,file_stamp
 from vlm_tamp.coupled_storage import write_json
-_RENDER_STAMPS={}
 _ISSUE_STAMPS={}
 
 
@@ -44,55 +40,13 @@ def observed_issues(run):
     return result
 
 
-def render(study):
-    study=Path(study)
-    active=read(study/'active-process.json',{})
-    watched=[study/name for name in ['study-manifest.json','active-process.json','implementation-status.json']]
-    if active.get('run'):
-        watched.extend(study/'trials'/active['run']/name for name in
-                       ['live-episode-status.json','tool-events.jsonl','agent-exit.json'])
-    stamp=tuple(file_stamp(p) for p in watched)
-    if _RENDER_STAMPS.get(str(study))==stamp and (study/'watch.html').exists():return
-    render_details(study,embed=False)
-    manifest=read(study/'study-manifest.json',{});rows=manifest.get('completed_runs',[])
-    plan=manifest.get('plan',{});phase=manifest.get('phase','preflight')
-    counts=Counter(r['stage'] for r in rows)
-    intro=f'''<article><h2>Frozen full-task study</h2><p><b>Phase: {html.escape(phase)}</b>. Luna/high; 600 controls and 30 minutes per episode; GPU 3.</p>
-<p>Regression: {counts['baseline']}/12 fresh no-memory actors. Practice: {counts['practice']}/1 persistent six-episode learner. Transfer: {counts['transfer']}/8 fresh paired memory/no-memory actors.</p>
-<p>Only generic, current tool contracts are supplied. Evaluation notebooks are archived and never fed to subsequent actors. Held-out states are excluded from this study's practice and regression, not claimed globally unseen.</p>
-<p><a href="study-manifest.json">Protocol, frozen sources and progress</a> · <a href="plan.json">Declared cases</a></p></article>'''
-    stopped=manifest.get('experiments_stopped_by_user',False)
-    if stopped:
-        intro+='<article><h2>Experiments stopped</h2><p>'+html.escape(manifest.get('stop_reason','Stopped by the user.'))+'</p><p>No automatic restart is scheduled. Images and videos below are recorded evidence.</p></article>'
-    if manifest.get('problem'):
-        intro+='<article><h2>Run interruption</h2><pre>'+html.escape(json.dumps(manifest['problem'],indent=2))+'</pre></article>'
-    grouped={}
-    for row in rows:
-        run=study/'trials'/row['run']
-        if run.exists():observed_issues(run)
-        if row['stage']!='baseline':continue
-        key=(row['task'],row['state_index']);grouped.setdefault(key,[]).append(row)
-    if grouped:
-        intro+='<article><h2>Regression results</h2><table><tr><th>Case</th><th>Successes / completed</th><th>Controls</th></tr>'
-        for (task,state),items in grouped.items():
-            intro+=f'<tr><td>{html.escape(task)} / {state}</td><td>{sum(x["official_task_success"] for x in items)}/{len(items)}</td><td>'+', '.join(str(x['control_steps']) for x in items)+'</td></tr>'
-        intro+='</table></article>'
-    if active.get('status')=='running':
-        run=study/'trials'/active['run'];status=read(run/'live-episode-status.json',{})
-        intro+='<article><h2>Current actor</h2><p>'+html.escape(active['run'])+'</p><pre>'+html.escape(json.dumps(status,indent=2))+'</pre>'
-        frames=sorted(run.glob('attempt*/initial/frames/step*.jpg'))
-        if frames:
-            frame=frames[-2] if len(frames)>1 else frames[-1]
-            intro+=f'<img src="{frame.relative_to(study)}" alt="Latest recorded robot view">'
-        intro+='</article>'
-    page=study/'watch.html';text=page.read_text();at=text.index('</style>')+len('</style>')
-    text=text[:at]+intro+text[at:]
-    if not manifest.get('completed') and not stopped:
-        text+='''<script>setTimeout(()=>{if(!Array.from(document.querySelectorAll('video')).some(v=>!v.paused))location.reload();},15000);</script>'''
-    page.write_text(text)
-    _RENDER_STAMPS[str(study)]=stamp
+
+def render(study, *, force=False):
+    from live_study_dashboard import publish
+    return publish(study,force=force)
 
 
 if __name__=='__main__':
     import argparse
-    p=argparse.ArgumentParser();p.add_argument('--study',type=Path,required=True);render(p.parse_args().study)
+    p=argparse.ArgumentParser();p.add_argument('--study',type=Path,required=True)
+    render(p.parse_args().study,force=True)

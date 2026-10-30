@@ -35,8 +35,9 @@ def test_unchanged_stopped_dashboard_does_not_rewrite_files(tmp_path):
     render(study);page=study/'watch.html';before=page.stat().st_mtime_ns
     render(study)
     assert page.stat().st_mtime_ns==before
-    assert 'Experiments stopped' in page.read_text()
-    assert 'setTimeout' not in page.read_text()
+    status=json.loads((study/'watch-status.json').read_text())
+    assert 'Experiments stopped' in status['status_text']
+    assert not status['running']
 
 
 def test_public_retention_preserves_endpoints_images_and_notes(tmp_path):

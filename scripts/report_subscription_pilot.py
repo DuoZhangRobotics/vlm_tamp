@@ -13,6 +13,7 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'src'))
 from vlm_tamp.tool_event_audit import operation_name
 from vlm_tamp.coupled_storage import compact_public_observations
+from report_contact_skills import brief_evidence
 
 
 def read(path, default=None):
@@ -127,7 +128,8 @@ def main():
         trace.append(f'<tr><td>{row["sequence"]}</td><td>{html.escape(operation_name(row))}</td>'
             f'<td>{"ok" if response["ok"] else html.escape(response.get("error","error"))}</td>'
             f'<td>{row["wall_seconds"]:.2f}s</td><td><details><summary>Inputs / output</summary><pre>'
-            f'{html.escape(json.dumps({"arguments":request.get("arguments",{}),"result":result},indent=2))}</pre></details></td></tr>')
+            f'{html.escape(json.dumps(brief_evidence({"arguments":request.get("arguments",{}),"result":result}),indent=2))}</pre>'
+            '<p>Large arrays are summarized here; the complete response is retained in the tool log.</p></details></td></tr>')
     findings=(archive/'findings.txt').read_text() if (archive/'findings.txt').exists() else 'No findings file was produced.'
     guidelines=(archive/'guidelines.json').read_text() if (archive/'guidelines.json').exists() else 'No guidelines file was produced.'
     successful=sum(ep['official_task_success'] for ep in episodes)
@@ -146,7 +148,7 @@ The native task predicate was evaluated outside the agent. Separate API calls: 0
 <article><h2>Agent-authored findings</h2><pre>{html.escape(findings)}</pre></article>
 <article><h2>Agent-authored guidelines (claims, not independently established rules)</h2><pre>{html.escape(guidelines)}</pre></article>
 <article><h2>Verified boundaries and execution</h2><pre>{html.escape(json.dumps(audit,indent=2))}</pre></article>
-<article><h2>Tool trace</h2><table><thead><tr><th>#</th><th>Tool</th><th>Outcome</th><th>Time</th><th>Evidence</th></tr></thead><tbody>{''.join(trace)}</tbody></table></article>
+<article><h2>Tool trace</h2><p><a href="../tool-events.jsonl">Complete tool log</a> · <a href="../agent-events.jsonl">Luna input/output</a></p><table><thead><tr><th>#</th><th>Tool</th><th>Outcome</th><th>Time</th><th>Evidence</th></tr></thead><tbody>{''.join(trace)}</tbody></table></article>
 '''
     (report/'index.html').write_text(body)
     (report/'summary.json').write_text(json.dumps({'successful_attempts':successful,'attempts':episodes,'audit':audit},indent=2))

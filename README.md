@@ -1,9 +1,19 @@
 # VLM grounding for constraint-aware TAMP — Stage 1
 
+## Small dashboard and authorized rerun (30 October 2026)
+
+The user authorized rerunning the experiments after reducing dashboard I/O.
+The main page is now under 10 KB, with small once-per-minute status updates and
+run details/media loaded on demand. See the
+[dashboard and rerun handoff](docs/luna_dashboard_rerun_20261030.md).
+Open `results/luna-pipeline-validation-rerun-20261030/watch.html` with Live
+Preview. A monitored first episode checks server I/O before the remaining
+baseline, clean practice and held-out comparisons proceed.
+
 ## Experiments stopped for I/O investigation (30 October 2026)
 
 The user stopped the full-task Luna study after severe server I/O stalls.
-No experiment restart is scheduled. Read the
+This earlier interrupted study remains stopped. Read the
 [I/O investigation and cleanup handoff](docs/io_storage_incident_20261030.md)
 before another long run. About 61 GB of allocated project storage was reclaimed;
 the report and post-episode sensor retention were repaired. The current

@@ -1,0 +1,70 @@
+import json
+from pathlib import Path
+
+import live_study_dashboard as dashboard
+
+
+def fixture(tmp_path,monkeypatch):
+    study=tmp_path/'study';run=study/'trials/case';run.mkdir(parents=True)
+    manifest={'phase':'baseline','plan':{'baseline':[{}],'transfer':[]},'completed_runs':[]}
+    (study/'study-manifest.json').write_text(json.dumps(manifest))
+    (study/'active-process.json').write_text('{"run":"case","status":"running","pid":1}')
+    (run/'protocol.json').write_text('{"case":{"task":"open_microwave","state_index":37}}')
+    (run/'live-episode-status.json').write_text('{"control_steps":60,"maximum_control_steps":600}')
+    (run/'tool-events.jsonl').write_text('')
+    monkeypatch.setattr(dashboard,'_live_process',lambda _:True)
+    return study,run,manifest
+
+
+def test_frequent_tool_updates_do_not_rewrite_html_or_publish_too_often(tmp_path,monkeypatch):
+    study,run,_=fixture(tmp_path,monkeypatch)
+    first=dashboard.publish(study,now=0)
+    page=study/'watch.html';stamp=page.stat().st_mtime_ns
+    assert first['html_bytes_written']<20000
+    (run/'live-episode-status.json').write_text('{"control_steps":200}')
+    result=dashboard.publish(study,now=15)
+    assert result['bytes_written']==0
+    assert json.loads((run/'watch-data.json').read_text())['control_steps']==60
+    result=dashboard.publish(study,now=60)
+    assert result['html_bytes_written']==0
+    assert page.stat().st_mtime_ns==stamp
+    assert json.loads((run/'watch-data.json').read_text())['control_steps']==200
+
+
+def test_terminal_boundary_publishes_immediately(tmp_path,monkeypatch):
+    study,run,manifest=fixture(tmp_path,monkeypatch)
+    dashboard.publish(study,now=0)
+    manifest.update(experiments_stopped_by_user=True,stop_reason='User stop')
+    (study/'study-manifest.json').write_text(json.dumps(manifest))
+    assert dashboard.publish(study,now=5)['published']
+    status=json.loads((study/'watch-status.json').read_text())
+    assert not status['running'] and status['status_text'].startswith('Experiments stopped')
+
+
+def test_huge_tool_payload_never_enters_main_status(tmp_path,monkeypatch):
+    study,run,_=fixture(tmp_path,monkeypatch)
+    e={'sequence':1,'request':{'operation':'push','arguments':{}},'wall_seconds':1,
+       'response':{'ok':True,'result':{'stop_reason':'blocked','feedback_count':3,
+       'diagnostic':{'positions':[[1,2,3]]*10000},'stages':[]}}}
+    (run/'tool-events.jsonl').write_text(json.dumps(e)+'\n')
+    dashboard.publish(study,now=0)
+    assert (study/'watch-status.json').stat().st_size<5000
+    assert (run/'watch-data.json').stat().st_size<10000
+    assert json.loads((run/'watch-data.json').read_text())['skill']['Reported feedback count across tools']==3
+    assert 'positions' not in (study/'watch.html').read_text()
+
+
+def test_inactive_publisher_does_not_keep_writing_heartbeats(tmp_path,monkeypatch):
+    study,run,_=fixture(tmp_path,monkeypatch)
+    monkeypatch.setattr(dashboard,'_live_process',lambda _:False)
+    dashboard.publish(study,now=0);stamp=(study/'watch-status.json').stat().st_mtime_ns
+    assert dashboard.publish(study,now=120)['bytes_written']==0
+    assert (study/'watch-status.json').stat().st_mtime_ns==stamp
+    assert not json.loads((study/'watch-status.json').read_text())['running']
+
+
+def test_static_page_uses_lazy_media_and_data_polling():
+    assert 'location.reload' not in dashboard.HTML
+    assert 'preload="none"' in dashboard.HTML and 'loading="lazy"' in dashboard.HTML
+    assert '60000' in dashboard.HTML and '!document.hidden' in dashboard.HTML
+    assert 'watch-status.json' in dashboard.HTML
