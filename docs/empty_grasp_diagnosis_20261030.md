@@ -1,5 +1,10 @@
 # Why the scene-cleared grasp closed empty
 
+See the subsequent [collision visualizations](grasp_collision_visuals_20261030.md)
+before treating all higher-scored rejections alike. Candidate 1's closest IK
+branch passes while open and is rejected at holding width for just two handle
+points, with a maximum 0.479 mm finger-body overlap in the model.
+
 This is a read-only audit of
 `results/small-graspgen-scene-contact-seed1-metric-20261029/open_microwave-state037`.
 No runtime behavior, grasp poses, contact rules or motion planning checks were
