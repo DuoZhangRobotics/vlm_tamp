@@ -42,3 +42,22 @@ def test_launch_requires_kernel_memory_and_swap_limits(tmp_path):
     with pytest.raises(RuntimeError):require_memory_limit(tmp_path)
     (tmp_path/'memory.swap.max').write_text('0');(tmp_path/'memory.oom.group').write_text('0')
     with pytest.raises(RuntimeError,match='OOMPolicy'):require_memory_limit(tmp_path)
+
+
+def test_capacity_gate_accounts_for_the_shared_pool_and_does_not_count_cache_twice():
+    from supervise_luna_dashboard_study import capacity_status
+    value={**row(),'time':1,'job_memory_gib':4,'job_anon_and_shmem_gib':.25,
+           'shared_headroom_including_clean_inactive_file_gib':10,'host_available_memory_gib':25}
+    status=capacity_status(value,16*1024**3)
+    assert status['waiting'] and status['additional_headroom_needed_gib']==17.75
+    value['shared_headroom_including_clean_inactive_file_gib']=20
+    assert not capacity_status(value,16*1024**3)['waiting']
+    value['host_available_memory_gib']=10
+    assert capacity_status(value,16*1024**3)['waiting']
+
+
+def test_batch_continuation_requires_continuous_resource_monitoring():
+    from supervise_luna_dashboard_study import qualification_passed
+    assert qualification_passed({'samples':30,'maximum_sample_gap_seconds':2.1})
+    assert not qualification_passed({'samples':30,'maximum_sample_gap_seconds':174})
+    assert not qualification_passed({'samples':1,'maximum_sample_gap_seconds':0})

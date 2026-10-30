@@ -1,6 +1,14 @@
 # VLM grounding for constraint-aware TAMP — Stage 1
 
-## Current state: stopped after the repeated I/O outage
+## Authorized monitored cache-repair trial
+
+The user authorized a fresh closing-49 trial and continuation if memory/I/O stay
+stable. See the [canary protocol](docs/cache_repair_canary_20261030.md).
+The new study is `results/luna-cache-repair-validation-20261030`; its `watch.html`
+shows whether it is waiting for shared memory capacity or actively running.
+The job has a 16 GiB enforced limit and checks capacity before each episode.
+
+## Previous rerun: stopped after the repeated I/O outage
 
 The rerun was stopped after SSH access degraded. The confirmed defect was an
 unbounded native collision-scene cache; a long push grew the job to 57.4 GiB.

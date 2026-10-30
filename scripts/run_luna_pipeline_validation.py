@@ -60,6 +60,14 @@ def collect(study,entry,stage,out):
     return result
 
 
+def pending_baselines(manifest,requested=None,limit=None):
+    declared=manifest['plan']['baseline'];done={r['run'] for r in manifest['completed_runs']}
+    if requested and requested not in {r['run'] for r in declared}:
+        raise ValueError('Requested qualification run is not in the declared baseline cases')
+    pending=[r for r in declared if r['run'] not in done and (requested is None or r['run']==requested)]
+    return pending[:limit] if limit is not None else pending
+
+
 def run_entry(study,manifest,entry,stage,arguments,expected_attempts,memory_hash=None):
     require_frozen(manifest);out=study/'trials'/entry['run']
     manifest.update(phase=stage,active_run=entry['run']);manifest.pop('problem',None)
@@ -113,6 +121,7 @@ def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--study',type=Path,required=True)
     p.add_argument('--stage',choices=['baseline','practice','transfer'],required=True)
     p.add_argument('--limit',type=int,help='Complete at most this many additional runs in this invocation')
+    p.add_argument('--baseline-run',help='Run one declared baseline case first for resource qualification')
     args=p.parse_args();study=args.study.resolve()
     if not study.is_relative_to(ROOT/'results'):raise ValueError('Use a results directory')
     if os.environ.get('CUDA_VISIBLE_DEVICES')!='3' or os.environ.get('MUJOCO_EGL_DEVICE_ID')!='3':
@@ -132,6 +141,13 @@ def main():
     if manifest.get('experiments_stopped_by_user'):
         raise RuntimeError('This study was stopped by the user. Preserve it; do not restart it during I/O investigation or cleanup.')
     require_frozen(manifest);declared=manifest['plan']
+    if args.baseline_run:
+        if args.stage!='baseline':raise ValueError('--baseline-run is baseline-only')
+        pending_baselines(manifest,args.baseline_run,1)
+        previous=manifest.get('resource_qualification_first_run')
+        if previous and previous!=args.baseline_run:raise ValueError('Qualification case already declared')
+        manifest['resource_qualification_first_run']=args.baseline_run
+        write_json(path,manifest)
     if declared!=plan() or read_json(study/'plan.json')!=declared or read_json(study/'practice-cases.json')!=declared['practice_cases']:
         raise RuntimeError('The declared case schedule changed')
     done={r['run'] for r in manifest['completed_runs']}
@@ -141,8 +157,7 @@ def main():
         if b'run_subscription_agent_pilot.py' in command:raise RuntimeError('An actor is still running; monitor it instead of starting a duplicate')
     try:
         if args.stage=='baseline':
-            pending=[e for e in declared['baseline'] if e['run'] not in done]
-            for entry in pending[:args.limit] if args.limit is not None else pending:
+            for entry in pending_baselines(manifest,args.baseline_run,args.limit):
                 run_entry(study,manifest,entry,'baseline',['--task',entry['task'],'--state',str(entry['state_index']),
                     '--attempts','1','--agent-seconds','1800','--evaluation-case','--clean-start'],1)
             manifest['baseline_completed']=all(e['run'] in {r['run'] for r in manifest['completed_runs']} for e in declared['baseline'])

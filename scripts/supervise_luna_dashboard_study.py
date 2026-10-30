@@ -39,6 +39,19 @@ def cgroup_path():
     return Path('/sys/fs/cgroup')/row.split('::',1)[1].lstrip('/')
 
 
+def nfs_counters():
+    result={};mount=None
+    for line in Path('/proc/self/mountstats').read_text().splitlines():
+        if line.startswith('device '):
+            mount=next((p for p in ['/common/users','/common/home'] if ' mounted on '+p+' ' in line),None)
+            if mount:result[mount]={}
+        elif mount and ':' in line:
+            operation,values=line.strip().split(':',1)
+            if operation in {'READ','WRITE','COMMIT'}:
+                result[mount][operation]=[int(x) for x in values.split()]
+    return result
+
+
 def process_details(group):
     """Optional diagnostics: /proc PID inspection must never block the watchdog."""
     pids=[];totals={}
@@ -54,17 +67,56 @@ def process_details(group):
         except (OSError,ValueError,IndexError):continue
         pids.append({'pid':pid,'ppid':parent,'name':name,'state':state,'wait_channel':wait,'io':counters})
         for k,v in counters.items():totals[k]=totals.get(k,0)+v
-    return {'time':time.time(),'process_io_sum':totals,'processes':pids}
+    return {'time':time.time(),'process_io_sum':totals,'processes':pids,'nfs_counters':nfs_counters()}
 
 
 def sample(group):
     started=time.monotonic();io=pressure('io');memory=pressure('memory')
+    own={k:int(v) for k,v in (line.split() for line in (group/'memory.stat').read_text().splitlines())}
+    pool=Path('/sys/fs/cgroup/user.slice');headroom=None
+    if (pool/'memory.high').exists():
+        high=(pool/'memory.high').read_text().strip()
+        if high!='max':
+            stats={k:int(v) for k,v in (line.split() for line in (pool/'memory.stat').read_text().splitlines())}
+            clean=max(0,stats.get('inactive_file',0)-stats.get('file_dirty',0)-stats.get('file_writeback',0))
+            headroom=(int(high)-int((pool/'memory.current').read_text())+clean)/1024**3
+    available=next(int(line.split()[1]) for line in Path('/proc/meminfo').read_text().splitlines() if line.startswith('MemAvailable:'))/1024**2
     return {'time':time.time(),'io_full_avg10':io.get('full',{}).get('avg10',0),
             'io_some_avg10':io.get('some',{}).get('avg10',0),
             'memory_full_avg10':memory.get('full',{}).get('avg10',0),
             'job_memory_gib':int((group/'memory.current').read_text())/1024**3,
             'job_memory_peak_gib':int((group/'memory.peak').read_text())/1024**3,
+            'job_anon_and_shmem_gib':(own.get('anon',0)+own.get('shmem',0))/1024**3,
+            'shared_headroom_including_clean_inactive_file_gib':headroom,
+            'host_available_memory_gib':available,
             'health_read_seconds':time.monotonic()-started}
+
+
+def capacity_status(row,limit):
+    # Subtract only already-charged anonymous/tmpfs memory. Subtracting clean
+    # file cache as well would double-count it as available shared headroom.
+    needed=max(0,limit/1024**3-row.get('job_anon_and_shmem_gib',0))+2.
+    shared=row.get('shared_headroom_including_clean_inactive_file_gib')
+    ready=(row['host_available_memory_gib']>=needed and (shared is None or shared>=needed)
+           and row['io_full_avg10']<10 and row['memory_full_avg10']<5)
+    return {'waiting':not ready,'additional_headroom_needed_gib':needed,
+            'shared_headroom_gib':shared,'host_available_gib':row['host_available_memory_gib'],
+            'recorded_at':row['time']}
+
+
+def wait_for_capacity(study,name):
+    """Wait before starting an actor, so waiting consumes no episode budget."""
+    group=cgroup_path();limit=require_memory_limit(group)
+    local=Path(os.environ['VLM_TAMP_CAPACITY_STATE']);last_publish=0
+    while True:
+        status={**capacity_status(sample(group),limit),'run':name}
+        write(local,status)
+        if not status['waiting'] or time.monotonic()-last_publish>=60:
+            write(Path(study)/'capacity-wait.json',status)
+            from report_luna_pipeline_validation import render
+            render(study,force=True);last_publish=time.monotonic()
+        if not status['waiting']:return
+        time.sleep(5)
 
 
 def require_memory_limit(group):
@@ -110,6 +162,10 @@ def pressure_stop(samples):
     return None
 
 
+def qualification_passed(stats):
+    return stats.get('samples',0)>=3 and stats.get('maximum_sample_gap_seconds',float('inf'))<=10
+
+
 def mark_interruption(study,reason):
     """Update the small status records after stopping the process group."""
     active_path=study/'active-process.json'
@@ -128,12 +184,12 @@ def mark_interruption(study,reason):
         write(status_path,status)
 
 
-def run(study,stages):
+def run(study,stages,*,first_run=None):
     group=cgroup_path();limit=require_memory_limit(group)
     local=Path(tempfile.mkdtemp(prefix='vlm-luna-resource-monitor-'));details=ProcessSampler(group)
     state={'pid':os.getpid(),'started_at':time.time(),'status':'running','local_directory':str(local),
            'sample_interval_seconds':SAMPLE_SECONDS,'detail_interval_seconds':DETAIL_SECONDS,
-           'memory_limit_bytes':limit,'stages':stages,
+           'memory_limit_bytes':limit,'stages':stages,'first_run':first_run,
            'stop_policy':'Three consecutive samples with host full I/O pressure >=10% or full memory pressure >=5%. Infrastructure interruption; no automatic retries.'}
     write(study/'resource-monitor.json',{'latest_sample':str(local/'latest.json'),'samples':str(local/'samples.jsonl'),
                                        'supervisor':str(local/'supervisor.json'),'policy':state['stop_policy']})
@@ -146,21 +202,37 @@ def run(study,stages):
     try:
         for stage,limit in stages:
             state.update(stage=stage,limit=limit,stage_started_at=time.time());write(local/'supervisor.json',state)
+            health={'samples':0,'maximum_sample_gap_seconds':0.,'peak_job_memory_gib':0.,
+                    'maximum_io_full_avg10':0.,'maximum_memory_full_avg10':0.};last_active_sample=None
             label=stage+('-first' if limit else '-rest' if stage=='baseline' else '')
             command=[sys.executable,str(ROOT/'scripts/run_luna_pipeline_validation.py'),'--study',str(study),'--stage',stage]
             if limit:command+=['--limit',str(limit)]
+            if stage=='baseline' and limit==1 and first_run:command+=['--baseline-run',first_run]
             with (study/(label+'-driver.log')).open('x') as stream:
-                child=subprocess.Popen(command,cwd=ROOT,stdout=stream,stderr=subprocess.STDOUT,start_new_session=True)
+                capacity_file=local/'capacity.json';write(capacity_file,{'waiting':True})
+                environment={**os.environ,'VLM_TAMP_CAPACITY_STATE':str(capacity_file)}
+                child=subprocess.Popen(command,cwd=ROOT,env=environment,stdout=stream,stderr=subprocess.STDOUT,start_new_session=True)
                 state['driver_pid']=child.pid;write(local/'supervisor.json',state)
                 while child.poll() is None:
                     row=sample(group);extra=details.read()
                     row.update(processes=extra.get('processes',[]),process_io_sum=extra.get('process_io_sum',{}),
+                               nfs_counters=extra.get('nfs_counters',{}),
+                               nfs_sample_time=extra.get('time'),
                                process_details_age_seconds=row['time']-extra['time'] if extra.get('time') else None,
                                counter_scope='Asynchronous process diagnostics may be stale. rchar/wchar include IPC; sums can fall when processes exit.')
                     history.append(row);history=history[-3:]
                     write(local/'latest.json',row)
                     with (local/'samples.jsonl').open('a') as samples:samples.write(json.dumps(row)+'\n')
-                    interrupted=interrupted or pressure_stop(history)
+                    admission=json.loads(capacity_file.read_text())
+                    if not admission.get('waiting'):
+                        health['samples']+=1
+                        if last_active_sample is not None:
+                            health['maximum_sample_gap_seconds']=max(health['maximum_sample_gap_seconds'],row['time']-last_active_sample)
+                        last_active_sample=row['time']
+                        health['peak_job_memory_gib']=max(health['peak_job_memory_gib'],row['job_memory_peak_gib'])
+                        health['maximum_io_full_avg10']=max(health['maximum_io_full_avg10'],row['io_full_avg10'])
+                        health['maximum_memory_full_avg10']=max(health['maximum_memory_full_avg10'],row['memory_full_avg10'])
+                    interrupted=interrupted or (pressure_stop(history) if not admission.get('waiting') else None)
                     state.update(heartbeat_at=time.time());write(local/'supervisor.json',state)
                     if interrupted:
                         state.update(status='infrastructure_interruption',reason=interrupted)
@@ -179,6 +251,15 @@ def run(study,stages):
                 write(local/'supervisor.json',state);write(study/'supervisor-state.json',state)
                 mark_interruption(study,interrupted or f'driver_exit_{code}; inspect driver log')
                 return 1
+            if stage=='baseline' and limit==1:
+                health.update(passed=qualification_passed(health),normal_driver_completion=True,
+                              resource_interruption=False,qualification_run=first_run,
+                              task_success_required=False,memory_limit_bytes=state['memory_limit_bytes'])
+                write(study/'resource-qualification.json',health)
+                if not health['passed']:
+                    state.update(status='qualification_review_required',finished_at=time.time())
+                    write(local/'supervisor.json',state);write(study/'supervisor-state.json',state)
+                    return 1
         state.update(status='memory_scope_review' if stages[-1][0]=='practice' else 'complete',finished_at=time.time())
         write(local/'supervisor.json',state);write(study/'supervisor-state.json',state)
         return 0
@@ -190,13 +271,16 @@ def run(study,stages):
 
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--study',required=True,type=Path)
-    p.add_argument('--stage',choices=['first','remaining','transfer'],default='first')
+    p.add_argument('--stage',choices=['first','remaining','transfer','qualify-and-continue'],default='first')
+    p.add_argument('--first-run',help='Declared baseline run to use for the first resource qualification')
     a=p.parse_args();study=a.study.resolve()
     if not study.is_relative_to(ROOT/'results'):raise ValueError('Use a study under results/')
     study.mkdir(parents=True,exist_ok=True)
     if os.environ.get('CUDA_VISIBLE_DEVICES')!='3' or os.environ.get('MUJOCO_EGL_DEVICE_ID')!='3':raise ValueError('GPU 3 only')
-    stages={'first':[('baseline',1)],'remaining':[('baseline',None),('practice',None)],'transfer':[('transfer',None)]}[a.stage]
-    raise SystemExit(run(study,stages))
+    stages={'first':[('baseline',1)],'remaining':[('baseline',None),('practice',None)],
+            'transfer':[('transfer',None)],'qualify-and-continue':[('baseline',1),('baseline',None),('practice',None)]}[a.stage]
+    if a.first_run and a.stage not in {'first','qualify-and-continue'}:raise ValueError('--first-run requires an initial qualification stage')
+    raise SystemExit(run(study,stages,first_run=a.first_run))
 
 
 if __name__=='__main__':main()

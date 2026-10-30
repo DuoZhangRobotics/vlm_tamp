@@ -129,7 +129,7 @@ def _run_data(study,run,entry,active):
 def publish(study,*,force=False,now=None):
     """HTML is static. Running status publishes at most once/minute or on a phase boundary."""
     study=Path(study);now=time.monotonic() if now is None else now
-    boundary=(file_stamp(study/'study-manifest.json'),file_stamp(study/'active-process.json'))
+    boundary=tuple(file_stamp(study/name) for name in ['study-manifest.json','active-process.json','capacity-wait.json'])
     previous=_PUBLISH.get(str(study))
     if previous and not force and previous['boundary']==boundary and now-previous['at']<INTERVAL_SECONDS:
         return {'published':False,'reason':'rate_limited','bytes_written':0}
@@ -153,6 +153,12 @@ def publish(study,*,force=False,now=None):
     message=manifest.get('stop_reason','') if stopped else manifest.get('problem',{}).get('reason','')
     if not message:message=f"{plan.get('model','Luna')} / {plan.get('reasoning','high')} · {plan.get('control_steps',600)} controls per episode. Only public observations are supplied to the actor."
     status='Experiments stopped' if stopped else 'Running' if running else 'Complete' if manifest.get('completed') else 'Waiting / no live actor'
+    capacity=read(study/'capacity-wait.json',{})
+    if capacity.get('waiting') and not stopped:
+        status='Waiting for shared memory capacity'
+        shared=capacity.get('shared_headroom_gib')
+        shared=f'{shared:.1f} GiB' if isinstance(shared,(int,float)) else 'not limited'
+        message=f"The next Luna actor has not started. Additional headroom needed: {capacity['additional_headroom_needed_gib']:.1f} GiB; available shared-pool headroom including clean inactive file cache: {shared}. Waiting does not consume the episode budget."
     if active.get('status')=='running' and not running and not stopped:message='The saved process is no longer alive; its last result is recorded below.'
     links={'Study protocol':'study-manifest.json','Declared cases':'plan.json'}
     if manifest.get('superseded_by'):links['Open the new rerun']=manifest['superseded_by']

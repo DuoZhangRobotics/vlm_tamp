@@ -25,6 +25,16 @@ def test_holdouts_are_paired_and_excluded_from_this_study_training_and_regressio
     assert not plan['evaluation_notebooks_fed_forward']
 
 
+def test_selected_canary_is_one_declared_case_and_is_not_repeated_in_the_batch():
+    manifest={'plan':study.plan(),'completed_runs':[]}
+    name='baseline-r1-close_microwave-state049-600'
+    rows=study.pending_baselines(manifest,name,1)
+    assert len(rows)==1 and rows[0]['run']==name
+    manifest['completed_runs'].append({'run':name})
+    remaining=study.pending_baselines(manifest)
+    assert len(remaining)==11 and name not in {r['run'] for r in remaining}
+
+
 def test_supplied_tool_help_matches_live_grasp_and_collision_contract():
     for method in ['plan_grasp','plan_sequence']:
         count=inspect.signature(getattr(RobotService,method)).parameters['max_candidates'].default

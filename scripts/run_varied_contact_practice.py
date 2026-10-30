@@ -66,6 +66,9 @@ def audit_memory_input(out,expected_hash):
 def run_actor(study,name,arguments,*,control_steps,episode_seconds,expected_attempts,expected_memory_hash):
     out=study/'trials'/name
     if out.exists():raise FileExistsError('Preserving existing run '+str(out))
+    if os.environ.get('VLM_TAMP_CAPACITY_STATE'):
+        from supervise_luna_dashboard_study import wait_for_capacity
+        wait_for_capacity(study,name)
     command=actor_command(out,arguments,control_steps=control_steps,episode_seconds=episode_seconds)
     with (study/(name+'.log')).open('x') as stream:
         process=subprocess.Popen(command,cwd=ROOT,env=os.environ.copy(),stdout=stream,stderr=subprocess.STDOUT)
