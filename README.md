@@ -1,14 +1,29 @@
 # VLM grounding for constraint-aware TAMP — Stage 1
 
+## Current state: stopped after the repeated I/O outage
+
+The rerun was stopped after SSH access degraded. The confirmed defect was an
+unbounded native collision-scene cache; a long push grew the job to 57.4 GiB.
+The cache is now bounded, with matching collision results in offline checks.
+The watchdog is independent of process inspection and future jobs require a
+kernel-enforced memory limit. No full episode has been run with this repair.
+Read the [resource incident and write-volume handoff](docs/io_memory_recurrence_20261030.md).
+
+The inspection viewer now defaults to paused display updates and lists all four
+current recordings. Open `results/luna-pipeline-validation-rerun-20261030/watch.html`
+with Live Preview and reload once to use the new interface. The workspace turns
+off Live Preview auto-reload; videos load only when Play is pressed.
+
 ## Small dashboard and authorized rerun (30 October 2026)
 
-The user authorized rerunning the experiments after reducing dashboard I/O.
+The user previously authorized rerunning the experiments after reducing dashboard I/O.
 The main page is now under 10 KB, with small once-per-minute status updates and
 run details/media loaded on demand. See the
 [dashboard and rerun handoff](docs/luna_dashboard_rerun_20261030.md).
 Open `results/luna-pipeline-validation-rerun-20261030/watch.html` with Live
 Preview. A monitored first episode checks server I/O before the remaining
-baseline, clean practice and held-out comparisons proceed.
+baseline, clean practice and held-out comparisons proceed. This rerun was
+subsequently stopped; see the current-state handoff above.
 
 ## Experiments stopped for I/O investigation (30 October 2026)
 

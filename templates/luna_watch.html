@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Luna experiments — inspection</title>
+<style>
+:root{font:16px system-ui;color:#203249;background:#f3f6fa}body{max-width:1180px;margin:28px auto;padding:0 18px}h1{font-size:28px}h2{font-size:20px}.muted{color:#607088;font-size:14px}section,article{background:white;border:1px solid #d6dfeb;border-radius:10px;padding:18px;margin:16px 0}button,select{padding:8px;font:inherit}button{cursor:pointer}a{color:#1462ad}table{width:100%;border-collapse:collapse}th,td{padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;vertical-align:top}.scroll{overflow:auto}.stats{display:flex;gap:22px;flex-wrap:wrap}.stats b{display:block;font-size:22px}.gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}.gallery article{margin:0}.gallery h3{margin:0 0 8px}img,video{max-width:100%;max-height:430px}video{width:100%;background:#111}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px}details{margin:12px 0}summary{cursor:pointer}progress{width:100%}.links a{display:inline-block;margin:5px 14px 5px 0}#updateNote{color:#8b5000}[hidden]{display:none!important}
+</style></head><body>
+<h1>Luna experiments</h1>
+<p id="status">Loading saved results…</p><p id="stamp" class="muted"></p>
+<p><button id="refresh">Refresh results</button> <label><input id="live" type="checkbox"> Live status updates (60 seconds)</label></p>
+<p id="displayMode" class="muted">Display updates are paused. Experiments continue independently.</p>
+<section><div id="totals" class="stats"></div><p id="message"></p><p id="studyLinks" class="links"></p></section>
+<section><h2>All recorded videos <span id="videoCount" class="muted"></span></h2>
+<p class="muted">Every available episode in this study is listed here. Nothing downloads until you press Play. Paused playback stays at its current position when results update.</p>
+<div id="videos" class="gallery"></div><p id="videoEmpty" class="muted"></p></section>
+<section><h2>All runs</h2><div class="scroll"><table><thead><tr><th>Run / case</th><th>Memory</th><th>Task outcome</th><th>Controls</th><th>Actor time</th><th>Details</th></tr></thead><tbody id="runs"></tbody></table></div></section>
+<section id="detailPanel" hidden><h2 id="runTitle"></h2><p id="runStatus"></p><progress id="controls" value="0" max="600"></progress>
+<p><button id="updateRun">Update selected run</button> <span id="updateNote"></span></p><p class="muted">This inspection stays fixed until you request an update or select another run.</p>
+<p id="runLinks" class="links"></p>
+<details id="frameDetails" data-open-key="frame"><summary>Recorded robot view</summary><img id="frame" alt="Recorded robot view" hidden></details>
+<details id="contactDetails" data-open-key="contact"><summary>Contact overlay</summary><img id="overlay" alt="Selected contact" hidden></details>
+<h3>Skill and feedback</h3><div id="skill"></div>
+<h3>Time breakdown</h3><p id="timeScope" class="muted"></p><div id="times"></div>
+<details id="timingDetails" data-open-key="timing"><summary>Perception, grasp generation, IK, planning and execution</summary>
+<p class="muted">These measurements are nested inside tool time and overlap. Do not add the sections together.</p><div id="nested"></div></details>
+<h3>Reported issues</h3><p class="muted">A rejected request may have been recovered from. Full records remain available in the tool log.</p><div id="issues"></div></section>
+<p id="health" class="muted"></p>
+<script src="watch.js"></script></body></html>

@@ -10,6 +10,7 @@ import resource
 import sys
 import tempfile
 import time
+import weakref
 
 import numpy as np
 from scipy.spatial import cKDTree,HalfspaceIntersection
@@ -26,7 +27,8 @@ SOURCE=ROOT/'src/vlm_tamp/native/mcvamp_mechanism.cc'
 FLOAT=ctypes.POINTER(ctypes.c_float)
 DOUBLE=ctypes.POINTER(ctypes.c_double)
 INTEGER=ctypes.POINTER(ctypes.c_int)
-_TREE_CACHE={}
+from .native_scene_cache import NativeSceneCache
+_TREE_CACHE=NativeSceneCache()
 
 
 def cleanup_worker_dumps(pid,started_at,*,folder=None,executable=None):
@@ -45,7 +47,6 @@ def cleanup_worker_dumps(pid,started_at,*,folder=None,executable=None):
 
 
 def clear_native_cache():
-    for library,handle,_ in _TREE_CACHE.values():library.mcvamp_destroy(handle)
     _TREE_CACHE.clear()
 
 
@@ -200,14 +201,11 @@ class NativeScene:
         identity.update(str(point_radius).encode())
         key=identity.hexdigest()
         before=time.perf_counter()
-        reused=key in _TREE_CACHE
-        if not reused:
-            base=self.lib.mcvamp_create(_pointer(static),len(static),_pointer(moving),len(moving),
-                _pointer(contact),len(contact),_pointer(config),_pointer(grip),len(grip),point_radius)
-            if not base:raise RuntimeError('Native CAPT construction failed')
-            _TREE_CACHE[key]=(self.lib,base,time.perf_counter()-before)
-        self.handle=self.lib.mcvamp_clone(_TREE_CACHE[key][1],_pointer(config),_pointer(grip),len(grip))
+        cached,reused=_TREE_CACHE.acquire(key,self.lib,lambda: self.lib.mcvamp_create(_pointer(static),len(static),_pointer(moving),len(moving),
+                _pointer(contact),len(contact),_pointer(config),_pointer(grip),len(grip),point_radius))
+        self.handle=self.lib.mcvamp_clone(cached[1],_pointer(config),_pointer(grip),len(grip))
         if not self.handle:raise RuntimeError('Native CAPT construction failed')
+        self._release=weakref.finalize(self,self.lib.mcvamp_destroy,self.handle)
         planes,offsets,bounds=gripper_convex(metadata,self.world_robot,parts,gripper_padding)
         if not self.lib.mcvamp_set_gripper_convex(self.handle,_pointer(planes),offsets.ctypes.data_as(INTEGER),
                 _pointer(bounds),len(bounds),gripper_padding):
@@ -215,9 +213,9 @@ class NativeScene:
         self.record={'planner':'MC-VAMP CRRTC','upstream_revision':build['upstream_revision'],
             'native_adapter_sha256':build['source_sha256'],'frame_validation':frames,
             'static_points':len(static),'moving_noncontact_points':len(moving),'selected_contact_points':len(contact),
-            'point_radius_m':point_radius,'capt_build_seconds':0. if reused else _TREE_CACHE[key][2],
+            'point_radius_m':point_radius,'capt_build_seconds':0. if reused else cached[2],
             'context_setup_seconds':time.perf_counter()-before,
-            'shared_cloud_index_build_seconds':_TREE_CACHE[key][2],
+            'shared_cloud_index_build_seconds':cached[2],
             'static_voxel_spacing_m':.0075,'moving_voxel_spacing_m':.005,'contact_voxel_spacing_m':.003,
             'capt_radius_bounds_m':[.006,.081],'capt_tree_reused':reused,
             'gripper_cover_spheres':len(grip),'gripper_cover':parts,'gripper_cell_spacing_m':.012,
@@ -341,7 +339,9 @@ class NativeScene:
         return float(delta@self.axis)
 
     def close(self):
-        if getattr(self,'handle',None):self.lib.mcvamp_destroy(self.handle);self.handle=None
+        release=getattr(self,'_release',None)
+        if release is not None:release()
+        self.handle=None
 
     def __enter__(self):return self
     def __exit__(self,*args):self.close()

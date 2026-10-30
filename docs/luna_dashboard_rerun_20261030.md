@@ -1,5 +1,9 @@
 # Small live dashboard and authorized rerun — 30 October 2026
 
+This version was subsequently stopped after the repeated resource outage.
+The [resource repair handoff](io_memory_recurrence_20261030.md) supersedes its
+monitoring and UI behavior. Experiments remain stopped.
+
 The user authorized a rerun after making `watch.html` smaller and writing it
 less frequently. The new study is
 `results/luna-pipeline-validation-rerun-20261030`; its `watch.html` is the current
@@ -45,8 +49,8 @@ The first episode counts as one of the twelve. No old evaluator notes are
 supplied. The existing parent review of exact learner-authored transfer memory
 is an analyst step, not another user-approval requirement.
 
-`scripts/supervise_luna_dashboard_study.py` samples its own systemd job's cgroup
-memory and process I/O counters every 15 seconds. Logs are small local files;
+The original `scripts/supervise_luna_dashboard_study.py` sampled its own systemd
+job's cgroup memory and process I/O counters every 15 seconds. Logs are small local files;
 the dashboard reads their latest sample. Process `rchar/wchar` include IPC,
 and sums can fall when a process exits, so they are not treated as NFS bandwidth.
 The host pressure measurements also include unrelated workloads.

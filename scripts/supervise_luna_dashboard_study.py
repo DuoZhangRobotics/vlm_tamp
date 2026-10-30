@@ -12,10 +12,14 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
+import queue
 import time
 
 ROOT=Path(__file__).resolve().parents[1]
-SAMPLE_SECONDS=15
+SAMPLE_SECONDS=2
+DETAIL_SECONDS=15
+MAX_JOB_MEMORY_BYTES=32*1024**3
 
 
 def write(path,value):
@@ -35,30 +39,66 @@ def cgroup_path():
     return Path('/sys/fs/cgroup')/row.split('::',1)[1].lstrip('/')
 
 
-def sample(group):
-    io=pressure('io');memory=pressure('memory');pids=[];totals={}
+def process_details(group):
+    """Optional diagnostics: /proc PID inspection must never block the watchdog."""
+    pids=[];totals={}
     for value in (group/'cgroup.procs').read_text().split():
         pid=int(value)
         try:
             counters={k:int(v) for k,v in (line.split(':',1) for line in Path(f'/proc/{pid}/io').read_text().splitlines())}
             name=Path(f'/proc/{pid}/comm').read_text().strip()
-            args=Path(f'/proc/{pid}/cmdline').read_bytes().decode(errors='replace').split('\0')
-            entrypoint=name
-            if name.startswith('python'):
-                if '-m' in args and args.index('-m')+1<len(args):entrypoint=args[args.index('-m')+1]
-                else:entrypoint=next((Path(x).name for x in args[1:] if x.endswith('.py')),name)
-            state=Path(f'/proc/{pid}/stat').read_text().rsplit(')',1)[1].split()[0]
+            # Avoid reading target address spaces (including cmdline) here.
+            fields=Path(f'/proc/{pid}/stat').read_text().rsplit(')',1)[1].split()
+            state=fields[0];parent=int(fields[1])
             wait=Path(f'/proc/{pid}/wchan').read_text().strip()
         except (OSError,ValueError,IndexError):continue
-        pids.append({'pid':pid,'name':name,'entrypoint':entrypoint,'state':state,'wait_channel':wait,'io':counters})
+        pids.append({'pid':pid,'ppid':parent,'name':name,'state':state,'wait_channel':wait,'io':counters})
         for k,v in counters.items():totals[k]=totals.get(k,0)+v
+    return {'time':time.time(),'process_io_sum':totals,'processes':pids}
+
+
+def sample(group):
+    started=time.monotonic();io=pressure('io');memory=pressure('memory')
     return {'time':time.time(),'io_full_avg10':io.get('full',{}).get('avg10',0),
             'io_some_avg10':io.get('some',{}).get('avg10',0),
             'memory_full_avg10':memory.get('full',{}).get('avg10',0),
             'job_memory_gib':int((group/'memory.current').read_text())/1024**3,
             'job_memory_peak_gib':int((group/'memory.peak').read_text())/1024**3,
-            'process_io_sum':totals,'processes':pids,
-            'counter_scope':'Current cgroup processes; sums can fall when processes exit. rchar/wchar include IPC, not only disk I/O.'}
+            'health_read_seconds':time.monotonic()-started}
+
+
+def require_memory_limit(group):
+    limit=(group/'memory.max').read_text().strip()
+    swap=(group/'memory.swap.max').read_text().strip()
+    whole_job=(group/'memory.oom.group').read_text().strip()
+    if limit=='max' or int(limit)>MAX_JOB_MEMORY_BYTES or swap!='0' or whole_job!='1':
+        raise RuntimeError('Launch in a systemd service with MemoryMax=32G, MemorySwapMax=0 and OOMPolicy=kill; experiments must not run with unbounded host memory.')
+    return int(limit)
+
+
+class ProcessSampler:
+    """One daemon may inspect processes; the health loop never waits for it."""
+    def __init__(self,group):
+        self.group=group;self.queue=queue.Queue(maxsize=1);self.stopped=threading.Event();self.latest={}
+        self.thread=threading.Thread(target=self._work,daemon=True)
+        self.thread.start()
+
+    def _work(self):
+        while not self.stopped.is_set():
+            try:value=process_details(self.group)
+            except OSError as error:value={'time':time.time(),'error':str(error)}
+            try:self.queue.get_nowait()
+            except queue.Empty:pass
+            self.queue.put_nowait(value)
+            self.stopped.wait(DETAIL_SECONDS)
+
+    def read(self):
+        try:self.latest=self.queue.get_nowait()
+        except queue.Empty:pass
+        return self.latest
+
+    def close(self):
+        self.stopped.set()  # Never join a potentially blocked /proc reader.
 
 
 def pressure_stop(samples):
@@ -89,9 +129,11 @@ def mark_interruption(study,reason):
 
 
 def run(study,stages):
-    local=Path(tempfile.mkdtemp(prefix='vlm-luna-resource-monitor-'));group=cgroup_path()
+    group=cgroup_path();limit=require_memory_limit(group)
+    local=Path(tempfile.mkdtemp(prefix='vlm-luna-resource-monitor-'));details=ProcessSampler(group)
     state={'pid':os.getpid(),'started_at':time.time(),'status':'running','local_directory':str(local),
-           'sample_interval_seconds':SAMPLE_SECONDS,'stages':stages,
+           'sample_interval_seconds':SAMPLE_SECONDS,'detail_interval_seconds':DETAIL_SECONDS,
+           'memory_limit_bytes':limit,'stages':stages,
            'stop_policy':'Three consecutive samples with host full I/O pressure >=10% or full memory pressure >=5%. Infrastructure interruption; no automatic retries.'}
     write(study/'resource-monitor.json',{'latest_sample':str(local/'latest.json'),'samples':str(local/'samples.jsonl'),
                                        'supervisor':str(local/'supervisor.json'),'policy':state['stop_policy']})
@@ -111,7 +153,11 @@ def run(study,stages):
                 child=subprocess.Popen(command,cwd=ROOT,stdout=stream,stderr=subprocess.STDOUT,start_new_session=True)
                 state['driver_pid']=child.pid;write(local/'supervisor.json',state)
                 while child.poll() is None:
-                    row=sample(group);history.append(row);history=history[-3:]
+                    row=sample(group);extra=details.read()
+                    row.update(processes=extra.get('processes',[]),process_io_sum=extra.get('process_io_sum',{}),
+                               process_details_age_seconds=row['time']-extra['time'] if extra.get('time') else None,
+                               counter_scope='Asynchronous process diagnostics may be stale. rchar/wchar include IPC; sums can fall when processes exit.')
+                    history.append(row);history=history[-3:]
                     write(local/'latest.json',row)
                     with (local/'samples.jsonl').open('a') as samples:samples.write(json.dumps(row)+'\n')
                     interrupted=interrupted or pressure_stop(history)
@@ -137,6 +183,7 @@ def run(study,stages):
         write(local/'supervisor.json',state);write(study/'supervisor-state.json',state)
         return 0
     finally:
+        details.close()
         if child is not None and child.poll() is None:
             os.killpg(child.pid,signal.SIGTERM)
 

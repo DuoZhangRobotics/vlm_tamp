@@ -64,7 +64,19 @@ def test_inactive_publisher_does_not_keep_writing_heartbeats(tmp_path,monkeypatc
 
 
 def test_static_page_uses_lazy_media_and_data_polling():
-    assert 'location.reload' not in dashboard.HTML
-    assert 'preload="none"' in dashboard.HTML and 'loading="lazy"' in dashboard.HTML
-    assert '60000' in dashboard.HTML and '!document.hidden' in dashboard.HTML
-    assert 'watch-status.json' in dashboard.HTML
+    assert 'location.reload' not in dashboard.CLIENT_JS
+    assert "video.preload='none'" in dashboard.CLIENT_JS
+    assert '60000' in dashboard.CLIENT_JS and '!document.hidden' in dashboard.CLIENT_JS
+    assert 'watch-status.json' in dashboard.CLIENT_JS
+    assert 'id="live" type="checkbox" checked' not in dashboard.HTML
+
+
+def test_video_index_contains_every_saved_episode(tmp_path,monkeypatch):
+    study,run,_=fixture(tmp_path,monkeypatch)
+    for i in [1,2,3]:
+        p=run/f'attempt{i:02d}/initial/rollout.mp4';p.parent.mkdir(parents=True);p.write_bytes(b'recorded')
+    (run/'evaluation-private.json').write_text(json.dumps({'attempts':[{'attempt':1,'control_steps':600},{'attempt':2,'control_steps':400}]}))
+    dashboard.publish(study,now=0)
+    videos=json.loads((study/'watch-status.json').read_text())['runs'][0]['videos']
+    assert len(videos)==3
+    assert [v['partial'] for v in videos]==[False,False,True]

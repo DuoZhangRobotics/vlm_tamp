@@ -13,57 +13,12 @@ INTERVAL_SECONDS = 60
 _PUBLISH = {}
 _DETAILS = {}
 
-HTML = '''<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Luna experiments</title><style>
-:root{font:16px system-ui;color:#203249;background:#f3f6fa}body{max-width:1140px;margin:28px auto;padding:0 18px}h1{font-size:28px}h2{font-size:20px;margin-top:0}.muted{color:#607088;font-size:14px}section{background:white;border:1px solid #d6dfeb;border-radius:10px;padding:18px;margin:16px 0}button,select{padding:8px;font:inherit}a{color:#1462ad}table{width:100%;border-collapse:collapse}th,td{padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;vertical-align:top}td:last-child{overflow-wrap:anywhere}.scroll{overflow:auto}.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.stats{display:flex;gap:22px;flex-wrap:wrap}.stats b{display:block;font-size:22px}img,video{max-width:100%;max-height:470px}video{width:100%;background:#111}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px}details{margin:12px 0}summary{cursor:pointer}tr[data-run]{cursor:pointer}tr[data-run]:hover{background:#eef5fc}progress{width:100%}.warning{color:#964b00}.links a{display:inline-block;margin:5px 14px 5px 0}@media(max-width:720px){.grid{grid-template-columns:1fr}}
-</style></head><body>
-<h1>Luna experiments</h1>
-<p id="status">Loading saved status…</p><p class="muted" id="stamp"></p>
-<p><button id="refresh">Refresh status</button> <label><input id="follow" type="checkbox" checked> Follow current run</label></p>
-<p class="muted">Small status updates once per minute while this tab is visible. Video playback and scroll position stay in place. Detailed logs open only when requested.</p>
-<section><div id="totals" class="stats"></div><p id="message"></p><p id="studyLinks" class="links"></p></section>
-<section><h2>Runs</h2><div class="scroll"><table><thead><tr><th>Run / case</th><th>Memory</th><th>Task outcome</th><th>Controls</th><th>Actor time</th></tr></thead><tbody id="runs"></tbody></table></div></section>
-<section><h2 id="runTitle">Select a run</h2><p id="runStatus"></p><progress id="controls" max="600" value="0"></progress>
-<p id="runLinks" class="links"></p>
-<div class="grid"><div><h3>Recorded view</h3><img id="frame" alt="Last recorded robot view" hidden loading="lazy"><p id="frameNote" class="muted"></p></div>
-<div><h3>Video</h3><select id="videoChoice" aria-label="Episode video"></select> <button id="loadVideo">Play selected video</button><p><video id="video" controls preload="none" hidden></video></p><p class="muted">Videos are not downloaded until selected for playback.</p></div></div>
-<details id="contactDetails"><summary>Selected contact overlay</summary><img id="overlay" alt="Selected contact" hidden loading="lazy"></details>
-<h3>Latest skill and feedback</h3><div id="skill"></div>
-<h3>Time breakdown</h3><p id="timeScope" class="muted"></p><div id="times"></div>
-<details><summary>Perception, grasp generation, IK, goal search and execution details</summary><p class="muted">These measurements are nested inside tool time and overlap. Do not add the sections together.</p><div id="nested"></div></details>
-<h3>Recent reported issues</h3><p class="muted">A rejected request may have been recovered from. These records do not by themselves establish the cause of task failure.</p><div id="issues"></div>
-</section><p id="health" class="muted"></p>
-<script>
-const el=id=>document.getElementById(id);let state=null,chosen=new URLSearchParams(location.search).get('run'),detail=null,lastDetail=null,busy=false;if(chosen)el('follow').checked=false;
-const num=x=>typeof x==='number'?x.toFixed(1):'—';
-function text(id,value){el(id).textContent=value??''}
-function link(parent,label,path){if(!path)return;const a=document.createElement('a');a.textContent=label;a.href=path;a.target='_blank';a.rel='noopener';parent.append(a)}
-function table(parent,rows){const t=document.createElement('table');for(const row of rows){const tr=t.insertRow();for(const v of row){const td=tr.insertCell();td.textContent=v??'—'}}parent.append(t)}
-function image(id,path){const node=el(id);node.hidden=!path;if(path&&node.getAttribute('src')!==path)node.setAttribute('src',path);if(!path)node.removeAttribute('src')}
-function playChoice(){const p=el('videoChoice').value;const v=el('video');v.hidden=!p;if(p&&v.getAttribute('src')!==p){v.src=p;v.load()}if(p)v.play().catch(()=>{})}
-function showRun(d){detail=d;text('runTitle',d.label);text('runStatus',d.status_text);el('controls').max=d.maximum_control_steps||600;el('controls').value=d.control_steps||0;
- el('runLinks').replaceChildren();for(const [name,path] of Object.entries(d.links||{}))link(el('runLinks'),name,path);
- image('frame',d.frame);text('frameNote',d.frame?'Recorded evidence, not a live camera stream.':'Completed episode videos and image records are linked above.');el('overlay').dataset.path=d.contact_overlay||'';image('overlay',el('contactDetails').open?d.contact_overlay:null);
- const videos=JSON.stringify(d.videos||[]);if(el('videoChoice').dataset.list!==videos){const old=el('videoChoice').value;el('videoChoice').replaceChildren();for(const x of d.videos||[]){const o=document.createElement('option');o.value=x.path;o.textContent=x.label;el('videoChoice').append(o)}el('videoChoice').dataset.list=videos;if([...el('videoChoice').options].some(o=>o.value===old))el('videoChoice').value=old;if(el('video').paused){el('video').removeAttribute('src');el('video').hidden=true}}
- el('skill').replaceChildren();table(el('skill'),Object.entries(d.skill||{}));
- el('times').replaceChildren();const p=d.timing||{};text('timeScope',p.outside_service_scope||'Completed tool calls are timed; active requests may still be in progress.');
- table(el('times'),[['Actor total (s)',num(p.actor_wall_seconds)],['Robot tools, inclusive (s)',num(p.service_wall_seconds)],['Outside tools: Luna + transport + local analysis (s)',num(p.outside_service_seconds)]]);
- table(el('times'),Object.entries(p.service_seconds_by_operation||{}).map(([k,v])=>[k,num(v)+' s']));
- el('nested').replaceChildren();for(const [k,v] of Object.entries(p)){if(!k.startsWith('nested_')||typeof v!=='object'||!v)continue;const h=document.createElement('h4');h.textContent=k.replaceAll('_',' ');el('nested').append(h);table(el('nested'),Object.entries(v).map(([n,s])=>[n.replaceAll('_',' '),num(s)+' s']))}
- el('issues').replaceChildren();for(const issue of d.issues||[]){const box=document.createElement('details');const s=document.createElement('summary');s.textContent='Event '+issue.event+' · '+issue.operation+' · '+issue.reason;box.append(s);if(issue.diagnostic){const pre=document.createElement('pre');pre.textContent=JSON.stringify(issue.diagnostic,null,2);box.append(pre)}el('issues').append(box)}
-}
-async function selectRun(id,manual=false){if(manual)el('follow').checked=false;if(chosen!==id&&!el('video').paused)el('video').pause();chosen=id;const row=(state?.runs||[]).find(r=>r.id===id);if(!row)return;const key=row.detail+'?v='+row.detail_version;if(key===lastDetail)return;const r=await fetch(key,{cache:'no-cache'});if(!r.ok)throw Error('Run details are not available yet');const d=await r.json();if(chosen===id){showRun(d);lastDetail=key}}
-async function refresh(){if(busy)return;busy=true;try{const r=await fetch('watch-status.json',{cache:'no-cache'});if(!r.ok)throw Error('Saved status is not available yet');state=await r.json();
- text('status',state.status_text);text('message',state.message);const age=(Date.now()/1000-state.checked_at);text('stamp','Last check: '+new Date(state.checked_at*1000).toLocaleString()+(state.running&&age>150?' · Status is stale; the publisher may have stopped.':''));
- el('totals').replaceChildren();for(const [name,v] of Object.entries(state.totals||{})){const div=document.createElement('div');const b=document.createElement('b');b.textContent=v.finished+' / '+v.planned;div.append(b,document.createTextNode(name)) ;el('totals').append(div)}
- el('studyLinks').replaceChildren();for(const [name,path] of Object.entries(state.links||{}))link(el('studyLinks'),name,path);
- el('runs').replaceChildren();for(const row of state.runs||[]){const tr=document.createElement('tr');tr.dataset.run=row.id;for(const v of [row.label,row.memory,row.outcome,row.controls,num(row.actor_seconds)+' s']){const td=document.createElement('td');td.textContent=v??'—';tr.append(td)}tr.onclick=()=>selectRun(row.id,true).catch(e=>text('runStatus',e.message));el('runs').append(tr)}
- text('health',state.health_text||'');const next=state.active_run||(state.runs||[]).at(-1)?.id;if(!chosen||(el('follow').checked&&el('video').paused))chosen=next;if(chosen)await selectRun(chosen);
- }catch(e){text('status','Open watch.html with VS Code Live Preview to load the saved status. '+e.message)}finally{busy=false}}
-el('refresh').onclick=refresh;el('loadVideo').onclick=playChoice;el('contactDetails').ontoggle=()=>{if(el('contactDetails').open)image('overlay',el('overlay').dataset.path)};el('follow').onchange=refresh;
-setInterval(()=>{if(!document.hidden&&state?.running)refresh()},60000);document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state?.running)refresh()});refresh();
-</script></body></html>'''
+TEMPLATES = Path(__file__).resolve().parents[1]/'templates'
+HTML_PATH = TEMPLATES/'luna_watch.html'
+CLIENT_PATH = TEMPLATES/'luna_watch.js'
+HTML = HTML_PATH.read_text()
+CLIENT_JS = CLIENT_PATH.read_text()
+
 
 
 def _write(path,text):
@@ -142,7 +97,13 @@ def _run_data(study,run,entry,active):
     if active:
         frames=sorted(run.glob('attempt*/initial/frames/step*.jpg'))
         if frames:frame=_relative(frames[-2] if len(frames)>1 else frames[-1],study)
-    videos=[{'label':p.parent.parent.name,'path':_relative(p,study)} for p in sorted(run.glob('attempt*/initial/rollout.mp4'))]
+    videos=[]
+    for movie in sorted(run.glob('attempt*/initial/rollout.mp4')):
+        attempt_name=movie.parent.parent.name
+        number=int(attempt_name.removeprefix('attempt'))
+        completed=any(a.get('attempt')==number for a in attempts)
+        videos.append({'label':attempt_name+(' · partial recording' if not completed else ''),
+                       'path':_relative(movie,study),'partial':not completed})
     links={label:_relative(run/path,study) for label,path in
            [('Tool log','tool-events.jsonl'),('Luna input/output','agent-events.jsonl'),('Prompt','agent-prompt.txt'),
             ('Episode report','report/index.html'),('Findings','agent-workspace/findings.txt'),
@@ -160,7 +121,7 @@ def _run_data(study,run,entry,active):
     path=run/'watch-data.json';written=_json(path,data)
     summary={'id':run.name,'label':label,'memory':entry.get('memory_condition','none'),
              'outcome':outcome,'controls':controls,'actor_seconds':agent.get('wall_seconds'),
-             'detail':_relative(path,study),'detail_version':file_stamp(path)[0]}
+             'detail':_relative(path,study),'detail_version':file_stamp(path)[0],'videos':videos}
     _DETAILS[str(run)]=(stamp,summary)
     return summary,written
 
@@ -176,7 +137,8 @@ def publish(study,*,force=False,now=None):
     stopped=manifest.get('experiments_stopped_by_user',False);running=_live_process(active) and not stopped
     if previous and not force and not running and previous['boundary']==boundary:
         return {'published':False,'reason':'unchanged_inactive','bytes_written':0}
-    started=time.perf_counter();html_bytes=_write(study/'watch.html',HTML);written=html_bytes
+    started=time.perf_counter();html_bytes=_write(study/'watch.html',HTML_PATH.read_text())
+    client_bytes=_write(study/'watch.js',CLIENT_PATH.read_text());written=html_bytes+client_bytes
     completed=manifest.get('completed_runs',[]);entries={r['run']:r for r in completed}
     if active.get('run') not in entries and active.get('run'):entries[active['run']]={'run':active['run'],'memory_condition':'none'}
     runs=[]
@@ -198,12 +160,15 @@ def publish(study,*,force=False,now=None):
     resource=read(Path(monitor['latest_sample']),{}) if monitor.get('latest_sample') else {}
     health=''
     if resource:
-        health=f"Server I/O pressure (10-second average): {resource.get('io_full_avg10','unavailable')}%. Job memory: {resource.get('job_memory_gib','unavailable')} GiB. Resource measurements are separate from task outcomes."
+        label='Latest experiment sample' if running else 'Last recorded experiment sample before shutdown (not a current server reading)'
+        memory=resource.get('job_memory_gib')
+        memory=f'{memory:.1f}' if isinstance(memory,(int,float)) else 'unavailable'
+        health=f"{label}: I/O pressure {resource.get('io_full_avg10','unavailable')}%; job memory {memory} GiB."
     payload={'checked_at':time.time(),'running':running,'status_text':status+' · '+phase,
              'message':message,'totals':totals,'runs':runs,'active_run':active.get('run') if running else None,
              'links':links,'health_text':health,'publish_interval_seconds':INTERVAL_SECONDS}
     written+=_json(study/'watch-status.json',payload)
-    result={'published':True,'html_bytes_written':html_bytes,'bytes_written':written,
+    result={'published':True,'html_bytes_written':html_bytes,'client_bytes_written':client_bytes,'bytes_written':written,
             'seconds':time.perf_counter()-started,'runs':len(runs)}
     _PUBLISH[str(study)]={'at':now,'boundary':boundary}
     return result
