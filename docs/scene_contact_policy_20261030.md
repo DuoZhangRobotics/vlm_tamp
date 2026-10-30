@@ -1,5 +1,9 @@
 # Environment collision checking restored for live robot tools
 
+The subsequent [empty-grasp audit](empty_grasp_diagnosis_20261030.md) explains
+the remaining grasp failure and separates pad-tip clearance from the 22 mm
+pad-midpoint-to-handle-axis distance reported below.
+
 User instruction: check the arm and palm against the environment, allow
 intended finger-pad contact, and keep the extra dense path validation removed.
 
