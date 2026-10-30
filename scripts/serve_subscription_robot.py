@@ -792,7 +792,9 @@ class RobotService:
                     'grasp_ik_cpu_postprocessing_seconds':sum(q.get('cpu_postprocessing_seconds',0.) for q in queries),
                     'grasp_ik_total_seconds':sum(q.get('wall_seconds',0.) for q in queries)})
         with measured_phase('generation'):
-            generated = self.resources.grasps(self.cloud, folder/'generation')
+            generated = self.resources.grasps(self.cloud, folder/'generation',
+                num_grasps=int(self.config.get('graspgen_samples',8)),
+                topk=int(self.config.get('graspgen_topk',8)))
         with measured_phase('scene_preparation'):
             aperture = self.spec['observed_handle_radius_m']+.001
             predicted = self.sim.fk(self.state['metadata']['joint_positions'], include_volumes=True,
@@ -835,7 +837,7 @@ class RobotService:
         self.selected = selected
         return selected
 
-    def plan_grasp(self, probe_degrees=3., max_candidates=24, seed=0, speed=None, hold=6, close_steps=40,approach_speed=None,budget_seconds=30.,collision_policy=None):
+    def plan_grasp(self, probe_degrees=3., max_candidates=8, seed=0, speed=None, hold=6, close_steps=40,approach_speed=None,budget_seconds=30.,collision_policy=None):
         speed=float(approach_speed if approach_speed is not None else speed if speed is not None else self.config.get('grasp_approach_speed_rad_s',.6))
         selected=self._select_contact(probe_degrees,max_candidates,seed,{**grasp_timing_options(speed,hold,close_steps),'maximum_grasp_search_seconds':min(float(budget_seconds),self.episode_status().get('remaining_wall_seconds') or float(budget_seconds)),
             'environment_collision_policy':collision_policy or self.config.get('environment_collision_policy','advisory')})
@@ -854,7 +856,7 @@ class RobotService:
             'note':'For a pinch grasp, open before planning, execute the approach with gripper=-1, then close at arrival and inspect grasp evidence. plan_sequence/execute_sequence stage approach/closure/manipulation automatically.'}
         return result
 
-    def plan_sequence(self,degrees,max_candidates=24,seed=0,grasp_constraint='jaw_axis',
+    def plan_sequence(self,degrees,max_candidates=8,seed=0,grasp_constraint='jaw_axis',
                       speed=.35,approach_speed=None,hold=6,close_steps=40,budget_seconds=30.,collision_policy=None):
         if grasp_constraint not in {'point','rigid','jaw_axis'}:raise ValueError('Unknown grasp constraint')
         approach_speed=float(self.config.get('grasp_approach_speed_rad_s',.6) if approach_speed is None else approach_speed)

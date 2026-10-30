@@ -36,6 +36,9 @@ Plan: plan_grasp, plan_arc, plan_joint, ik
 Act: execute, gripper, finish
 Settings: motion_settings (effective limits, speeds and collision policy)
 Combined planning: plan_sequence, execute_sequence
+Grasp planning: eight native GraspGen proposals, ranked by learned score; one
+closest valid IK and one approach query per pose. No angle/height/depth sweeps.
+The planner's returned path is used without an extra dense validation pass.
 Contact skills when enabled: push, hook_pull (execute by default; preview=true has no motion)
 push modes: controlled; push_and_release. Simulation contact collision predictions
 are advisory by default; collision_policy="veto" requests the stricter comparison.

@@ -36,7 +36,7 @@ def native_plan_status(count,stats):
     if stats.get('timed_out'):
         return 'dense_validation_timeout' if count in {-2,-3,-4,-5} else 'search_timeout'
     return {0:'no_path',-2:'dense_path_capacity',-3:'dense_projection_failed',-4:'dense_scene_collision',
-        -5:'dense_goal_collision',-9:'native_exception'}.get(count,str(count))
+        -5:'dense_goal_collision',-6:'planner_path_capacity',-9:'native_exception'}.get(count,str(count))
 
 
 def cleanup_worker_dumps(pid,started_at,*,folder=None,executable=None):
@@ -480,9 +480,11 @@ class NativeScene:
         result={'exact_solution':n>1,'status':native_plan_status(n,statistics),
             'planner':'MC-VAMP CRRTC' if constrained else 'VAMP RRTC','endpoints':endpoints,
             'total_seconds':time.perf_counter()-before,**statistics,
-            'sampled_motion_validation_step_rad':.006,'continuous_collision_certificate':False,
+            'path_validation':'upstream planner checks only',
+            'additional_dense_validation':False,'post_plan_projection':False,
+            'planner_motion_resolution':32,'continuous_collision_certificate':False,
             'maximum_solve_seconds':seconds,'maximum_planning_seconds':seconds,
-            'deadline_scope':'search and dense validation together','maximum_iterations':iterations}
+            'deadline_scope':'upstream planner search','maximum_iterations':iterations}
         path=output[:max(0,n)].astype(float)
         # Native float32 bounds can round a few ulps outside the exact driver
         # bounds. Normalize the returned references to the same real limits.

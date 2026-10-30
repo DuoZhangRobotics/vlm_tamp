@@ -307,28 +307,29 @@ class GraspGen:
             raise ValueError('Only the Panda diffusion/discriminator checkpoint is supported')
         self.sampler = GraspGenSampler(self.cfg)
 
-    def generate(self, cloud, out_dir, *, seed=0):
+    def generate(self, cloud, out_dir, *, seed=0, num_grasps=8, topk=8):
         torch = self.torch
         xyz = np.asarray(cloud, np.float32)
         if xyz.ndim != 2 or xyz.shape[1] != 3 or len(xyz) < 30 or not np.isfinite(xyz).all():
             raise ValueError('GraspGen needs at least 30 finite metric XYZ points')
         if type(seed) is not int or not 0<=seed<2**31:
             raise ValueError('Grasp seed must be an integer in [0, 2**31)')
+        if type(num_grasps) is not int or type(topk) is not int or not 1 <= topk <= num_grasps:
+            raise ValueError('Grasp counts must be integers with 1 <= topk <= num_grasps')
         np.random.seed(seed)
         torch.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
         torch.cuda.reset_peak_memory_stats()
         before = time.monotonic()
-        # sample returns raw 200 generated poses and discriminator scores. Keeping
-        # that output preserves the candidates discarded by top-100 ranking.
+        # One native sampler pass. Preserve every original pose and its score.
         with torch.inference_mode():
             poses, scores, contacts = self.sampler.sample(
-                torch.from_numpy(xyz).cuda(), threshold=-1., num_grasps=200, remove_outliers=True)
+                torch.from_numpy(xyz).cuda(), threshold=-1., num_grasps=num_grasps, remove_outliers=True)
         poses = poses.detach().cpu().numpy() if hasattr(poses, 'detach') else np.asarray(poses)
         scores = scores.detach().cpu().numpy() if hasattr(scores, 'detach') else np.asarray(scores)
         if len(poses):
             poses[:, 3, 3] = 1
-            order = np.argsort(-scores, kind='stable')[:100]
+            order = np.argsort(-scores, kind='stable')[:topk]
         else:
             poses = np.empty((0, 4, 4), float)
             scores = np.empty(0, float)
@@ -339,7 +340,8 @@ class GraspGen:
         out.mkdir(parents=True, exist_ok=True)
         np.savez_compressed(out / 'grasp_candidates.npz', poses_world_base=poses, scores=scores,
                             retained_indices=order, contacts=np.asarray(contacts) if contacts is not None else np.empty((0, 3)))
-        record = {'model': 'GraspGen Panda diffusion + discriminator', 'seed': seed, 'requested_candidates': 200,
+        record = {'model': 'GraspGen Panda diffusion + discriminator', 'seed': seed, 'requested_candidates': num_grasps,
+                  'requested_retained_candidates': topk,
                   'generated_candidates': len(poses), 'retained_candidates': len(order), 'tries': 1,
                   'contacts_provided_by_model': contacts is not None,
                   'approach_axis': '+z', 'closing_axis': '+x', 'pose_origin': 'gripper_base_link',

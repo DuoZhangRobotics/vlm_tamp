@@ -459,8 +459,8 @@ int mcvamp_project(void* p,const float* tsr,const float* q,float* result,double*
     *residual=c->distanceToConstraint(projected)[{0,0}];
     return std::isfinite(*residual) && *residual<=constraint_metric_threshold;
 }
-// Solve and perform constraint-aware dense resampling before returning a plan.
-// stats[8:]: solve seconds, resample seconds, iterations, sparse count, dense count.
+// Return the upstream planner solution without a second validation/resampling pass.
+// stats[8:]: solve seconds, post-validation seconds (zero), iterations, path count, returned count.
 int mcvamp_plan(void* p,const float* start,const float* goal,const float* tsr,int constrained,
                  int max_iterations,double seconds,float* output,int capacity,double* stats) {
     try {
@@ -494,64 +494,19 @@ int mcvamp_plan(void* p,const float* start,const float* goal,const float* tsr,in
         stats[8]=std::chrono::duration<double>(resample-before).count();
         stats[10]=solved.iterations; stats[11]=solved.path.size(); stats[12]=0;
         if(solved.path.size()<2) { statistics(s,stats); return 0; }
+        // Trust upstream's checked solution. The executor only time-parameterizes
+        // these segments; this adapter adds no dense collision/projection pass.
+        if(solved.path.size()>static_cast<size_t>(capacity)) {
+            statistics(s,stats); return -6;
+        }
+        alignas(32) std::array<float,8> q{};
         int n=0;
-        auto finish_dense=[&](int code) {
-            stats[9]=std::chrono::duration<double>(Clock::now()-resample).count();
-            stats[12]=n;statistics(s,stats);return code;
-        };
-        alignas(32) std::array<float,8> qa{},qb{};
-        // Resampling is a planning operation. Reject invalid dense solutions
-        // before execution; the executor subsequently sends every reference.
-        for(size_t k=0;k+1<solved.path.size();++k) {
-            solved.path[k].to_array(qa.data());solved.path[k+1].to_array(qb.data());
-            float gap=0;
-            for(size_t j=0;j<7;++j) gap=std::max(gap,std::abs(qb[j]-qa[j]));
-            const int subdivisions=std::max(1,int(std::ceil(gap/.006F)));
-            for(int i=0;i<subdivisions;++i) {
-                if(n>=capacity) return finish_dense(-2);
-                std::array<float,7> raw{};
-                for(size_t j=0;j<7;++j) raw[j]=qa[j]+float(i)/subdivisions*(qb[j]-qa[j]);
-                auto x=block(raw.data()), projected=x;
-                if(c) {
-                    c->projectConfiguration(x,projected,vamp::planning::constraint::InnerLM,.2F,1.F,100,false);
-                    float residual=c->distanceToConstraint(projected)[{0,0}];
-                    // Upstream can stop when the squared joint update is <=1e-6,
-                    // before the independently scaled task metric is accepted.
-                    // Resume a few times without relaxing its tolerances or the
-                    // original 2*.2-radian cumulative projection distance cap.
-                    for(int retry=0;retry<3 && std::isfinite(residual) && residual>constraint_metric_threshold;++retry) {
-                        auto retry_start=projected,next=projected;
-                        c->projectConfiguration(retry_start,next,vamp::planning::constraint::InnerLM,.2F,1.F,100,false);
-                        const float next_residual=c->distanceToConstraint(next)[{0,0}];
-                        float displacement_squared=0.F;
-                        for(size_t j=0;j<7;++j) {
-                            const float delta=next[{j,0}]-x[{j,0}];
-                            displacement_squared+=delta*delta;
-                        }
-                        if(!std::isfinite(next_residual) || !std::isfinite(displacement_squared) ||
-                           displacement_squared>4.F*.2F*.2F || next_residual>=residual) break;
-                        projected=next;residual=next_residual;
-                    }
-                    if(!std::isfinite(residual) || residual>constraint_metric_threshold) return finish_dense(-3);
-                }
-                if(!ObservedPanda::fkcc<lanes>(empty,projected)) return finish_dense(-4);
-                for(size_t j=0;j<7;++j) output[n*7+j]=projected[{j,0}];
-                ++n;
-            }
+        for(const auto& waypoint:solved.path) {
+            waypoint.to_array(q.data());
+            std::copy_n(q.data(),7,output+n*7);++n;
         }
-        if(n>=capacity) return finish_dense(-2);
-        // The exact requested endpoint is appended below, so it must itself
-        // satisfy the tube, not merely have a nearby admissible projection.
-        if(c) {
-            const float residual=c->distanceToConstraint(block(goal))[{0,0}];
-            if(!std::isfinite(residual) || residual>constraint_metric_threshold) {
-                return finish_dense(-3);
-            }
-        }
-        if(!ObservedPanda::fkcc<lanes>(empty,block(goal))) return finish_dense(-5);
-        std::copy_n(goal,7,output+n*7); ++n;
-        stats[9]=std::chrono::duration<double>(Clock::now()-resample).count();
-        stats[12]=n; statistics(s,stats); return n;
+        stats[9]=0.;stats[12]=n;
+        statistics(s,stats);return n;
     } catch (...) { return -9; }
 }
 }

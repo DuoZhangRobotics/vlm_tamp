@@ -29,7 +29,8 @@ GRASP_APPROACH_HOLD_STEPS=6
 # and when to reobserve remain explicit caller decisions.
 COMMON_TOOL_DEFAULTS={
     'complete_planar_panel':False,'scene_voxel_spacing_m':.003,
-    'maximum_grasp_poses':24,'maximum_grasp_search_seconds':30.,
+    'maximum_grasp_poses':8,'maximum_grasp_search_seconds':30.,
+    'grasp_selection_method':'graspgen_direct','graspgen_samples':8,'graspgen_topk':8,
     'maximum_contact_plan_seconds':8.,'planning_backend':'partial_pose_arc',
     'arc_search_seconds':20.,'arc_goal_proposals':32,
     'arc_position_tolerance_m':.006,
@@ -104,7 +105,9 @@ def tool_contract(config):
         'geometry':'refined observed bar plus finite configured finger-pad support',
         'arm_collision':'calibrated convex arm links',
         'gripper_collision':'calibrated convex gripper with existing local contact policy',
-        'ik':f"cuRobo {config.get('curobo_backend','v1')} proposals and isolated seven-joint kinematics; up to {config.get('maximum_grasp_ik_solutions',32)} solutions per grasp pose",
+        'ik':f"cuRobo {config.get('curobo_backend','v1')} parallel proposals; graspgen_direct uses the closest robot-valid returned solution per learned pose",
+        'grasp_selection':config.get('grasp_selection_method','graspgen_direct'),
+        'additional_dense_path_validation':False,
         'planner':('cuRobo v2 contact-point goals with native MC-VAMP constrained connections'
             if config.get('arc_goal_backend')=='curobo_v2' else 'MC-VAMP continuous partial-pose arc'),
         'task_names_or_state_indices_used':False,'simulator_object_geometry_used':False}
@@ -216,6 +219,12 @@ def select_grasp(generated,anchors,state,ik,record,open_scene,closed_scene,spec,
     generated after physical closure, using measured robot and part geometry.
     """
     budget=require_grasp_budget(state,config)
+    method=config.get('grasp_selection_method','graspgen_direct')
+    if method=='graspgen_direct':
+        from .graspgen_selection import select_direct_grasp
+        return select_direct_grasp(generated,state,ik,record,open_scene,closed_scene,goal,folder,config,budget)
+    if method!='historical_hybrid':
+        raise ValueError('Unknown grasp selection method')
     folder.mkdir();base_rows,pad=grasp_poses(generated,anchors,np.asarray(spec['panel_normal_world']),state['metadata'])
     from .rekep_libero.geometry import transform_points
     inverse=np.linalg.inv(pose_matrix(state['metadata']['eef_pose_world_xyzw']))

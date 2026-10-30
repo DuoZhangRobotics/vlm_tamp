@@ -115,7 +115,7 @@ class CoupledResources:
         if not cache.exists():shutil.copytree(output,cache)
         return choices
 
-    def grasps(self,cloud,output):
+    def grasps(self,cloud,output,*,num_grasps=8,topk=8):
         import yaml
         began=time.perf_counter()
         output=Path(output)
@@ -123,6 +123,9 @@ class CoupledResources:
         seed=getattr(self,'grasp_seed',0)
         if type(seed) is not int or not 0<=seed<2**31:
             raise ValueError('Grasp seed must be an integer in [0, 2**31)')
+        if type(num_grasps) is not int or type(topk) is not int or not 1 <= topk <= num_grasps:
+            raise ValueError('Grasp counts must be integers with 1 <= topk <= num_grasps')
+        sampling={'num_grasps':num_grasps,'topk':topk,'tries':1}
         if self.pins is None:
             config=ROOT/'.runtime/graspgen-models/checkpoints/graspgen_franka_panda.yml'
             raw=yaml.safe_load(config.read_text())
@@ -132,14 +135,15 @@ class CoupledResources:
                 if not checkpoint.is_absolute():checkpoint=config.parent/checkpoint
                 self.pins[key+'_checkpoint_sha256']=sha(checkpoint)
         seed_key=b'' if seed==0 else f'grasp-seed:{seed}'.encode()
-        digest=hashlib.sha256(xyz.tobytes()+json.dumps(self.pins,sort_keys=True).encode()+seed_key).hexdigest()
+        digest=hashlib.sha256(xyz.tobytes()+json.dumps(self.pins,sort_keys=True).encode()+seed_key+
+            json.dumps(sampling,sort_keys=True).encode()).hexdigest()
         cache=self.cache/('graspgen-'+digest)
         lookup_seconds=time.perf_counter()-began
         if cache.exists():
             cache_started=time.perf_counter()
             provenance=read(cache/'input-provenance.json')
             if (provenance['cache_key']!=digest or provenance['checkpoint_pins']!=self.pins
-                    or provenance.get('grasp_seed',0)!=seed):
+                    or provenance.get('grasp_seed',0)!=seed or provenance.get('sampling')!=sampling):
                 raise ValueError('Grasp cache checkpoint provenance differs')
             if not np.array_equal(np.load(cache/'input-cloud.npy'),xyz):
                 raise ValueError('Grasp cache point cloud differs')
@@ -159,11 +163,11 @@ class CoupledResources:
             self.graspgen=GraspGen()
             initialization_seconds=time.perf_counter()-model_started
         generation_started=time.perf_counter()
-        result=self.graspgen.generate(xyz,output,**({'seed':seed} if seed else {}))
+        result=self.graspgen.generate(xyz,output,seed=seed,num_grasps=num_grasps,topk=topk)
         generation_seconds=time.perf_counter()-generation_started
         cache_started=time.perf_counter()
         np.save(output/'input-cloud.npy',xyz)
-        save(output/'input-provenance.json',{'cache_key':digest,'reused':False,'checkpoint_pins':self.pins,'grasp_seed':seed,
+        save(output/'input-provenance.json',{'cache_key':digest,'reused':False,'checkpoint_pins':self.pins,'grasp_seed':seed,'sampling':sampling,
             'input_source':'current predicted RGB-D handle cloud','provided_inventory':False})
         shutil.copytree(output,cache)
         save(output/'generation-timing.json',{'cache_reused':False,
