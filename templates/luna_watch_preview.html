@@ -1,0 +1,135 @@
+<div id="luna-watch-preview">
+  <h2>Luna experiments</h2>
+  <p data-summary>@@SUMMARY@@</p>
+  <p class="text-small text-muted">Saved server status: @@STAMP@@ · Snapshot, updated on request</p>
+  <p class="text-small">@@HEALTH@@</p>
+  <div class="viz-controls" data-selector hidden>
+    <label class="form-label">Trial <select class="form-select" data-runs></select></label>
+  </div>
+  <p data-status aria-live="polite">@@STATUS@@</p>
+  <div data-videos></div>
+  <div data-images></div>
+  <details open><summary>Task outcome and skill feedback</summary><div data-skill></div></details>
+  <details open><summary>Time breakdown</summary>
+    <p class="text-small text-muted">Seconds. Time outside tools includes Luna, transport and local analysis.</p>
+    <div data-timing></div>
+    <details><summary>Perception, IK, contact search and execution</summary>
+      <p class="text-small text-muted">Nested measurements overlap; do not add these sections together.</p>
+      <div data-nested></div>
+    </details>
+  </details>
+  <details><summary>Each push and hook call</summary><div data-contacts></div></details>
+  <details open><summary>Reported issues and recorded explanations</summary>
+    <p class="text-small text-muted">Individual errors may have been recovered from. The task outcome is shown separately.</p>
+    <div data-issues></div>
+  </details>
+  <div data-notes></div>
+  <div class="viz-row" data-host-actions hidden>
+    <button type="button" class="btn" data-refresh>Ask for an updated snapshot</button>
+    <button type="button" class="btn" data-investigate>Ask about this trial</button>
+    <button type="button" class="btn" data-full-video hidden>Show full-resolution recording</button>
+  </div>
+  <p class="text-small" data-action-status aria-live="polite"></p>
+  <noscript>Interactive inspection requires JavaScript. The saved summary above remains available.</noscript>
+</div>
+<style>
+#luna-watch-preview { color: var(--foreground); overflow-wrap: anywhere; }
+#luna-watch-preview video { width: 100%; max-width: 480px; display: block; margin-block: 12px; }
+#luna-watch-preview img { max-width: 100%; height: auto; }
+#luna-watch-preview details { margin-block: 16px; }
+#luna-watch-preview pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+#luna-watch-preview [hidden] { display: none !important; }
+</style>
+<script type="application/json" id="luna-watch-preview-data">@@DATA@@</script>
+<script>
+(() => {
+  'use strict';
+  const root = document.getElementById('luna-watch-preview');
+  const data = JSON.parse(document.getElementById('luna-watch-preview-data').textContent);
+  const get = name => root.querySelector('[data-' + name + ']');
+  const make = (tag, value) => { const n = document.createElement(tag); if (value !== undefined) n.textContent = value; return n; };
+  const fmt = value => value == null ? '—' : typeof value === 'number' ? Number(value.toFixed(3)).toString() : typeof value === 'object' ? JSON.stringify(value) : String(value);
+  const seconds = value => typeof value === 'number' ? value.toFixed(1) : '—';
+  function table(target, rows, header) {
+    const wrap = make('div'); wrap.className = 'table-responsive';
+    const t = make('table'); t.className = 'table table-sm';
+    if (header) { const tr = t.createTHead().insertRow(); for (const h of header) { const th = make('th', h); th.scope = 'col'; tr.append(th); } }
+    const body = t.createTBody();
+    for (const row of rows) { const tr = body.insertRow(); for (const v of row) tr.insertCell().textContent = fmt(v); }
+    wrap.append(t); target.append(wrap);
+  }
+  let selected = null;
+  const positions = new Map();
+  for (const run of data.runs) { const option = make('option', run.title + ' · ' + run.outcome); option.value = run.id; get('runs').append(option); }
+  get('selector').hidden = data.runs.length < 2;
+  function select(id) {
+    const run = data.runs.find(r => r.id === id) || data.runs[0];
+    if (!run) { get('status').textContent = 'No published trials yet.'; return; }
+    for (const v of get('videos').querySelectorAll('video')) { positions.set(v.dataset.key, v.currentTime); v.pause(); }
+    selected = run; get('runs').value = run.id;
+    const detail = run.detail || {};
+    get('status').textContent = run.title + ' · ' + (detail.status_text || run.outcome) + (run.detail_error ? ' · ' + run.detail_error : '');
+    for (const name of ['videos','images','skill','timing','nested','contacts','issues','notes']) get(name).replaceChildren();
+    if (!(run.videos || []).length) get('videos').append(make('p', 'No saved video for this trial at snapshot time.'));
+    for (const [i, item] of (run.videos || []).entries()) {
+      get('videos').append(make('p', item.label + (item.partial ? ' · partial recording' : '') + ' · compact preview'));
+      if (item.src) {
+        const video = make('video'); video.controls = true; video.playsInline = true; video.preload = 'metadata';
+        video.dataset.key = run.id + ':' + i; video.src = item.src;
+        video.setAttribute('aria-label', run.title + ' ' + item.label);
+        video.addEventListener('loadedmetadata', () => { const t = positions.get(video.dataset.key); if (t) video.currentTime = Math.min(t, video.duration); });
+        video.addEventListener('error', () => { const p = make('p', 'This client could not decode the embedded video. Use Show full-resolution recording below.'); get('videos').append(p); }, {once:true});
+        get('videos').append(video);
+      } else get('videos').append(make('p', item.error || 'Preview not available.'));
+    }
+    for (const item of run.images || []) {
+      const d = make('details'); d.append(make('summary', item.label));
+      const image = make('img'); image.alt = item.label; image.src = item.src; image.loading = 'lazy';
+      d.append(image); get('images').append(d);
+    }
+    table(get('skill'), [['Task outcome', run.outcome], ['Controls', (detail.control_steps ?? run.controls ?? '—') + ' / ' + (detail.maximum_control_steps || 600)], ...Object.entries(detail.skill || {})]);
+    const timing = detail.timing || {};
+    table(get('timing'), [['Actor total', seconds(timing.actor_wall_seconds)], ['Robot tools, inclusive', seconds(timing.service_wall_seconds)], ['Outside tools: Luna + transport + analysis', seconds(timing.outside_service_seconds)]], ['Scope', 'Seconds']);
+    if (Object.keys(timing.service_seconds_by_operation || {}).length) table(get('timing'), Object.entries(timing.service_seconds_by_operation).map(([k,v]) => [k, seconds(v)]), ['Tool', 'Seconds']);
+    for (const [key, values] of Object.entries(timing)) {
+      if (!key.startsWith('nested_') || !values || typeof values !== 'object' || !Object.keys(values).length) continue;
+      const d = make('details'); d.append(make('summary', key.replace(/^nested_/, '').replaceAll('_', ' ')));
+      table(d, Object.entries(values).map(([k,v]) => [k.replaceAll('_', ' '), seconds(v)])); get('nested').append(d);
+    }
+    for (const c of detail.contact_calls || []) {
+      const d = make('details'); d.append(make('summary', 'Event ' + c.event + ' · ' + c.operation + ' · ' + c.stop_reason + ' · ' + seconds(c.wall_seconds) + ' s'));
+      table(d, [['Mode', c.mode], ['Contact reused', c.contact_reused], ['Scene reused', c.scene_reused], ['Preview reused', c.preview_reused], ...Object.entries(c.timing_seconds || {}).map(([k,v]) => [k.replaceAll('_',' '), seconds(v) + ' s'])]);
+      get('contacts').append(d);
+    }
+    if (!(detail.issues || []).length) get('issues').append(make('p', 'No reported issues in the saved data.'));
+    for (const issue of detail.issues || []) {
+      const d = make('details'); d.append(make('summary', 'Event ' + issue.event + ' · ' + issue.operation + ' · ' + issue.reason));
+      if (issue.explanation) d.append(make('p', issue.explanation));
+      if (issue.evaluator_addendum?.summary) d.append(make('p', 'Evaluator diagnosis: ' + issue.evaluator_addendum.summary));
+      if (issue.diagnostic && Object.keys(issue.diagnostic).length) d.append(make('pre', JSON.stringify(issue.diagnostic, null, 2)));
+      get('issues').append(d);
+    }
+    for (const note of run.notes || []) get('notes').append(make('p', note));
+    get('full-video').hidden = !(run.videos || []).some(v => v.source_path);
+  }
+  function savedId() { return window.openai?.widgetState?.modelContent?.run; }
+  get('runs').addEventListener('change', () => {
+    select(get('runs').value);
+    if (window.openai?.setWidgetState) Promise.resolve(window.openai.setWidgetState({modelContent:{study:data.study,run:selected?.id}})).catch(() => {});
+  });
+  window.addEventListener('openai:set_globals', e => {
+    const id = e.detail?.globals?.widgetState?.modelContent?.run;
+    if (id && data.runs.some(r => r.id === id)) select(id);
+    get('host-actions').hidden = !window.openai?.sendFollowUpMessage;
+  });
+  select(savedId() || data.default_run);
+  get('host-actions').hidden = !window.openai?.sendFollowUpMessage;
+  async function ask(prompt, title) {
+    try { await window.openai.sendFollowUpMessage({prompt,title}); get('action-status').textContent = 'Update requested in the conversation.'; }
+    catch { get('action-status').textContent = 'Please request this in the conversation.'; }
+  }
+  get('refresh').onclick = () => ask('Refresh the ChatGPT watch snapshot from ' + data.study + ' using tools/export_watch_preview.py. Show the updated view here; do not restart the experiment.', 'Update experiment snapshot');
+  get('investigate').onclick = () => ask('Investigate trial ' + selected?.id + ' in ' + data.study + '. Explain the task outcome, specific failure causes and timing from its logs.', 'Inspect selected Luna trial');
+  get('full-video').onclick = () => ask('Show the full-resolution saved recordings for ' + selected?.id + ' inline in this conversation: ' + (selected?.videos || []).map(v => v.source_path).join(', '), 'Show full recording');
+})();
+</script>
