@@ -58,8 +58,9 @@ def test_gripper_gap_collapse_is_sensor_evidence_not_a_contact_certificate():
     result=grasp_observation(metadata(.001),{'observed_handle_radius_m':.01},before=metadata(.025),manipulation=True)
     assert result['status']=='gripper_gap_collapsed_during_manipulation'
     assert result['pad_gap_mm']==pytest.approx(1) and result['previous_pad_gap_mm']==pytest.approx(25)
-    assert not result['physical_contacts_observed']
-    assert grasp_observation(metadata(.022),before=metadata(.025),manipulation=True)['status']=='grasp_not_verified'
+    assert result['physical_contacts_observed'] is None
+    assert result['contact_sensing_available'] is False
+    assert grasp_observation(metadata(.022),before=metadata(.025),manipulation=True)['status']=='grasp_state_unknown'
     assert grasp_observation({})['available'] is False
     assert grasp_observation(metadata(.001),{'observed_handle_radius_m':.01})['status']=='near_closed_without_bar_width_support'
 

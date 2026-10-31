@@ -147,7 +147,8 @@ def _run_data(study,run,entry,active):
            'Reported feedback count across tools':sum(e.get('response',{}).get('result',{}).get('feedback_count',0) for e in events),
            'Stop reason':result.get('stop_reason','—')}
     if result.get('skill'):
-        skill.update({'Contact reused':result.get('contact_reused',False),'Scene reused':result.get('scene_reused',False),
+        skill.update({'Contact geometry reused':result.get('contact_reference_reused',result.get('contact_reused',False)),
+            'Target engagement':result.get('engagement_status','see measured feedback'),'Scene reused':result.get('scene_reused',False),
             'Input mode':result.get('input_mode','targeted contact'),
             'Feedback cameras':', '.join(result.get('feedback_cameras',[])),
             'Contact stroke policy':result.get('contact_motion_policy','planned contact'),

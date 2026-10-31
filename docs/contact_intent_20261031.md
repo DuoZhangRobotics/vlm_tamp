@@ -125,3 +125,29 @@ in its own local temporary run and archives small inspection artifacts. Service
 cleanup is restricted to that service's own output root, retaining finished-run
 and video verification requirements. Peak sampled memory was 5.24 GiB in the
 combined check; the final closing check had zero full I/O and memory pressure.
+
+## Current-code debugging after the comparison was stopped
+
+The user stopped historical reconstruction and overview comparisons. Those
+artifacts remain diagnostic records; no further replay or A/B was requested.
+The next patch addresses current-code invariants directly:
+
+- Unavailable contact sensing returns `physical_contacts_observed: null` and
+  `contact_sensing_available: false`. A noncollapsed gripper has
+  `grasp_state_unknown`, with the measured gap/bar-width ratio; unknown sensing
+  is not reported as a measured absence of contact.
+- Continuation availability describes executable robot motion. It no longer
+  unconditionally recommends `continue_push`. Compact replies label reused
+  geometry explicitly and expose the latest engagement evidence separately.
+- Controlled contact acquisition ranks hand-compatible existing candidates
+  ahead of palm/other-hand collisions. This is a preference, not a new veto:
+  physical attempts remain available, and no clearance or dense validation is
+  added. It fixes first-candidate selection after endpoint collision admission
+  was removed from physical push insertion.
+- A supported existing hook is checked before narrowing the feature to one
+  representative point. Its permitted patch follows that existing contact,
+  rather than discarding it because a newly selected median is elsewhere.
+
+Focused regression validation: 151 passed, two archived fixtures skipped.
+The short current-version trial is reported in
+`results/luna-current-debug-20261031/watch.html`.

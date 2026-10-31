@@ -197,6 +197,9 @@ def test_unresolved_object_motion_does_not_block_direction_only_continuation(con
     assert result['stop_reason']=='stroke_executed'
     assert result['object_motion_status']=='unresolved' and result['observed_progress'] is None
     assert result['continue_push_available'] and not result['continuation']['object_pose_current']
+    assert 'next_operation' not in result
+    assert result['engagement_status']=='object_motion_unresolved'
+    assert result['contact_reference_reused']
     again=call(service,continued=True,distance_m=.1)
     assert again['stop_reason']=='stroke_executed'
     assert again['measured_contact_progress_m']==pytest.approx(.1)

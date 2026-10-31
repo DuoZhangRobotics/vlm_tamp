@@ -706,6 +706,7 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
         # A contact skill does not silently install its hypothetical target
         # motion into the grasp pipeline. Old geometry must be refreshed.
         executed=executed or int(service.state['control_steps'])!=initial_control_step
+        result['engagement_status']=(stages[-1].get('engagement',{}).get('status','unknown') if stages else 'unmeasured')
         if executed and service.sim is not None:
             from .observed_joint_scene import retain_observed_articulation
             retain_observed_articulation(service)
@@ -739,15 +740,17 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
                 'contact_speed_m_s':contact_speed_m_s,'stroke_length_m':stroke_length_m,
                 'stroke_plan_seconds':stroke_plan_seconds,'ineffective_strokes':ineffective,'tracker':tracker,
                 'part_motion_evidence':copy.deepcopy(result.get('part_motion_evidence')),
+                'engagement_status':result['engagement_status'],
                 'object_pose_current':geometry_current,'scene_control_step':scene_control_step}
             service.active_push_contact['object_target_associated']=associated
         retained=getattr(service,'active_push_contact',None)
         result['continuation']=contact_summary(retained)
         result['continue_push_available']=bool(retained)
+        result['contact_reference_reused']=result['contact_reused']
         if retained and not preview:
             result['grasp_scene_refresh_required']=result['scene_refresh_required']
             result['scene_refresh_required']=False
-            result['next_operation']='continue_push'
+            result['continuation_scope']='Robot motion is available; a retained reference does not establish current object engagement or task progress.'
             result['scene_refresh_scope']='Direction-only pushing reuses the robot contact reference. Object pose freshness is reported separately; grasp/joint-model planning requires current grounding.'
         result['robot_motion_executed']=executed
         result['remaining_skill_seconds']=budget.remaining

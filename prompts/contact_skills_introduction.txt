@@ -20,9 +20,10 @@ configuration is required for push, continue_push or hook_pull.
 
 - continue_push(direction_world, distance_m, contact_speed_m_s=null,
   stroke_length_m=null, budget_seconds=120, stroke_plan_seconds=null):
-  Use after a controlled push returns continue_push_available=true. It reuses
-  the established contact and the observed scene: no new region, hinge model,
-  contact search or preview is needed. Fingertip contact is the default for
+  continue_push_available=true means another robot stroke can be issued. It reuses
+  the retained contact geometry and scene; it does not establish current engagement.
+  Issuing that motion needs no new region, hinge model, contact search or preview.
+  Fingertip contact is the default for
   acquisition; continuation keeps the contact surface you already selected.
   direction_world and distance_m specify the commanded contact/hand stroke.
   Actual hand and object motion are reported separately. Speed defaults to the

@@ -67,6 +67,7 @@ def current_hand_reference(service,direction):
 def contact_summary(context):
     if context is None:return {'available':False}
     return {'available':True,'contact_id':context['contact_id'],'control_step':context['control_step'],
+        'availability_scope':'robot motion can be issued; this is not a recommendation to repeat it',
         'robot_contact_surface':context['contact_name'],'contact_surface':context['contact_surface'],
         'reference_direction_world':context['direction_world'].tolist(),
         'direction_semantics':'Previous requested direction transported by measured part rotation when available; not a task-goal recommendation.',
@@ -77,7 +78,7 @@ def contact_summary(context):
         'object_pose_control_step':context.get('scene_control_step',context['control_step']),
         'object_target_associated':context.get('object_target_associated',True),
         'execution_policy':'physical push feedback; object tracking does not veto direction-only strokes',
-        'physical_contact_verified':False,
+        'physical_contact_verified':False,'engagement_status':context.get('engagement_status','unknown'),
         'source':('retained contact geometry; measured part pose is updated by RGB-D feedback'
             if context.get('object_target_associated',True) else 'current hand reference; no object model or contact assumption')}
 

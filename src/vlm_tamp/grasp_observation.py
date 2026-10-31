@@ -22,13 +22,15 @@ def grasp_observation(metadata,spec=None,*,before=None,manipulation=False):
     collapsed=bool(manipulation and previous is not None and previous>.006
         and gap<.003 and gap<.25*previous)
     near_closed=bool(spec and spec.get('observed_handle_radius_m',0)>=.005 and gap<.003)
+    diameter=2*spec['observed_handle_radius_m'] if spec and spec.get('observed_handle_radius_m',0)>0 else None
     return {'available':True,'source':'current robot proprioception and configured finger-pad geometry',
         'pad_gap_mm':1000*gap,'previous_pad_gap_mm':1000*previous if previous is not None else None,
-        'selected_bar_diameter_mm':2000*spec['observed_handle_radius_m']
-            if spec and 'observed_handle_radius_m' in spec else None,
+        'selected_bar_diameter_mm':1000*diameter if diameter is not None else None,
+        'gap_to_selected_bar_ratio':gap/diameter if diameter is not None else None,
         'status':'gripper_gap_collapsed_during_manipulation' if collapsed else
-            'near_closed_without_bar_width_support' if near_closed else 'grasp_not_verified',
-        'physical_contacts_observed':False,
+            'near_closed_without_bar_width_support' if near_closed else 'grasp_state_unknown',
+        'contact_sensing_available':False,
+        'physical_contacts_observed':None,
         'interpretation':('The gap collapsed toward fully closed during the manipulation. The object may no longer be between the pads; inspect contact before assuming attachment.'
             if collapsed else 'The pads nearly meet despite the selected rigid bar model. This does not support a pinch grasp of that bar; verify contact or part identity.'
-            if near_closed else 'A close command is not proof of a grasp. Compare measured pad gap with the intended contact and observed object motion.')}
+            if near_closed else 'Contact sensing is unavailable: physical_contacts_observed is unknown, not a negative reading. Use the measured pad gap and observed part motion to assess grasp retention.')}

@@ -53,8 +53,9 @@ simulation, holding its aperture. No object model, prior contact or search is
 required. Use it to attempt a push from the current pose, including after a
 target-acquisition failure. It does not claim the hand is touching an object.
 push/hook_pull execute by default; preview=true has no motion. An unchanged
-preview is reused by execution. After push returns continue_push_available=true,
-continue_push(direction_world, distance_m) reuses the contact and scene directly.
+preview is reused by execution. continue_push_available=true describes executable
+robot motion, not established contact or a recommendation to repeat it.
+continue_push(direction_world, distance_m) reuses retained geometry and the scene.
 Targeted push/hook_pull require an explicit world direction or signed associated
 joint increment, including previews. Surface normals do not specify task intent.
 reference_direction_world is a geometric reference, not a recommendation about
@@ -193,7 +194,7 @@ def compact_response(response):
     if 'grasp_stage_contract' in value:result['grasp_stage_contract']=value['grasp_stage_contract']
     if 'skill' in value:
         result.update(pick(value,('skill','mode','preview','status','stop_reason','diagnostic',
-            'input_mode','contact_reused','scene_reused','preview_reused','source_preview',
+            'input_mode','contact_reference_reused','engagement_status','continuation_scope','scene_reused','preview_reused','source_preview',
             'observation_cloud_reused','full_scene_builds','contact_searches','continuation',
             'tracking_reference_reused','tracking_reference_camera_count',
             'contact_motion_policy','stroke_scene_collision_veto','object_progress_is_execution_gate',
@@ -234,7 +235,7 @@ def compact_response(response):
                 'point_outcomes':[{'point_world_m':a['point_world_m'],'reason':a['reason'],
                     'postures_tested':len(a.get('attempts',[]))} for a in diagnostic['point_attempts']]}
         result['search']=pick(value.get('search',{}),('candidate_index','contact_name','total_seconds','timing_seconds',
-            'reuse_existing_contact','measured_surface_distance_m','region_candidate_index','search_work'))
+            'reuse_existing_contact','measured_surface_distance_m','region_candidate_index','search_work','contact_pose_selection'))
         if 'observation_refreshes' in value:
             result['observation_refreshes']=[{'control_steps':r['control_steps'],
                 'recovered':r['after']['accepted'],'reason':r['before'].get('blocking_surface')}

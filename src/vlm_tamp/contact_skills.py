@@ -631,6 +631,7 @@ def _plan_contact_at_point(ik,scene,record,metadata,evidence,selected,kind,budge
     physical_contact=kind=='push' and bool(getattr(scene,'skill_physical_contact_execution',False))
     budget.context={'attempts':attempts,'timing_seconds':timing,'search_work':work}
     point=np.asarray(evidence['point_world_m']);d=unit(evidence['direction_world']);normal=unit(evidence['normal_toward_camera_world'])
+    existing=None
     if kind=='push' and d@(-normal)<.1:
         alignment={'force_alignment':float(d@(-normal)),'usual_compressive_alignment_minimum':.1,
             'execution_veto_applied':False,
@@ -639,13 +640,20 @@ def _plan_contact_at_point(ik,scene,record,metadata,evidence,selected,kind,budge
         evidence['surface_alignment_prediction']=alignment
     if kind=='hook_pull':
         point,feature=hook_feature(selected,d,cameras=getattr(scene,'skill_observed_cameras',None));evidence['hook_feature']=feature
-        scene.contact_reference=scene.moving_reference[cKDTree(np.asarray([point])).query(scene.moving_reference)[0]<.035]
-        if len(scene.contact_reference)<5:raise SkillStop('hook_back_surface_unobserved')
+        # Check the current supported posture against the observed feature
+        # before narrowing acquisition to one representative point on it.
+        existing=current_contact_candidate(metadata,scene,d,evidence['contact_surface'],kind)
+        if existing is not None:
+            point=existing['point']
+            scene.contact_reference=scene.moving_reference[cKDTree(np.asarray([point])).query(scene.moving_reference)[0]<.035]
+        else:
+            scene.contact_reference=scene.moving_reference[cKDTree(np.asarray([point])).query(scene.moving_reference)[0]<.035]
+            if len(scene.contact_reference)<5:raise SkillStop('hook_back_surface_unobserved')
     if callable(maximum_approach_controls):maximum_approach_controls=maximum_approach_controls(point)
     current=pose_matrix(metadata['eef_pose_world_xyzw'])[:3,:3]
     # A supported current push posture is an existing physical state, not a
     # new approach proposal needing another scene-admission pass.
-    existing=current_contact_candidate(metadata,scene,d,evidence['contact_surface'],kind) if kind=='push' else None
+    if kind=='push':existing=current_contact_candidate(metadata,scene,d,evidence['contact_surface'],kind)
     if existing is not None:
         empty=np.empty((0,7));contact=existing['contact']
         evidence['point_world_m']=existing['point'].tolist()
@@ -687,8 +695,22 @@ def _plan_contact_at_point(ik,scene,record,metadata,evidence,selected,kind,budge
         free_initial=free_context.validate(q)
         if not free_initial['accepted']:raise SkillStop('initial_target_contact_requires_release',diagnostic=free_initial)
         menu=contact_pose_menu(metadata,evidence,point,d,kind,feature if kind=='hook_pull' else None)
+        # Removing a contact collision veto must not make a palm-blocked pose
+        # the preferred fingertip acquisition. Rank existing candidates by
+        # their hand/target compatibility; even blocked candidates remain
+        # available for a physical push when no clear candidate works.
+        target_hand_checks={}
+        ranked=list(enumerate(menu))
+        if physical_contact:
+            began=time.perf_counter()
+            for _,(_,target,_,_) in ranked:
+                key=target.tobytes()
+                if key not in target_hand_checks:target_hand_checks[key]=context.validate_hand_pose(matrix_pose(target))
+            ranked.sort(key=lambda row:not target_hand_checks[row[1][1].tobytes()]['accepted'])
+            timing['contact_hand_ranking_seconds']+=time.perf_counter()-began
+            work['contact_hand_rank_checks']=len(target_hand_checks)
         target_cache={};standoff_cache={};hand_cache={}
-        for index,(contact,target,standoff,approach) in enumerate(menu):
+        for index,(contact,target,standoff,approach) in ranked:
             budget.check();work['pose_approach_combinations']+=1
             # The same free-approach hand collision is independent of the arm's
             # IK branch. Check it once before solving either pose, just as in
@@ -765,6 +787,10 @@ def _plan_contact_at_point(ik,scene,record,metadata,evidence,selected,kind,budge
                     'standoff_tcp_pose_world_xyzw':matrix_pose(standoff),
                     'contact_world':point,'rotation':target[:3,:3],'insertion_direction':approach,
                     'approach_selection':approach_selection,
+                    'contact_pose_selection':{'policy':'prefer compatible hand contact; physical candidates remain available',
+                        'prediction_is_execution_veto':False,'target_hand_prediction':{
+                            k:v for k,v in target_hand_checks.get(target.tobytes(),{}).items()
+                            if k in {'accepted','blocking_robot_part','blocking_surface'}}} if physical_contact else None,
                     'contact_insertion_policy':'physical_execution_feedback' if physical_contact else 'planned_contact',
                     'contact_name':contact['name'],'attempts':attempts,'candidate_index':index,
                     'timing_seconds':dict(timing),'search_work':dict(work),'total_seconds':time.perf_counter()-started,

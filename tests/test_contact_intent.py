@@ -114,3 +114,54 @@ def test_blocked_standoff_hand_never_starts_ik(monkeypatch):
         module._plan_contact_at_point(SimpleNamespace(solve_many=forbidden),SimpleNamespace(),{},meta,evidence,None,'push',Budget(5))
     assert error.value.evidence['attempts'][0]['reason']=='standoff_hand_collision'
     assert error.value.evidence['search_work']['standoff_hand_rejections']==1
+
+
+def test_existing_hook_is_not_lost_when_feature_median_is_elsewhere(monkeypatch):
+    import vlm_tamp.contact_skills as module
+    near=np.array([.018,0,1.025]);far=near+np.array([0,0,.08])
+    volume={'robot_geom_name':'gripper0_finger1_pad_collision',
+        'vertices_world':np.array([[x,y,z] for x in [.018,.022] for y in [-.002,.002] for z in [1.02,1.03]])}
+    meta={'joint_positions':[0.]*7,'eef_pose_world_xyzw':[0,0,1,0,0,0,1],
+        'robot_collision_volumes_world':[volume]}
+    points=np.vstack([near,far]);scene=SimpleNamespace(contact_reference=points,moving_reference=points)
+    evidence={'point_world_m':far.tolist(),'direction_world':[-1.,0,0],
+        'normal_toward_camera_world':[1.,0,0],'contact_surface':'fingertips','joint_associated':False}
+    monkeypatch.setattr(module,'hook_feature',lambda *a,**k:(far,{'retaining_axis_world':[0,0,1]}))
+    def forbidden(*a,**k):raise AssertionError('An existing supported hook must not be reacquired at the feature median')
+    monkeypatch.setattr(module,'skill_native_scene',forbidden)
+    result=module._plan_contact_at_point(SimpleNamespace(),scene,{},meta,evidence,points,'hook_pull',Budget(2))
+    assert result['reuse_existing_contact'] and len(result['references'])==0
+    assert np.allclose(result['contact_world'],near)
+    assert np.array_equal(scene.contact_reference,near[None])
+
+
+@pytest.mark.parametrize('clear_alternative',[True,False])
+def test_physical_acquisition_prefers_clear_hand_but_keeps_physical_attempts(monkeypatch,clear_alternative):
+    import vlm_tamp.contact_skills as module
+    class Context:
+        def __init__(self,allow):self.allow=allow;self.record={}
+        def __enter__(self):return self
+        def __exit__(self,*args):pass
+        def validate(self,q):return {'accepted':True}
+        def validate_hand_pose(self,pose):
+            return {'accepted':not self.allow or (clear_alternative and pose[0]>.15),
+                'blocking_robot_part':'gripper0_hand_collision','blocking_surface':'moving target outside contact patch'}
+        def plan(self,start,goal,**kwargs):return np.vstack([start,goal]),{'exact_solution':True}
+    monkeypatch.setattr(module,'skill_native_scene',lambda *a,**k:Context(k.get('allow_contact',True)))
+    monkeypatch.setattr(module,'current_contact_candidate',lambda *a:None)
+    menu=[]
+    for x in [.1,.2]:
+        target=np.eye(4);target[0,3]=x;standoff=target.copy();standoff[0,3]-=.035
+        menu.append(({'name':'pad','point':np.zeros(3)},target,standoff,np.array([1.,0,0])))
+    monkeypatch.setattr(module,'contact_pose_menu',lambda *a:menu)
+    class Chain:
+        def forward(self,q):return np.r_[q[:3],[0.,0,0,1.]]
+    ik=SimpleNamespace(chain=Chain(),self_valid=lambda q:True,
+        solve_many=lambda pose,seed,**k:[{'joints':np.r_[pose[:3],np.zeros(4)]}])
+    meta={'joint_positions':[0.]*7,'eef_pose_world_xyzw':[0.,0,0,0,0,0,1.]}
+    evidence={'point_world_m':[.1,0,0],'direction_world':[1.,0,0],
+        'normal_toward_camera_world':[-1.,0,0],'contact_surface':'fingertips'}
+    scene=SimpleNamespace(skill_collision_policy='veto',skill_physical_contact_execution=True)
+    result=module._plan_contact_at_point(ik,scene,{},meta,evidence,None,'push',Budget(5))
+    assert result['candidate_index']==(1 if clear_alternative else 0)
+    assert not result['contact_pose_selection']['prediction_is_execution_veto']
