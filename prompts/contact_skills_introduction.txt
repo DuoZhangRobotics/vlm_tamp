@@ -28,6 +28,9 @@ configuration is required for push or hook_pull.
   Explicit contact_surface="palm" permits only that selected palm/target pair.
   The planner's own checks use zero added padding. There is no extra dense
   validation pass and no automatic robot-only/advisory route fallback.
+  Before planning, points inside the measured current robot geometry are removed
+  from the collision map. The cleaned map is shared by downstream searches;
+  hypothetical robot poses never clear additional obstacle points.
   Incomplete depth and controller tracking error remain limits of the prediction.
   The current gripper aperture is used for planning and held during execution.
   A supported current contact posture can be reused; a new approach is not

@@ -190,15 +190,16 @@ def test_calibrated_contact_offsets_use_actual_aperture(calibrated_robot):
     assert pads[0]['normal']@pads[1]['normal']==pytest.approx(-1.)
 
 
-@pytest.mark.parametrize('part,stationary,articulated,allowed',[
-    ('gripper0_finger1_collision',False,True,True),
-    ('gripper0_finger1_collision',False,False,False),
-    ('gripper0_finger1_collision',True,True,False),
-    ('gripper0_hand_collision',False,True,False),
+@pytest.mark.parametrize('part,stationary,articulated',[
+    ('gripper0_finger1_collision',False,True),
+    ('gripper0_finger1_collision',False,False),
+    ('gripper0_finger1_collision',True,True),
+    ('gripper0_hand_collision',False,True),
 ])
-def test_existing_target_finger_contact_can_continue_but_is_not_a_world_exemption(calibrated_robot,part,stationary,articulated,allowed):
+def test_known_current_robot_overlap_is_cleared_for_all_planning_modes(calibrated_robot,part,stationary,articulated):
     from vlm_tamp.coupled_scene import Scene
     from vlm_tamp.mcvamp_contact_numerical import NativeScene,clear_native_cache
+    from vlm_tamp.current_robot_scene import clear_current_robot_scene
     meta,record=calibrated_robot
     volume=next(v for v in meta['robot_collision_volumes_world'] if v['robot_geom_name']==part)
     point=np.asarray(volume['vertices_world']).mean(0,keepdims=True);far=point+3
@@ -206,9 +207,10 @@ def test_existing_target_finger_contact_can_continue_but_is_not_a_world_exemptio
         'front_plane':{'point_world_m':point[0].tolist()},'panel_normal_world':[1,0,0]}
     scene=Scene.from_points(point if stationary else np.empty((0,3)),far if stationary else point,far,spec)
     scene.skill_contact_surface='fingertips'
+    scene=clear_current_robot_scene(scene,meta,10)
     with NativeScene(scene,record,meta,meta['joint_positions'],.05,articulated=articulated) as context:
-        assert context.validate(meta['joint_positions'])['accepted']==allowed
-        assert context.record['existing_finger_target_contact']['additional_contact_padding_m']==0.
+        assert context.validate(meta['joint_positions'])['accepted']
+        assert context.record['current_robot_point_filter']['padding_m']==0.
     clear_native_cache()
 
 
@@ -216,6 +218,7 @@ def test_continuation_does_not_permit_a_new_finger_collision(calibrated_robot):
     from vlm_tamp.coupled_scene import Scene,RobotVolumes
     from vlm_tamp.mcvamp_contact_numerical import NativeScene,clear_native_cache
     from vlm_tamp.rekep_libero.robot_chain_v4 import RobotChain
+    from vlm_tamp.current_robot_scene import clear_current_robot_scene
     meta,record=calibrated_robot;chain=RobotChain(record);q=np.asarray(meta['joint_positions']);later=q.copy();later[0]+=.25
     robot=RobotVolumes(chain,meta['robot_collision_volumes_world'],q)
     volume=next(v for v in robot.forward(later) if v['robot_geom_name']=='gripper0_finger1_collision')
@@ -229,6 +232,7 @@ def test_continuation_does_not_permit_a_new_finger_collision(calibrated_robot):
     spec={'joint_origin_world_m':point[0].tolist(),'joint_axis_world':[0,0,1],
         'front_plane':{'point_world_m':point[0].tolist()},'panel_normal_world':[1,0,0]}
     scene=Scene.from_points(np.empty((0,3)),point,far,spec);scene.skill_contact_surface='fingertips'
+    scene=clear_current_robot_scene(scene,meta,10)
     with NativeScene(scene,record,meta,q,.05,articulated=True) as context:
         assert context.validate(q)['accepted']
         failure=context.validate(later)

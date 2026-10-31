@@ -15,7 +15,8 @@ from scipy.spatial.transform import Rotation
 
 from .contact_skills import (Budget,SkillStop,ContactTracker,build_contact_scene,
     cartesian_path,plan_engagement,plan_contact_stroke,measured_contact_speed,refresh_collision_observations,
-    fresh_collision_snapshot,skill_native_scene,current_collision_witness,predicted_scene,unit)
+    skill_native_scene,predicted_scene,unit)
+from .current_robot_scene import clear_current_robot_scene
 from .coupled_storage import write_json,read_json
 from .rekep_libero.geometry import pose_matrix,matrix_pose,transform_points
 from .timed_execution import schedule_contact
@@ -72,6 +73,7 @@ def planning_stage(parent,seconds,stage,result,timing,timing_key):
 
 def qualification_sources():
     paths=['src/vlm_tamp/contact_skills.py','src/vlm_tamp/contact_skill_service.py','src/vlm_tamp/contact_collision_evidence.py',
+        'src/vlm_tamp/current_robot_scene.py',
         'src/vlm_tamp/timed_execution.py','src/vlm_tamp/mcvamp_contact_numerical.py',
         'src/vlm_tamp/native/mcvamp_contact_numerical.cc','src/vlm_tamp/rigid_hinge_tracking.py',
         'src/vlm_tamp/profiled_sim_worker.py','src/vlm_tamp/profiled_sim_client.py',
@@ -185,6 +187,15 @@ def run_skill(service,kind,*,observation_id,camera,region_xyxy,target_region_xyx
         scene.skill_path_deviation_log=result['cartesian_path_deviation']
         timing['perception_seconds']+=time.perf_counter()-phase
         result['contact']=evidence;direction=unit(evidence['direction_world'])
+        def collision_scene():
+            query=clear_current_robot_scene(scene,service.state['metadata'],service.state['control_steps'])
+            evidence=query.current_robot_filter
+            timing['current_robot_filter_seconds']+=evidence['elapsed_seconds']
+            result['current_robot_point_filter']={'updates':result.get('current_robot_point_filter',{}).get('updates',0)+1,
+                'last_control_step':evidence['reference_control_step'],'last_removed_points':evidence['total_removed_points'],
+                'padding_m':0.,'future_candidate_poses_used':False,
+                'last_counts_by_cloud':{key:value['removed_points'] for key,value in evidence['clouds'].items()}}
+            return query
         def following_controls(contact_point):
             if mode!='push_and_release':return 1
             length=min(stroke_length_m,distance_m)
@@ -197,14 +208,18 @@ def run_skill(service,kind,*,observation_id,camera,region_xyxy,target_region_xyx
             return (7 if collision_policy=='veto' else 0)+max(1,int(np.ceil(length/contact_speed_m_s*20)))+2+int(np.ceil(withdrawal_distance_m/.03*20))+20
         _overlay(service,camera,region_xyxy,target_region_xyxy,evidence['point_world_m'],direction,root/'contact.png')
         result['images']=[str((root/'contact.png').relative_to(service.workspace))]
+        planning_scene=collision_scene()
         with planning_stage(budget,search_seconds,'initial_contact_search',result,timing,'contact_search_seconds') as (search_budget,nested):
-            engagement=plan_engagement(service.ik,scene,service.record,service.state['metadata'],evidence,selected,kind,search_budget,
+            engagement=plan_engagement(service.ik,planning_scene,service.record,service.state['metadata'],evidence,selected,kind,search_budget,
                 maximum_approach_controls=lambda p:max(0,control_steps_limit-service.state['control_steps']-following_controls(p)))
             nested.update(engagement.get('timing_seconds',{}))
+        # Hook selection can refine the contact association. Keep that metadata,
+        # while retaining the raw measured geometry for subsequent feedback.
+        scene.contact_reference=planning_scene.contact_reference
         if collision_policy=='advisory' and budget.remaining>2.:
             phase=time.perf_counter()
             try:
-                with skill_native_scene(scene,service.record,service.state['metadata'],service.state['metadata']['joint_positions']) as checker:
+                with skill_native_scene(planning_scene,service.record,service.state['metadata'],service.state['metadata']['joint_positions']) as checker:
                     forecast=checker.validate(engagement['path'][-1])
                 if not forecast['accepted']:
                     log=result['environment_collision_predictions'];log['count']+=1
@@ -363,8 +378,9 @@ def run_skill(service,kind,*,observation_id,camera,region_xyxy,target_region_xyx
             meta=service.state['metadata'];start=np.asarray(meta['joint_positions'])
             insertion_goal=np.eye(4);insertion_goal[:3,:3]=engagement['rotation']
             insertion_goal[:3,3]=point-engagement['rotation']@contact_local
+            planning_scene=collision_scene()
             with planning_stage(budget,stroke_plan_seconds,'contact_insertion',result,timing,'stroke_planning_seconds') as (planning,nested):
-                insertion=cartesian_path(service.ik,scene,service.record,meta,start,matrix_pose(insertion_goal),planning,timing=nested)
+                insertion=cartesian_path(service.ik,planning_scene,service.record,meta,start,matrix_pose(insertion_goal),planning,timing=nested)
             stage=issue(schedule_contact(insertion,chain,contact_local,contact_speed_m_s=.03,endpoint_hold_steps=3),'contact-insertion',
                 requested_contact_speed_m_s=.03,planning_timing_seconds=dict(nested))
             measured=observe_motion(tracker);stage['object_motion']=measured
@@ -380,30 +396,9 @@ def run_skill(service,kind,*,observation_id,camera,region_xyxy,target_region_xyx
             budget.check()
             if mode=='controlled' and progress>=target-(.001 if joint_degrees is None else np.radians(.5)):
                 result.update(status='requested_progress_reached',stop_reason='requested_progress_reached');break
-            phase=time.perf_counter()
-            with skill_native_scene(scene,service.record,service.state['metadata'],service.state['metadata']['joint_positions']) as check:
-                start_check=check.validate(service.state['metadata']['joint_positions'])
-            timing['current_state_check_seconds']+=time.perf_counter()-phase
-            if not start_check['accepted'] and collision_policy=='advisory':
-                log=result['environment_collision_predictions'];log['count']+=1
-                if len(log['examples'])<12:log['examples'].append({'stage':'current_pose',
-                    'blocking_robot_part':start_check.get('blocking_robot_part'),
-                    'blocking_surface':start_check.get('blocking_surface'),'execution_veto_applied':False})
-            if not start_check['accepted'] and start_check.get('static_rejections',0)>0 and collision_policy=='veto':
-                start_check['overlap_evidence']=current_collision_witness(scene,service.state['metadata'],start_check)
-                budget.check();service.calls+=1;phase=time.perf_counter()
-                result['observation']=service.capture()
-                scene,refresh=fresh_collision_snapshot(scene,service.cameras,service.state['metadata'])
-                tracked_target=scene.moving_reference
-                with skill_native_scene(scene,service.record,service.state['metadata'],service.state['metadata']['joint_positions']) as check:
-                    after=check.validate(service.state['metadata']['joint_positions'])
-                if not after['accepted']:after['overlap_evidence']=current_collision_witness(scene,service.state['metadata'],after)
-                timing['full_observation_recovery_seconds']+=time.perf_counter()-phase
-                result.setdefault('observation_refreshes',[]).append({'artifact_id':service.calls,
-                    'control_steps':service.state['control_steps'],'before':start_check,'after':after,'evidence':refresh})
-                budget.check()
-                if not after['accepted']:raise SkillStop('current_observation_start_collision',diagnostic=after,
-                    explanation='A full current sensor snapshot still rejects the measured robot configuration; no obstacle was bypassed.')
+            # The measured robot is the starting fact, not another observation
+            # gate. Correct the collision cloud once, then plan against it.
+            planning_scene=collision_scene()
             phase=time.perf_counter();tracker=ContactTracker(service.cameras,tracked_target,service.state['control_steps'])
             refresh_feedback_views(tracker)
             timing['tracker_initialization_seconds']+=time.perf_counter()-phase
@@ -433,11 +428,11 @@ def run_skill(service,kind,*,observation_id,camera,region_xyxy,target_region_xyx
             goal=tcp.copy();goal[:3,3]+=delta
             scene.skill_contact_collision_log['stage']='contact_test' if acquiring_release_contact else 'contact_stroke'
             with planning_stage(budget,stroke_plan_seconds,'contact_stroke',result,timing,'stroke_planning_seconds') as (planning,nested):
-                path,search=plan_contact_stroke(service.ik,scene,service.record,meta,contact_local,delta,planning,angle=angle,timing=nested)
+                path,search=plan_contact_stroke(service.ik,planning_scene,service.record,meta,contact_local,delta,planning,angle=angle,timing=nested)
             if collision_policy=='advisory' and budget.remaining>2.:
                 phase=time.perf_counter();log=scene.skill_contact_collision_log
                 try:
-                    predicted=predicted_scene(scene,delta,angle)
+                    predicted=predicted_scene(planning_scene,delta,angle)
                     with skill_native_scene(predicted,service.record,meta,start) as checker:
                         prediction=checker.validate(path[-1])
                     if not prediction['accepted']:
@@ -491,8 +486,9 @@ def run_skill(service,kind,*,observation_id,camera,region_xyxy,target_region_xyx
                 timing['tracker_initialization_seconds']+=time.perf_counter()-phase
                 meta=service.state['metadata'];start=np.asarray(meta['joint_positions']);tcp=pose_matrix(chain.forward(start))
                 retreat=tcp.copy();retreat[:3,3]-=withdrawal_distance_m*direction
+                planning_scene=collision_scene()
                 with planning_stage(budget,stroke_plan_seconds,'withdrawal',result,timing,'stroke_planning_seconds') as (planning,nested):
-                    path=cartesian_path(service.ik,scene,service.record,meta,start,matrix_pose(retreat),planning,timing=nested)
+                    path=cartesian_path(service.ik,planning_scene,service.record,meta,start,matrix_pose(retreat),planning,timing=nested)
                 refs=schedule_contact(path,chain,contact_local,contact_speed_m_s=.03,endpoint_hold_steps=0)
                 stage=issue(refs,'push-release-withdrawal',planning_timing_seconds=dict(nested),requested_contact_speed_m_s=.03)
                 result['release_evidence']={'requested_withdrawal_m':withdrawal_distance_m,

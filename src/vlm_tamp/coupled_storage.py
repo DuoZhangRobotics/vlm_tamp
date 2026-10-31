@@ -163,6 +163,8 @@ def preserve_scene(scene, output):
                   'configured_robot_reference_volumes': scene.robot.reference_volumes if scene.robot is not None else [],
                   'configured_robot_reference_joints': getattr(scene.robot, 'reference_joints', None) if scene.robot is not None else None,
                   'lossless_numeric_arrays': True, 'simulator_scene_geometry_used': False}
+        if getattr(scene,'current_robot_filter',None) is not None:
+            cached['current_robot_point_filter']=scene.current_robot_filter
         _SCENES[scene] = cached
     write_json(output/'scene-reference.json', cached)
 

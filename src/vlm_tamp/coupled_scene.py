@@ -357,8 +357,8 @@ class Scene:
         self.static_points = np.asarray(static, float).reshape(-1, 3).copy()
         self.moving_reference = np.asarray(moving, float).reshape(-1, 3).copy()
         self.contact_reference = np.asarray(contact, float).reshape(-1, 3).copy()
-        if not len(self.contact_reference) or not len(self.moving_reference):
-            raise ValueError('Moving surface and selected contact observations are required')
+        if not len(self.contact_reference):
+            raise ValueError('Selected contact reference is required')
         for cloud in (self.static_points, self.moving_reference, self.contact_reference):
             if not np.isfinite(cloud).all():
                 raise ValueError('Tagged observed points must be finite')

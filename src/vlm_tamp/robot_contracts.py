@@ -279,7 +279,7 @@ def operation_schemas(image_sizes=None):
         'set_model': ('Set a hinge/axis hypothesis; existing plans become stale.', parameters({'hinge_world_m': nullable(array(3)), 'axis_world': nullable(array(3))})),
         'plan_grasp': ('Try up to eight original GraspGen poses by learned score. Filter open-hand scene collisions before IK, then check the arm and approach against the full observed scene. Closure is physical contact; plan manipulation from its measured result.', parameters({'probe_degrees': angle, 'max_candidates': candidates, 'seed': seed,
             'speed':speed,'approach_speed':speed,'hold':{'type':'integer','minimum':0},'close_steps':{'type':'integer','minimum':1},'budget_seconds':number(exclusiveMinimum=0,maximum=1800),'collision_policy':policy})),
-        'plan_arc': ('Plan the complete requested relative contact arc; no robot motion. Existing measured finger/target contact is allowed to continue even outside the selected patch. New point collisions, arm, palm and stationary obstacles remain checked; contact permission is not proof of a grasp.', parameters({
+        'plan_arc': ('Plan the complete requested relative contact arc; no robot motion. Points overlapping the measured current robot are removed from the planning cloud with zero padding. Future candidate poses do not clear additional points; remaining scene collisions are checked. Contact permission is not proof of a grasp.', parameters({
             'degrees':angle,'refined':{'type':'boolean'},'grasp_constraint':nullable(grasp),
             'position_tolerance_m':nullable({'type':'number','exclusiveMinimum':0}),
             'orientation_tolerance_deg':nullable({'type':'number','minimum':0,'maximum':180}),

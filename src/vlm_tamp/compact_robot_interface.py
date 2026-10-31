@@ -47,6 +47,8 @@ Contact skills when enabled: push, hook_pull (execute by default; preview=true h
 push modes: controlled; push_and_release. Scene collisions block plans
 (collision_policy="veto"). Only intended pad/target contact is exempt by default;
 the arm, palm and proximal fingers remain checked. No extra dense validation.
+Before planning, points inside the measured current robot geometry are removed
+from the collision map with zero padding. Future candidate poses cannot clear points.
 Other enabled operations are listed below. help is local and makes no robot call.
 
 Each compact reply preserves success/errors and provides full_response for all
@@ -152,7 +154,7 @@ def compact_response(response):
             'fixed_hinge_displacement_mm','allowed_hinge_displacement_mm',
             'module','robot_valid_ik_solutions','endpoint_rejection_counts','endpoint_rejection_examples',
             'budget_timing_assumptions','shortest_rejected_approach_controls',
-            'requested_relative_angle_deg', 'start_collision_free', 'goal_proposals_tried',
+            'requested_relative_angle_deg', 'start_collision_free', 'start_rejection','current_robot_point_filter','goal_proposals_tried',
             'goal_projection_successes', 'collision_free_goals', 'search_seconds',
             'first_blocking_surface_by_rejected_goal', 'first_blocking_robot_part_by_rejected_goal',
             'interpretation', 'full_diagnostic', 'requested_constraints',
@@ -176,7 +178,7 @@ def compact_response(response):
             'estimated_approach_control_steps','estimated_approach_simulation_seconds','remaining_skill_seconds',
             'scene_refresh_required','next_geometry_interfaces','retained_scene_reference_control_step','feedback_cameras',
             'budget_feasibility_scope','nominal_requested_motion_controls','nominal_cost_assumption','preview_artifacts','robot_valid_plan_available','control_budget_feasible','minimum_following_control_steps',
-            'collision_policy','environment_collision_predictions','cartesian_path_deviation','simulator_physical_contacts_enabled',
+            'collision_policy','environment_collision_predictions','cartesian_path_deviation','simulator_physical_contacts_enabled','current_robot_point_filter',
             'perception_recoveries','recovery_options','physical_infeasibility_proved','release_evidence','motion_settings','retained_joint_estimate_id','motion_warnings','contact_warnings','release_motion_observed','release_motion_reference')))
         result['stage_count']=len(value.get('stages',[]))
         result['feedback_count']=sum('object_motion' in s for s in value.get('stages',[]))

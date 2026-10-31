@@ -8,6 +8,7 @@ from .execution_limits import remaining_controls
 from .grasp_observation import grasp_observation
 from .signed_contact_motion import plan_signed_arc
 from .timed_execution import schedule,gripper_arm_reference
+from .current_robot_scene import clear_current_robot_scene
 
 
 def measured_robot_scene(service):
@@ -17,7 +18,7 @@ def measured_robot_scene(service):
     scene.config={**scene.config,'grasp_contact_depth_offset_m':getattr(service,'active_grasp_contact_offset_m',0.)}
     scene.skill_contact_surface=('grasped_fingers' if getattr(service,'last_gripper_command',-1)==1
         and getattr(service,'spec',None) is not None else 'fingertips')
-    return scene
+    return clear_current_robot_scene(scene,service.state['metadata'],service.state['control_steps'])
 
 
 def execute_sequence(service,plan_id,*,close_steps=40,speed=.35,approach_speed=None,hold=6,

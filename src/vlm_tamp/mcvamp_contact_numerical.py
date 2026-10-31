@@ -367,12 +367,7 @@ class NativeScene:
                 moving_geometry_pose_source=update['source'],
                 moving_geometry_reference_control_step=update['reference_control_step'],
                 fresh_depth_endpoints_after_transport=False)
-        self.record['existing_finger_target_contact']={
-            'enabled':bool(articulated and allow_contact),
-            'scope':'observed target points already inside that configured finger part at the query reference state',
-            'additional_contact_padding_m':0.,'selected_patch_membership_required':False,
-            'new_point_collisions_exempt':False,'stationary_obstacles_exempt':False,
-            'arm_or_palm_exempt':False,'physical_grasp_certified':False}
+        self.record['current_robot_point_filter']=getattr(scene,'current_robot_filter',None)
         # Only explicit legacy comparisons can carry shallow palm/contact
         # overlap. Live tools check the palm without this tolerance.
         initial=self.validate(reference_q)

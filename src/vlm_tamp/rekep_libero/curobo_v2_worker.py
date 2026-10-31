@@ -140,14 +140,12 @@ class Worker:
         with np.load(path, allow_pickle=False) as arrays:
             # contact_reference tracks the association with the original
             # contact patch. It is not an additional measured obstacle in
-            # local continuation: moving_reference already holds current
+            # either solver mode: moving_reference already holds current
             # moving surfaces, matching native obstacle ownership.
             moving = arrays['moving_reference']
-            if solver_mode == 'global':
-                moving = np.vstack([moving, arrays['contact_reference']])
             clouds = {'stationary': arrays['static_points'], 'moving': moving}
         for role, points in clouds.items():
-            if points.ndim != 2 or points.shape[1] != 3 or not len(points) or not np.isfinite(points).all():
+            if points.ndim != 2 or points.shape[1] != 3 or not np.isfinite(points).all():
                 raise ValueError(f'{role} observed surfaces must contain finite xyz points')
         from curobo.scene import Mesh, Scene
         self._destroy_arc_solver()
@@ -160,12 +158,13 @@ class Worker:
         if not np.isfinite(self.arc_position_tolerance) or self.arc_position_tolerance<=0:
             raise ValueError('Arc position tolerance must be positive')
         self.arc_rng = np.random.default_rng(self.seed)
-        meshes = []
+        meshes = [];self.moving_mesh_name=None
         if not hasattr(self, 'mesh_cache'):
             self.mesh_cache = {}
         mesh_pitches = {'stationary': float(mesh_pitch),
                        'moving': float(moving_mesh_pitch if solver_mode == 'local_continuation' else mesh_pitch)}
         for role, points in clouds.items():
+            if not len(points):continue
             pitch = mesh_pitches[role]
             digest = hashlib.sha256(np.ascontiguousarray(points).tobytes()).hexdigest()
             key = (role, digest, pitch)
@@ -205,7 +204,7 @@ class Worker:
                 'optimizer_lifetime': 'one_arc' if solver_mode == 'local_continuation' else 'one_query',
                 'solver_recreated': True, 'mesh_pitch_m': mesh_pitch,
                 'mesh_pitch_by_role_m': mesh_pitches,
-                'current_moving_surface_only': solver_mode == 'local_continuation',
+                'current_moving_surface_only': True,
                 'local_optimization_dt_seconds': self.arc_local_dt if solver_mode == 'local_continuation' else None,
                 'local_seed_std_rad': self.arc_local_seed_std if solver_mode == 'local_continuation' else None,
                 'velocity_regularization_weight': (self.arc_local_velocity_weight if solver_mode == 'local_continuation'
@@ -295,8 +294,9 @@ class Worker:
         rotation = Rotation.from_rotvec(float(angle)*self.arc_axis)
         translation = self.arc_origin-rotation.apply(self.arc_origin)
         quat = rotation.as_quat()
-        self.arc_solver.scene_collision_checker.data.update_obstacle_pose(self.moving_mesh_name,
-            Pose.from_list([*translation, quat[3], *quat[:3]], device_cfg=self.device))
+        if self.moving_mesh_name is not None:
+            self.arc_solver.scene_collision_checker.data.update_obstacle_pose(self.moving_mesh_name,
+                Pose.from_list([*translation, quat[3], *quat[:3]], device_cfg=self.device))
         # Orientation is a soft proposal preference in point mode. The native
         # model remains responsible for exact jaw-axis and wrist constraints.
         orient_weights = {'point': [.002]*3, 'rigid': [1.]*3, 'jaw_axis': [0., 1., 1.]}[mode]

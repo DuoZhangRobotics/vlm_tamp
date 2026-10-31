@@ -1,6 +1,7 @@
 """Actor-visible diagnostics from the current numerical planning query."""
 import math
 from collections import Counter
+from .current_robot_scene import filter_summary
 
 
 def summarize_pose_failure(attempts, native_scene=None):
@@ -26,6 +27,7 @@ def summarize_pose_failure(attempts, native_scene=None):
                 examples.append({'key':key,'stage':stage,'robot_part':robot_part,'reason':reason,
                     'joint_bound_violations':check.get('joint_bound_violations',[])})
     return {'status':'no_robot_valid_ik' if not attempts else 'pose_endpoint_rejected' if reasons else 'pose_path_search_failed',
+        'current_robot_point_filter':filter_summary((native_scene or {}).get('current_robot_point_filter')),
         'module':'full_pose_ik' if not attempts else 'native_scene.endpoint_admission' if reasons else 'native_scene.path_search',
         'robot_valid_ik_solutions':len(attempts),'endpoint_rejection_counts':dict(reasons),
         'endpoint_rejection_examples':examples,'search_stage_counts':dict(statuses),
@@ -91,6 +93,7 @@ def summarize_arc_failure(result,native_scene=None):
             roles[role]=roles.get(role,0)+1;parts[part]=parts.get(part,0)+1
         previous=scene
     return {'status':result.get('status'),'grasp_constraint':result.get('grasp_constraint','point'),
+        'current_robot_point_filter':filter_summary((native_scene or {}).get('current_robot_point_filter')),
         'requested_relative_angle_deg':math.degrees(result.get('goal_angle_rad',0.)),
         'start_collision_free':result.get('start',{}).get('accepted'),
         'start_rejection':({k:result['start'][k] for k in (

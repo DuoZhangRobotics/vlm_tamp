@@ -110,6 +110,11 @@ def _run_data(study,run,entry,active):
            'Measured object motion':progress or '—','Last skill feedback observations':result.get('feedback_count','—'),
            'Reported feedback count across tools':sum(e.get('response',{}).get('result',{}).get('feedback_count',0) for e in events),
            'Stop reason':result.get('stop_reason','—')}
+    cleared=result.get('current_robot_point_filter')
+    if cleared:
+        skill.update({'Last current-pose points cleared':cleared.get('last_removed_points',cleared.get('total_removed_points')),
+            'Point-filter padding (m)':cleared.get('padding_m'),
+            'Current-pose filter updates':cleared.get('updates',1)})
     for stage in reversed(result.get('stages',[])):
         speed=stage.get('measured_contact_speed',{})
         if speed:skill.update({'Measured stage':stage.get('stage'),'Engagement':stage.get('engagement',{}).get('status','unverified'),

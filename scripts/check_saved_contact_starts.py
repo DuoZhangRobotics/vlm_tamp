@@ -10,6 +10,7 @@ from vlm_tamp.coupled_scene import Scene,RobotVolumes
 from vlm_tamp.coupled_storage import read_json,write_json
 from vlm_tamp.mcvamp_contact_numerical import NativeScene,clear_native_cache
 from vlm_tamp.rekep_libero.robot_chain_v4 import RobotChain
+from vlm_tamp.current_robot_scene import clear_current_robot_scene
 
 
 def check(source,events,output,plan_arcs=False):
@@ -29,15 +30,17 @@ def check(source,events,output,plan_arcs=False):
                 scene=Scene.from_points(arrays['static_points'],arrays['moving_reference'],arrays['contact_reference'],
                     ref['spec'],config=ref['configuration'],robot=robot,reference_volumes=ref['configured_robot_reference_volumes'])
             scene.skill_contact_surface=policy['skill_contact_surface']
+            original_scene=scene
+            scene=clear_current_robot_scene(scene,meta)
             phase=time.perf_counter()
             with NativeScene(scene,record,meta,q,inp['goal_angle_rad'],aligned=False,
                     grasp_constraint=old.get('grasp_constraint','point')) as native:
                 actual=native.validate(q)
                 row={'event':event,'original_start':old['start'],'repaired_start':actual,
-                    'original_overlap_evidence':current_collision_witness(scene,meta,old['start']),
-                    'existing_finger_target_contact':native.record['existing_finger_target_contact'],
+                    'original_overlap_evidence':current_collision_witness(original_scene,meta,old['start']),
+                    'current_robot_point_filter':native.record['current_robot_point_filter'],
                     'total_seconds':time.perf_counter()-phase,'physical_motion_issued':False,
-                    'same_observed_scene_arrays':ref['arrays_path'],'same_reference_joints':q.tolist()}
+                    'source_scene_arrays_before_current_robot_filter':ref['arrays_path'],'same_reference_joints':q.tolist()}
                 if not actual['accepted']:row['remaining_rejection']=current_collision_witness(scene,meta,actual)
             if plan_arcs and actual['accepted']:
                 from vlm_tamp.arc_execution import contact_arc
@@ -63,7 +66,7 @@ def check(source,events,output,plan_arcs=False):
             print(f"Event {event}: {old['start']['accepted']} -> {actual['accepted']}; arc={row.get('arc_replan',{}).get('status','not requested')}",flush=True)
     finally:
         if ik is not None:ik.close()
-    result={'source_run':str(source),'scope':'same saved point clouds and measured robot configurations; admission and optional planning, no physical execution or task-success claim',
+    result={'source_run':str(source),'scope':'saved point clouds and measured robot configurations with current-robot filtering; admission and optional planning, no physical execution or task-success claim',
         'rows':rows,'all_saved_starts_admitted':all(r['repaired_start']['accepted'] for r in rows)}
     write_json(Path(output),result)
     return result

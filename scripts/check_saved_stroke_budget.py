@@ -15,6 +15,7 @@ from scipy.spatial.transform import Rotation
 from vlm_tamp.contact_skill_service import planning_stage
 from vlm_tamp.contact_skills import Budget,SkillStop,build_contact_scene,plan_contact_stroke,refresh_collision_observations,unit
 from vlm_tamp.coupled_scene import Scene,RobotVolumes
+from vlm_tamp.current_robot_scene import clear_current_robot_scene
 from vlm_tamp.coupled_storage import read_json,write_json
 from vlm_tamp.hinged_contact_tools import TaskIK,tool_configuration
 from vlm_tamp.mcvamp_contact_numerical import clear_native_cache
@@ -83,6 +84,7 @@ def run(source,event_number,geometry_number,output):
             if stage is saved['stages'][-1]:raise
         else:scene,_=refresh_collision_observations(scene,cameras,meta)
     scene.skill_collision_policy='veto'
+    scene=clear_current_robot_scene(scene,meta,meta.get('control_steps'))
     length=float(args.get('stroke_length_m',.01));sign=np.sign(args['joint_degrees'])
     angle=sign*min(abs(np.radians(args['joint_degrees'])),length/max(np.linalg.norm(np.cross(scene.axis,point-scene.origin)),.01),np.pi/2)
     delta=scene.origin+Rotation.from_rotvec(scene.axis*angle).as_matrix()@(point-scene.origin)-point

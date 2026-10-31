@@ -63,6 +63,8 @@ def contact_arc(scene,record,metadata,start,goal,folder,config,*,ik=None):
                 proposer.close()
         result['planning_seconds']=result.get('total_seconds',0.)
         result['total_seconds']=time.perf_counter()-started
+        from .current_robot_scene import filter_summary
+        result['current_robot_point_filter']=filter_summary(getattr(scene,'current_robot_filter',None))
         if proposer is not None:
             result['curobo_v2']={'scene_setup_seconds':proposer.setup['total_setup_seconds'],
                 'queries':len(proposer.queries),

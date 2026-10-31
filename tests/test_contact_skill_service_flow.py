@@ -18,7 +18,8 @@ class Chain:
 def test_advisory_release_flow_and_native_success_termination(tmp_path,monkeypatch,reuse,native_success,unresolved_pulse):
     chain=Chain()
     scene=SimpleNamespace(static_points=np.empty((0,3)),moving_reference=np.array([[0.,0.,0.]]),
-        contact_reference=np.array([[0.,0.,0.]]),axis=np.array([0.,0.,1.]),origin=np.zeros(3))
+        contact_reference=np.array([[0.,0.,0.]]),axis=np.array([0.,0.,1.]),origin=np.zeros(3),
+        panel_origin=np.zeros(3),panel_normal=np.array([1.,0.,0.]))
     evidence={'point_world_m':[0.,0.,0.],'normal_toward_camera_world':[-1.,0.,0.],
         'direction_world':[1.,0.,0.],'contact_surface':'fingertips','joint_associated':False}
     monkeypatch.setattr(module,'build_contact_scene',lambda *a,**k:(scene,evidence.copy(),np.zeros((12,3))))
@@ -43,7 +44,9 @@ def test_advisory_release_flow_and_native_success_termination(tmp_path,monkeypat
             return {'accepted':True,'transform':transform.tolist(),'source':'fixture measured motion'}
     monkeypatch.setattr(module,'ContactTracker',Tracker)
     class Check:
-        def __init__(self,s):self.scene=s;self.record={}
+        def __init__(self,s):
+            assert hasattr(s,'current_robot_filter')
+            self.scene=s;self.record={}
         def __enter__(self):return self
         def __exit__(self,*args):pass
         def validate(self,q):
@@ -62,7 +65,8 @@ def test_advisory_release_flow_and_native_success_termination(tmp_path,monkeypat
             self.sim=object();self.ik=SimpleNamespace(chain=chain,self_valid=lambda q:True,
                 solve_many=lambda pose,seed,**kwargs:[{'joints':np.r_[pose[:3],np.zeros(4)]}])
             self.state={'control_steps':60,'metadata':{'joint_positions':[0.]*7,
-                'eef_pose_world_xyzw':[0,0,0,0,0,0,1],'gripper_qpos':[.04,-.04]}}
+                'eef_pose_world_xyzw':[0,0,0,0,0,0,1],'gripper_qpos':[.04,-.04],
+                'robot_collision_volumes_world':[]}}
             self.latest_observation={'observation_id':1,'control_steps':60}
             self.cameras={'test':{}};self.scene=scene;self.spec={'joint_axis_world':[0,0,-1]};self.record={}
             self.anchors=[[0,0,0]];self.scene_reference_control_step=60
@@ -88,6 +92,8 @@ def test_advisory_release_flow_and_native_success_termination(tmp_path,monkeypat
     assert result['motion_settings']['subsequent_plan_seconds']==5.
     assert result['motion_settings']['initial_search_seconds']==30.
     assert result['planning_stages'][0]['effective_seconds']<=20.
+    assert result['current_robot_point_filter']['updates']>=2
+    assert result['current_robot_point_filter']['padding_m']==0.
     names=[s['stage'] for s in result['stages']]
     assert result['robot_motion_executed']
     assert result['environment_collision_predictions']['count']>0

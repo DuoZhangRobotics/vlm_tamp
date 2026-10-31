@@ -2,6 +2,7 @@
 
 import hashlib
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -176,18 +177,35 @@ def test_local_geometry_ownership_and_optimizer_settings(worker_scene):
     assert not solvers[0].config.exit_early
 
 
-def test_global_diagnostic_mode_keeps_query_reset_and_original_scene(worker_scene):
-    worker, config, _, solvers = worker_scene
+def test_global_mode_keeps_query_reset_and_uses_only_current_collision_clouds(worker_scene):
+    worker, config, meshes, solvers = worker_scene
     config.pop('solver_mode')
     setup = worker.configure_arc(**config)
     assert setup['solver_mode'] == 'global'
-    assert setup['observed_points']['moving'] == 3
+    assert setup['observed_points']['moving'] == 2
+    assert setup['current_moving_surface_only']
+    assert np.max(meshes[1].points)<1.  # The distant contact reference is metadata.
     assert setup['mesh_pitch_by_role_m']['moving'] == .005
     first, second = solve(worker), solve(worker)
     assert len(solvers) == 2 and solvers[0].destroy_count == 1
     assert first['optimizer_generation'] == 1 and second['optimizer_generation'] == 2
     assert second['query_scoped_optimizer'] and second['solver_recreated']
     assert not second['all_seeds_local']
+
+
+@pytest.mark.parametrize('mode',['local_continuation','global'])
+def test_cleared_clouds_do_not_reuse_a_previous_moving_obstacle(worker_scene,mode):
+    worker,config,meshes,solvers=worker_scene
+    worker.configure_arc(**config)
+    path=Path(config['scene_arrays_path'])
+    np.savez(path,static_points=np.empty((0,3)),moving_reference=np.empty((0,3)),
+        contact_reference=np.array([[9.,9.,9.]]))
+    setup=worker.configure_arc(**{**config,'solver_mode':mode,
+        'scene_arrays_sha256':hashlib.sha256(path.read_bytes()).hexdigest()})
+    assert setup['observed_points']=={'stationary':0,'moving':0}
+    assert worker.moving_mesh_name is None
+    assert len(meshes)==2  # No placeholder or metadata mesh was manufactured.
+    solve(worker,setup['arc_id'])
 
 
 @pytest.mark.parametrize('change', [

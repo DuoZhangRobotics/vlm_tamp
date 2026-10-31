@@ -735,6 +735,7 @@ class RobotService:
             write_json(detail_path,result)
             details=str(detail_path.relative_to(self.workspace))
             result={**{k:v for k,v in result.items() if isinstance(v,(str,int,float,bool,type(None)))},
+                'current_robot_point_filter':result.get('current_robot_point_filter'),
                 'goal_proposals_tried':len(result.get('goal_proposals',[])),
                 'global_queries':len(result.get('global_queries',[]))}
         return {'plan_id': token, 'joint_path': str(dest.relative_to(self.workspace)),
@@ -746,7 +747,9 @@ class RobotService:
     def _query_scene(self,collision_policy=None):
         policy=collision_policy or self.config.get('environment_collision_policy','veto')
         if policy not in {'advisory','veto'}:raise ValueError('Unknown environment collision policy')
-        scene=copy.copy(self.scene);scene.config={**scene.config,'environment_collision_policy':policy}
+        from vlm_tamp.current_robot_scene import clear_current_robot_scene
+        scene=clear_current_robot_scene(self.scene,self.state['metadata'],self.state['control_steps'])
+        scene.config={**scene.config,'environment_collision_policy':policy}
         return scene
 
     def motion_settings(self):
@@ -760,6 +763,8 @@ class RobotService:
             'native_joint_reserve_rad':self.config.get('native_joint_reserve_rad',0.),
             'default_approach_speed_rad_s':self.config.get('grasp_approach_speed_rad_s',.6),
             'contact_defaults':{'stroke_length_m':.01,'contact_speed_m_s':.03,'release_stroke_length_m':.03},
+            'current_robot_point_filter':{'enabled':True,'padding_m':0.,
+                'scope':'collision points inside measured current robot geometry are removed before downstream planning; candidate poses cannot clear points'},
             'policy':'Contact stroke length/speed and search budgets are explicit experiment settings. Numerical uncertainty does not prove physical infeasibility.'}
 
     def _select_contact(self, probe_degrees, max_candidates, seed, options=None):
@@ -791,8 +796,13 @@ class RobotService:
                     'grasp_ik_rpc_seconds':sum(q.get('worker_rpc_seconds',0.) for q in queries),
                     'grasp_ik_cpu_postprocessing_seconds':sum(q.get('cpu_postprocessing_seconds',0.) for q in queries),
                     'grasp_ik_total_seconds':sum(q.get('wall_seconds',0.) for q in queries)})
+        with measured_phase('current_robot_filter'):
+            from vlm_tamp.current_robot_scene import points_outside_current_robot
+            planning_scene=self._query_scene((options or {}).get('environment_collision_policy'))
+            grasp_cloud,grasp_filter=points_outside_current_robot(self.cloud,self.state['metadata'])
+            write_json(folder/'current-robot-grasp-cloud-filter.json',grasp_filter)
         with measured_phase('generation'):
-            generated = self.resources.grasps(self.cloud, folder/'generation',
+            generated = self.resources.grasps(grasp_cloud, folder/'generation',
                 num_grasps=int(self.config.get('graspgen_samples',8)),
                 topk=int(self.config.get('graspgen_topk',8)))
         with measured_phase('scene_preparation'):
@@ -805,11 +815,14 @@ class RobotService:
                                      self.state['metadata']['joint_positions'])
                 closed_scene = ArcContactScene(self.cameras, self.state['metadata'], self.spec,
                     self.cloud, self.mask, self.choices, self.config, robot=robot)
+                from vlm_tamp.current_robot_scene import clear_current_robot_scene
+                closed_scene=clear_current_robot_scene(closed_scene,self.state['metadata'],self.state['control_steps'])
+                closed_scene.robot=robot
             open_qpos=getattr(self,'open_gripper_reference_qpos',self.state['metadata']['gripper_qpos'])
             opened=self.sim.fk(self.state['metadata']['joint_positions'],include_volumes=True,gripper_qpos=open_qpos)
             approach_state={**self.state,'metadata':{**self.state['metadata'],'gripper_qpos':list(open_qpos),
                 'robot_collision_volumes_world':opened['robot_collision_volumes_world']}}
-            approach_scene=copy.copy(self.scene)
+            approach_scene=copy.copy(planning_scene)
             approach_scene.robot=RobotVolumes(self.ik.chain,opened['robot_collision_volumes_world'],self.state['metadata']['joint_positions'])
         try:
             with measured_phase('selection'):
@@ -958,6 +971,8 @@ class RobotService:
         start = np.asarray(self.state['metadata']['joint_positions'])
         with NativeScene(self._query_scene(collision_policy),self.record,self.state['metadata'],start,.05,articulated=False) as native:
             path, result = native.plan(start,goal,constrained=False,seconds=8.)
+            from vlm_tamp.current_robot_scene import filter_summary
+            result['current_robot_point_filter']=filter_summary(native.record.get('current_robot_point_filter'))
         if not result['exact_solution']:
             return {'planned': False, 'result': result,'scene_observation_support':self.safe_scene_evidence()}
         result.update(environment_collision_policy=collision_policy or self.config.get('environment_collision_policy','veto'),collision_free_certificate=False)
@@ -999,8 +1014,9 @@ class RobotService:
         if self.scene is None:raise ValueError('Ground the scene or select a surface contact first')
         from vlm_tamp.surface_contact_tools import plan_pose
         folder=self.folder('pose-plan')
+        query=self._query_scene(collision_policy)
         try:
-            path,result=plan_pose(self.ik,self._query_scene(collision_policy),self.record,self.state['metadata'],
+            path,result=plan_pose(self.ik,query,self.record,self.state['metadata'],
                 vector(pose_world_xyzw,7),folder)
         except Exception as error:
             if hasattr(error,'planning_diagnostic'):
@@ -1009,6 +1025,8 @@ class RobotService:
                     'attempts':read_json(folder/'attempts.json')})
                 error.planning_diagnostic['full_diagnostic']=str(target.relative_to(self.workspace))
             raise
+        from vlm_tamp.current_robot_scene import filter_summary
+        result['current_robot_point_filter']=filter_summary(query.current_robot_filter)
         result.update(environment_collision_policy=collision_policy or self.config.get('environment_collision_policy','veto'),collision_free_certificate=False)
         return self.keep_plan(path,result,'free')
 
