@@ -1154,6 +1154,9 @@ class RobotService:
         if result['issued_commands'] and gripper!=0:self.last_gripper_command=gripper
         np.save(self.episode/f'{self.calls:03d}-issued-{label}.npy',refs[:result['issued_commands']])
         compact = {k:v for k,v in result.items() if k!='events'}
+        if result['issued_commands']:
+            from vlm_tamp.timed_execution import endpoint_tracking
+            compact['endpoint_tracking']=endpoint_tracking(self.ik.chain,refs[result['issued_commands']-1],self.state['metadata'])
         self.executions.append({'label':label,**compact})
         write_json(self.episode/'executions.json',self.executions)
         timing['trajectory_and_records_seconds']=time.perf_counter()-stage;stage=time.perf_counter()

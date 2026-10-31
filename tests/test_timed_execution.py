@@ -4,6 +4,22 @@ import pytest
 from vlm_tamp.timed_execution import schedule,execute,gripper_arm_reference
 
 
+def test_command_completion_does_not_hide_a_missed_reference_endpoint():
+    from vlm_tamp.timed_execution import endpoint_tracking
+    from vlm_tamp.compact_robot_interface import compact_response
+    from types import SimpleNamespace
+    chain=SimpleNamespace(forward=lambda q:[q[0],0,0,0,0,0,1])
+    reference=np.array([.1,0,0,0,0,0,0])
+    metadata={'joint_positions':[.027,0,0,0,0,0,0],'eef_pose_world_xyzw':[.027,0,0,0,0,0,1]}
+    feedback=endpoint_tracking(chain,reference,metadata)
+    response=compact_response({'ok':True,'result':{'execution':{'all_commands_issued':True,'endpoint_tracking':feedback}}})
+    shown=response['result']['execution']
+    assert shown['all_commands_issued']
+    assert shown['endpoint_tracking']['position_error_m']==pytest.approx(.073)
+    assert not shown['endpoint_tracking']['within_controller_reporting_tolerance']
+    assert not shown['endpoint_tracking']['execution_veto_applied']
+
+
 def test_gripper_hold_recovers_measured_overshoot_without_assigning_state():
     bounds=np.tile([-3.,3.],(7,1));bounds[5]=[-.0175,3.7525]
     measured=np.zeros(7);measured[5]=3.7529091835;original=measured.copy()

@@ -5,6 +5,7 @@ frames. No scene-dependent translations, angle menus or depth sweeps occur.
 """
 import copy
 import time
+from contextlib import nullcontext
 
 import numpy as np
 
@@ -44,8 +45,11 @@ def select_direct_grasp(generated,state,ik,record,open_scene,goal,folder,config,
     attempts=[];queries=0;hand_seconds=ik_seconds=path_seconds=0.;best=None
     speed=budget['maximum_joint_speed'];hold=budget['endpoint_hold_steps']
     with NativeScene(open_scene,record,state['metadata'],initial,goal,articulated=False,
-                     allow_contact=True,collision_policy=policy) as approach_context:
+                     allow_contact=True,collision_policy=policy) as approach_context, \
+         (NativeScene(open_scene,record,state['metadata'],initial,goal,articulated=False,
+                      allow_contact=False,collision_policy=policy) if policy=='veto' else nullcontext(None)) as travel_context:
         start=approach_context.validate(initial)
+        free_start=bool(travel_context is not None and travel_context.validate(initial)['accepted'])
         write_json(folder/'approach-initial-scene.json',{'record':approach_context.record,'start':start,
             'admission_aperture':'open','closure_policy':'execute closure and inspect measured engagement'})
         if not start['accepted']:
@@ -94,10 +98,19 @@ def select_direct_grasp(generated,state,ik,record,open_scene,goal,folder,config,
                 attempt.update(status='approach_exceeds_episode_budget',approach_steps=lower);continue
             remaining=deadline-time.perf_counter()
             if remaining<=0:attempt['status']='search_deadline';break
+            # Finger/target contact is useful for a grasp, but permitting it
+            # throughout a free approach can drive an open pad through the
+            # handle and stop the real hand far short of the planned grasp.
+            # When both endpoints are free, use the planner's ordinary target
+            # collision checking for this one route. Contacting endpoints keep
+            # their existing contact-enabled route; closure stays physical.
+            avoid_target=bool(free_start and travel_context.validate(q)['accepted'])
+            planner=travel_context if avoid_target else approach_context
             t=time.perf_counter()
-            path,result=approach_context.plan(initial,q,constrained=False,seconds=min(2.,remaining))
+            path,result=planner.plan(initial,q,constrained=False,seconds=min(2.,remaining))
             path_seconds+=time.perf_counter()-t;queries+=1
-            route={'route':policy,'standoff_m':0.,'one_route_per_learned_pose':True}
+            route={'route':policy,'standoff_m':0.,'one_route_per_learned_pose':True,
+                'target_contact_during_approach_allowed':not avoid_target}
             with (folder/'approach-queries.jsonl').open('a') as stream:
                 import json
                 stream.write(json.dumps({'pose_index':ordinal,'ik_rank':rank,**route,**result})+'\n')

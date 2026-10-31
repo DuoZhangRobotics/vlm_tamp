@@ -151,3 +151,20 @@ The next patch addresses current-code invariants directly:
 Focused regression validation: 151 passed, two archived fixtures skipped.
 The short current-version trial is reported in
 `results/luna-current-debug-20261031/watch.html`.
+
+That current trial exposed a separate execution-reporting defect: the selected
+grasp had observed target support, but measured arrival was 73.14 mm and 21.34°
+from the planned grasp pose. All reference commands had been issued, which did
+not establish arrival; subsequent closure produced an empty gripper. `issue`
+now reports `execution.endpoint_tracking` from existing robot proprioception
+and calibrated FK. Compact replies and the dashboard expose these errors.
+The existing controller reporting tolerances classify the measurement only;
+no new motion gate, retries, settling controls or collision checks are added.
+
+The grasp planner also permitted finger/target contact throughout ordinary
+open-hand approach travel. It now uses the planner's free-travel collision
+policy when both the start and open goal are clear of target contact. Endpoints
+that intentionally contact the target keep their existing contact-enabled
+route. Both contexts use the same open aperture, and there is still only one
+route query per learned pose, no added offsets or dense validation. This avoids
+choosing a path that brushes the target well before reaching the grasp pose.

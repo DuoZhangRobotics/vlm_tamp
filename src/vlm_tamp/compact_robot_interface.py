@@ -84,6 +84,9 @@ do not verify its hinge; use independent calibrated views or measured motion.
 
 Plans do not move the robot. Execute explicitly. Use fresh plans after scene or
 robot changes. A solved plan does not establish grasp retention or task success.
+all_commands_issued means the references were sent. execution.endpoint_tracking
+reports whether the hand actually arrived and its position/orientation error.
+Use that measured result before an action that assumes arrival, such as closure.
 Stop motion immediately on task_success=true. Read episode_status for actual
 control and time budgets. A planning failure is feedback, not episode completion.
 task_success=false means incomplete; it does not mean the last action failed
@@ -315,7 +318,7 @@ def compact_response(response):
     if 'execution' in value:
         result['execution'] = pick(value['execution'], ('planned_commands', 'issued_commands',
             'all_commands_issued', 'terminated_on_simulator_success', 'termination_reason',
-            'worker_seconds', 'wall_seconds', 'maximum_joint_reference_error_rad'))
+            'worker_seconds', 'wall_seconds', 'maximum_joint_reference_error_rad','endpoint_tracking'))
     if 'motion_effect' in value:result['motion_effect']=value['motion_effect']
     if 'scene_observation_support' in value:result['scene_observation_support']=evidence(value['scene_observation_support'])
     if isinstance(value.get('result'), dict):
@@ -357,6 +360,8 @@ def compact_response(response):
         for stage in value['stages']:
             item = pick(stage, ('stage', 'task_success', 'episode_done', 'termination_reason', 'control_steps'))
             item.update(pick(stage,('grasp_evidence','motion_effect','scene_reference_control_step')))
+            if stage.get('execution',{}).get('endpoint_tracking'):
+                item['endpoint_tracking']=stage['execution']['endpoint_tracking']
             if isinstance(stage.get('observation'),dict):
                 item['observation']=pick(stage['observation'],('observation_id','control_steps','grasp_evidence'))
             update = stage.get('scene_pose_update', stage.get('scene_pose_observation', {})) or {}

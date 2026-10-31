@@ -48,6 +48,11 @@ def _live_process(active):
 def issue_explanation(diagnostic):
     """Keep the failed module and cause visible without opening a large JSON log."""
     if not isinstance(diagnostic,dict):return None
+    tracking=diagnostic.get('endpoint_tracking')
+    if tracking:
+        return (f"Controller endpoint tracking: the hand finished {1000*tracking['position_error_m']:.1f} mm "
+            f"and {tracking['orientation_error_deg']:.1f}° from the last issued reference. "
+            'Command completion does not establish arrival. This is measured feedback, not an added motion veto.')
     feedback=diagnostic.get('feedback',{})
     if feedback.get('stalled') and feedback.get('stall_window'):
         window=feedback['stall_window']
@@ -126,10 +131,15 @@ def _run_data(study,run,entry,active):
                 'preview_reused':value.get('preview_reused'),'full_scene_builds':value.get('full_scene_builds'),
                 'contact_searches':value.get('contact_searches')})
         reason=response.get('error') if response.get('ok') is False else value.get('stop_reason')
+        addendum=addenda.get(str(event['sequence']))
+        tracking=value.get('execution',{}).get('endpoint_tracking')
+        if not reason and op=='execute' and tracking and not value.get('task_success') and tracking.get('within_controller_reporting_tolerance') is False:
+            reason='reference_endpoint_not_reached'
+        if not reason and addendum:reason=addendum.get('reason')
         if reason and reason not in {'preview_only','requested_progress_reached','requested_stroke_complete',
                 'stroke_executed','requested_reference_motion_complete','native_task_success','bounded_release_stroke_complete'}:
             diagnostic=response.get('planning_diagnostic',value.get('diagnostic'))
-            addendum=addenda.get(str(event['sequence']))
+            if reason=='reference_endpoint_not_reached' and tracking:diagnostic={'endpoint_tracking':tracking}
             issues.append({'event':event['sequence'],'operation':op,'reason':str(reason)[:1800],
                            'diagnostic':brief_evidence(diagnostic),'explanation':issue_explanation(diagnostic),
                            'evaluator_addendum':addendum})

@@ -16,6 +16,18 @@ def fixture(tmp_path,monkeypatch):
     return study,run,manifest
 
 
+def test_missed_endpoint_is_visible_even_when_all_commands_were_issued(tmp_path,monkeypatch):
+    study,run,_=fixture(tmp_path,monkeypatch)
+    event={'sequence':5,'request':{'operation':'execute','arguments':{}},'wall_seconds':2,
+        'response':{'ok':True,'result':{'execution':{'all_commands_issued':True,'endpoint_tracking':{
+            'position_error_m':.07314,'orientation_error_deg':21.33,'within_controller_reporting_tolerance':False}}}}}
+    (run/'tool-events.jsonl').write_text(json.dumps(event)+'\n')
+    dashboard.publish(study,force=True)
+    issue=json.loads((run/'watch-data.json').read_text())['issues'][0]
+    assert issue['reason']=='reference_endpoint_not_reached'
+    assert '73.1 mm' in issue['explanation'] and '21.3°' in issue['explanation']
+
+
 def test_frequent_tool_updates_do_not_rewrite_html_or_publish_too_often(tmp_path,monkeypatch):
     study,run,_=fixture(tmp_path,monkeypatch)
     first=dashboard.publish(study,now=0)

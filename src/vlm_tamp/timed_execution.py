@@ -5,6 +5,23 @@ import numpy as np
 from .execution_limits import control_limit
 
 
+def endpoint_tracking(chain,reference,metadata):
+    """Report measured arrival; never veto, extend or repeat a trajectory."""
+    from scipy.spatial.transform import Rotation
+    from .rekep_libero.geometry import pose_matrix
+    desired=pose_matrix(chain.forward(reference))
+    actual=pose_matrix(metadata['eef_pose_world_xyzw'])
+    position=float(np.linalg.norm(actual[:3,3]-desired[:3,3]))
+    angle=float(Rotation.from_matrix(desired[:3,:3].T@actual[:3,:3]).magnitude())
+    return {'position_error_m':position,'orientation_error_deg':float(np.degrees(angle)),
+        'maximum_joint_error_rad':float(np.max(np.abs(np.asarray(metadata['joint_positions'])-reference))),
+        'within_controller_reporting_tolerance':bool(position<.004 and angle<.05),
+        'reporting_tolerances':{'position_m':.004,'orientation_rad':.05},
+        'tolerance_source':'existing controller completion reporting; not a planning or execution gate',
+        'reference':'last issued joint reference versus measured robot pose',
+        'command_completion_is_not_arrival':True,'execution_veto_applied':False}
+
+
 def gripper_arm_reference(measured,limits,*,planning_reserve_rad=0.,control_hz=20.,maximum_joint_speed=1.):
     """Hold the arm, or command one inward servo increment after limit overshoot.
 

@@ -23,14 +23,14 @@ def setup(tmp_path, monkeypatch, *, accepted):
     robot.sim = object()
     robot.events, robot.executions, robot.anchors = [], [], [[1.1, 0, 1]]
     robot.tracker = None
-    robot.ik = SimpleNamespace(chain=None)
+    robot.ik = SimpleNamespace(chain=SimpleNamespace(forward=lambda q:[0,0,0,0,0,0,1]))
     robot.stop_on_success = False
     robot.capture = lambda: {'control_steps': robot.state['control_steps']}
     robot.safe_scene_evidence = lambda: {'available': True}
     monkeypatch.setattr(module, 'RGBDHingeTracker', lambda *a, **k:
                         SimpleNamespace(observe=lambda *a, **k: fit))
     monkeypatch.setattr(module, 'execute_batch', lambda *a, **k:
-                        ({'control_steps': 5, 'metadata': {'joint_positions': [0.] * 7}},
+                        ({'control_steps': 5, 'metadata': {'joint_positions': [0.] * 7,'eef_pose_world_xyzw':[0,0,0,0,0,0,1]}},
                          {'issued_commands': 5, 'planned_commands': 5, 'all_commands_issued': True}))
     return module, robot, scene, transform
 
@@ -46,6 +46,7 @@ def test_observed_object_motion_after_ordinary_commands_updates_only_moving_geom
     assert robot.epoch == 1
     assert result['scene_pose_update']['source'] == 'rgbd_rigid_motion'
     assert not result['scene_pose_update']['assumes_contact_retention']
+    assert result['execution']['endpoint_tracking']['within_controller_reporting_tolerance']
 
 
 def test_unconfirmed_ordinary_motion_never_moves_scene_by_hand_prediction(tmp_path, monkeypatch):

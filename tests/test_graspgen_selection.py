@@ -87,8 +87,32 @@ def test_closest_scene_valid_ik_is_chosen_without_an_extra_route(monkeypatch,tmp
     assert len(paths)==1 and np.allclose(paths[0],.2)
     assert result['ik_rank']==1
     assert permissions[0]['allow_contact'] is True
-    assert len(permissions)==1  # No hypothetical closed-hand veto context.
+    assert len(permissions)==2  # Same open hand; separate free-travel contact policy.
+    assert permissions[1]['allow_contact'] is False
+    assert result['approach_selection']['target_contact_during_approach_allowed'] is False
     assert all(p['collision_policy']=='veto' for p in permissions)
+
+
+def test_intended_goal_contact_keeps_the_contact_enabled_approach(monkeypatch,tmp_path):
+    import vlm_tamp.graspgen_selection as module
+    modes=[]
+    class Context:
+        def __init__(self,*args,**kwargs):self.allow=kwargs['allow_contact'];self.record={}
+        def __enter__(self):return self
+        def __exit__(self,*args):pass
+        def validate_hand_pose(self,pose):return {'accepted':True}
+        def validate(self,q):return {'accepted':self.allow or np.allclose(q,0)}
+        def plan(self,a,b,**kwargs):
+            modes.append(self.allow);return np.array([a,b]),{'exact_solution':True}
+    monkeypatch.setattr(module,'NativeScene',Context)
+    ik=SimpleNamespace(solve_many=lambda pose,seed:[{'joints':np.full(7,.1),'pose_world_xyzw':pose}])
+    state={'metadata':{'joint_positions':np.zeros(7),'robot_calibration':calibration()}}
+    budget={'maximum_joint_speed':.6,'endpoint_hold_steps':6,'available_approach_steps':500,
+        'grasp_closure_steps_reserved':40,'remaining_control_steps':540}
+    result=select_direct_grasp(proposals(),state,ik,{},SimpleNamespace(),.2,tmp_path/'selection',{},budget)
+    assert modes==[True]
+    assert result['approach_selection']['target_contact_during_approach_allowed']
+    assert result['search_summary']['approach_queries']==1
 
 
 def test_hand_collision_is_rejected_without_calling_ik(monkeypatch,tmp_path):

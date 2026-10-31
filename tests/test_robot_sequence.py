@@ -73,10 +73,10 @@ def test_neutral_and_closing_arc_commands_both_synchronize_geometry(tmp_path,mon
     module,robot=service(tmp_path)
     robot.config={'scene_pose_sync':'predicted'};robot.plans={'arc':{'kind':'arc'}}
     robot.sim=object();robot.events=[];robot.executions=[];robot.tracker=None
-    robot.ik=SimpleNamespace(chain=None);robot.scene=object();robot.anchors=[[0,0,0]]
+    robot.ik=SimpleNamespace(chain=SimpleNamespace(forward=lambda q:[0,0,0,0,0,0,1]));robot.scene=object();robot.anchors=[[0,0,0]]
     robot.stop_on_success=False;robot.capture=lambda:{'control_steps':5}
     def execute(*a,**k):
-        return {'control_steps':5,'metadata':{'joint_positions':[0.]*7}},{
+        return {'control_steps':5,'metadata':{'joint_positions':[0.]*7,'eef_pose_world_xyzw':[0,0,0,0,0,0,1]}},{
             'issued_commands':5,'planned_commands':5,'all_commands_issued':True}
     monkeypatch.setattr(module,'execute_batch',execute)
     monkeypatch.setattr(module,'hand_motion',lambda *a,**k:(np.eye(4),.1))
