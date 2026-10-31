@@ -168,3 +168,11 @@ that intentionally contact the target keep their existing contact-enabled
 route. Both contexts use the same open aperture, and there is still only one
 route query per learned pose, no added offsets or dense validation. This avoids
 choosing a path that brushes the target well before reaching the grasp pose.
+
+The subsequent single fresh current-version closing49 trial succeeded at
+control 506 of 600. Its source commit was `e0425a7`; no archived robot commands
+or successful coordinates were supplied to the actor. See
+`results/luna-current-debug-v2-20261031/watch.html` for the video and timings.
+This is one smoke-test success, not an established success rate. The actor used
+contact-motion tools in that run; the separate free-grasp-travel branch is
+covered by the focused tests rather than this episode's outcome.
