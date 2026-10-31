@@ -62,10 +62,10 @@ class ProfiledWorker(CoupledWorker):
     def observe(self,output_dir,camera_names=None):
         if camera_names is not None:
             from .rekep_libero.sim_worker_v3 import ARM_VIEW_POLICIES
-            if (not isinstance(camera_names,list) or not 1<=len(camera_names)<=4
+            if (not isinstance(camera_names,list) or not camera_names
                     or len(set(camera_names))!=len(camera_names)
                     or any(n not in {'agentview','wrist','frontview',*ARM_VIEW_POLICIES} for n in camera_names)):
-                raise ValueError('Choose one to four distinct calibrated cameras')
+                raise ValueError('Choose distinct calibrated cameras')
         self.selected_capture_cameras=camera_names
         try:return self._observe_selected(output_dir)
         finally:self.selected_capture_cameras=None

@@ -634,7 +634,8 @@ def _plan_contact_at_point(ik,scene,record,metadata,evidence,selected,kind,budge
     if kind=='push' and d@(-normal)<.1:
         alignment={'force_alignment':float(d@(-normal)),'usual_compressive_alignment_minimum':.1,
             'execution_veto_applied':False,
-            'interpretation':'Requested motion points away from or nearly tangent to the estimated visible face. This is geometry evidence, not a task-direction judgment or a push veto.'}
+            'task_direction_evidence':False,'physical_contact_evidence':False,
+            'interpretation':'Dot product with the camera-facing patch normal only. The touching face can differ from this visible patch. This value cannot determine whether a previous push helped the task or whether to reverse it; compare observed part motion.'}
         evidence['surface_alignment_prediction']=alignment
     if kind=='hook_pull':
         point,feature=hook_feature(selected,d,cameras=getattr(scene,'skill_observed_cameras',None));evidence['hook_feature']=feature
@@ -686,27 +687,30 @@ def _plan_contact_at_point(ik,scene,record,metadata,evidence,selected,kind,budge
         free_initial=free_context.validate(q)
         if not free_initial['accepted']:raise SkillStop('initial_target_contact_requires_release',diagnostic=free_initial)
         menu=contact_pose_menu(metadata,evidence,point,d,kind,feature if kind=='hook_pull' else None)
-        target_cache={}
+        target_cache={};standoff_cache={};hand_cache={}
         for index,(contact,target,standoff,approach) in enumerate(menu):
             budget.check();work['pose_approach_combinations']+=1
-            key=target.tobytes();reused=key in target_cache
-            if reused:
-                endpoints,endpoint_checks,first=target_cache[key];work['target_ik_reuses']+=1
+            # The same free-approach hand collision is independent of the arm's
+            # IK branch. Check it once before solving either pose, just as in
+            # the GraspGen path. No additional clearance or policy is applied.
+            standoff_key=standoff.tobytes()
+            if standoff_key in hand_cache:
+                hand=hand_cache[standoff_key];work['standoff_hand_reuses']+=1
             else:
-                began=time.perf_counter();endpoints=ik.solve_many(matrix_pose(target),q,maximum=8)
-                timing['ik_seconds']+=time.perf_counter()-began;work['target_ik_queries']+=1;budget.check()
-                check_started=time.perf_counter()
-                endpoint_checks=([{'accepted':True,'scope':'robot-valid IK; contact resolved during physical insertion'} for _ in endpoints]
-                    if physical_contact else [context.validate(s['joints']) for s in endpoints])
-                timing['goal_collision_checks_seconds']+=time.perf_counter()-check_started
-                first=index;target_cache[key]=(endpoints,endpoint_checks,first)
-            if not any(e['accepted'] for e in endpoint_checks):
-                attempts.append({'candidate':index,'reason':'no_contact_ik' if not endpoints else 'contact_endpoint_collision',
-                    'contact_name':contact['name'],**({'reused_endpoint_candidate':first} if reused else {'endpoint_checks':endpoint_checks})})
+                began=time.perf_counter();hand=free_context.validate_hand_pose(matrix_pose(standoff))
+                timing['hand_scene_filter_seconds']+=time.perf_counter()-began
+                work['standoff_hand_checks']+=1;hand_cache[standoff_key]=hand
+            if not hand['accepted']:
+                attempts.append({'candidate':index,'reason':'standoff_hand_collision','diagnostic':hand})
+                work['standoff_hand_rejections']+=1
                 continue
-            began=time.perf_counter()
-            solutions=ik.solve_many(matrix_pose(standoff),q,maximum=8)
-            timing['ik_seconds']+=time.perf_counter()-began;work['standoff_ik_queries']+=1;budget.check()
+            if standoff_key in standoff_cache:
+                solutions=standoff_cache[standoff_key];work['standoff_ik_reuses']+=1
+            else:
+                began=time.perf_counter();solutions=ik.solve_many(matrix_pose(standoff),q,maximum=8)
+                timing['ik_seconds']+=time.perf_counter()-began;work['standoff_ik_queries']+=1
+                standoff_cache[standoff_key]=solutions
+            budget.check()
             if not solutions:attempts.append({'candidate':index,'reason':'no_standoff_ik'});continue
             for solution in solutions:
                 budget.check();goal=np.asarray(solution['joints'])
@@ -719,6 +723,23 @@ def _plan_contact_at_point(ik,scene,record,metadata,evidence,selected,kind,budge
                 endpoint=free_context.validate(goal)
                 if not endpoint['accepted']:
                     attempts.append({'candidate':index,'reason':'standoff_collision','diagnostic':endpoint});continue
+                # A contact IK cannot help a rejected free approach. Defer it
+                # until an arm-and-hand-valid standoff has actually been found.
+                key=target.tobytes();reused=key in target_cache
+                if reused:
+                    endpoints,endpoint_checks,first=target_cache[key];work['target_ik_reuses']+=1
+                else:
+                    began=time.perf_counter();endpoints=ik.solve_many(matrix_pose(target),q,maximum=8)
+                    timing['ik_seconds']+=time.perf_counter()-began;work['target_ik_queries']+=1;budget.check()
+                    check_started=time.perf_counter()
+                    endpoint_checks=([{'accepted':True,'scope':'robot-valid IK; contact resolved during physical insertion'} for _ in endpoints]
+                        if physical_contact else [context.validate(s['joints']) for s in endpoints])
+                    timing['goal_collision_checks_seconds']+=time.perf_counter()-check_started
+                    first=index;target_cache[key]=(endpoints,endpoint_checks,first)
+                if not any(e['accepted'] for e in endpoint_checks):
+                    attempts.append({'candidate':index,'reason':'no_contact_ik' if not endpoints else 'contact_endpoint_collision',
+                        'contact_name':contact['name'],**({'reused_endpoint_candidate':first} if reused else {'endpoint_checks':endpoint_checks})})
+                    break
                 approach_path,result,approach_selection=approach_connection(free_context,observed_context,q,goal,budget,timing)
                 if not result.get('exact_solution'):
                     attempts.append({'candidate':index,'reason':'approach_search_incomplete','diagnostic':result});continue
@@ -756,7 +777,9 @@ def fit_object_motion(first,second):
     """Robust 3D rigid fit to independently tracked, measured RGB-D pairs."""
     a=np.asarray(first,float).reshape(-1,3);b=np.asarray(second,float).reshape(-1,3)
     finite=np.isfinite(a).all(1)&np.isfinite(b).all(1);a,b=a[finite],b[finite]
-    result={'accepted':False,'pairs':len(a),'source':'RGB-D feature correspondences','simulator_object_state_used':False}
+    result={'accepted':False,'pairs':len(a),'source':'RGB-D feature correspondences','simulator_object_state_used':False,
+        'support_rule':'at least 8 spatially spread inliers and a strict majority of the measured correspondences',
+        'inlier_residual_threshold_m':.004,'minimum_spatial_span_m':.025}
     if len(a)<8:return {**result,'reason':'insufficient_visible_matches'}
     def fit(x,y):
         u,_,vt=np.linalg.svd((x-x.mean(0)).T@(y-y.mean(0)));r=vt.T@u.T
@@ -768,7 +791,11 @@ def fit_object_motion(first,second):
         if np.linalg.norm(np.cross(a[ids[1]]-a[ids[0]],a[ids[2]]-a[ids[0]]))<1e-5:continue
         r,t=fit(a[ids],b[ids]);inliers=np.linalg.norm(a@r.T+t-b,axis=1)<.004
         if inliers.sum()>best.sum():best=inliers
-    if best.sum()<8 or best.mean()<.6:return {**result,'reason':'inconsistent_matches','inliers':int(best.sum())}
+    # A supported dominant motion need not explain 60% of a rectangular RGB-D
+    # selection: occlusion and background can supply a minority of outliers.
+    # Keep the geometric residual/span tests and reject tied motion groups.
+    if best.sum()<8 or best.sum()*2<=len(a):
+        return {**result,'reason':'inconsistent_matches','inliers':int(best.sum()),'inlier_fraction':float(best.mean())}
     r,t=fit(a[best],b[best]);error=np.linalg.norm(a[best]@r.T+t-b[best],axis=1)
     span=float(np.linalg.norm(np.ptp(a[best],axis=0)))
     if span<.025:return {**result,'reason':'insufficient_spatial_baseline','span_m':span}
@@ -780,6 +807,7 @@ def fit_object_motion(first,second):
 class ContactTracker:
     def __init__(self,cameras,target,step):
         from .rigid_hinge_tracking import RGBDHingeTracker
+        self.target_reference=np.asarray(target).copy()
         self.tracker=RGBDHingeTracker(cameras,target,prior=np.mean(target,axis=0),reference_step=step,camera_names=list(cameras))
         self.last_transform=np.eye(4)
         self.last_view_counts={}
@@ -796,6 +824,18 @@ class ContactTracker:
             absolute=np.asarray(result['transform'])
             result['transform']=(absolute@np.linalg.inv(self.last_transform)).tolist()
             self.last_transform=absolute
+            # Advance optical-flow images after measured motion, retaining the
+            # original world reference and cameras absent from this capture.
+            # This shortens the next image displacement without rendering or
+            # writing more observations, and does not relax motion-fit checks.
+            from .rigid_hinge_tracking import RGBDHingeTracker
+            target=self.target_reference@absolute[:3,:3].T+absolute[:3,3]
+            fresh=RGBDHingeTracker(cameras,target,prior=np.mean(target,axis=0),
+                reference_step=step,camera_names=list(cameras))
+            for name,reference in fresh.references.items():
+                reference['points']=(reference['points']-absolute[:3,3])@absolute[:3,:3]
+                self.tracker.references[name]=reference
+            result['tracking_images_advanced']=list(fresh.references)
         return result
 
 

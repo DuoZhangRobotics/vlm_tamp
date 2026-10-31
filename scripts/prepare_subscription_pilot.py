@@ -617,6 +617,13 @@ Additional generic contact interfaces:
   Arm, palm and other observed surfaces remain checked. No grasp, closure,
   cylinder fit or hinge model is required. No object motion is predicted.
   This switches to a free-motion surface scene. It does not move the robot.
+- plan_contact_pose(point_world_m, quaternion_xyzw=null, contact_name=null,
+  collision_policy=null, budget_seconds=30): place a calibrated fingertip/pad
+  at YOUR observed world surface point. It tries the current hand orientation
+  and nearby rotations; an optional quaternion fixes your chosen orientation. The tool computes
+  TCP offsets, checks the hand before IK, and tries the closest scene-valid arm
+  solution. Returns a plan_id; execute with gripper=0 to hold aperture. No motion
+  or confirmed physical contact occurs during planning.
 - plan_pose(pose_world_xyzw): find IK and a collision-aware joint path to YOUR
   requested TCP pose in the current scene. It returns a plan_id for execute.
   No gripper closure or grasp sequence is imposed. plan_joint is also available.

@@ -23,6 +23,30 @@ def test_slow_but_real_hand_progress_is_not_a_stall():
     for index in range(40):assert not feedback.update(pose((index+1)*.0003),index)
 
 
+def test_short_strokes_share_the_existing_stall_window():
+    # Two separately scheduled 0.7 s strokes must not reset a 1 s detector.
+    refs=np.c_[np.arange(1,15)*.0015,np.zeros((14,2))]
+    first=PushProgress({'contact_local_m':[0.,0.,0.],'reference_points_world_m':refs},pose(0))
+    for index in range(14):assert not first.update(pose(0),index)
+    second=PushProgress({'contact_local_m':[0.,0.,0.],'reference_points_world_m':refs+np.array([.021,0,0]),
+        'previous_history':first.result()['_continuation_history']},pose(0))
+    for index in range(5):assert not second.update(pose(0),index)
+    assert second.update(pose(0),5)
+    assert second.result()['carried_history_samples']==15
+
+
+def test_short_stroke_history_preserves_real_progress():
+    history=[]
+    for batch in range(4):
+        start=batch*.014
+        refs=np.c_[start+np.arange(1,15)*.001,np.zeros((14,2))]
+        feedback=PushProgress({'contact_local_m':[0.,0.,0.],'reference_points_world_m':refs,
+            'previous_history':history},pose(start))
+        for index in range(14):assert not feedback.update(pose(start+(index+1)*.001),index)
+        history=feedback.result()['_continuation_history']
+    assert feedback.result()['stall_window'] is not None
+
+
 def test_native_worker_attempts_motion_before_returning_physical_stall(monkeypatch):
     from vlm_tamp.profiled_sim_worker import ProfiledWorker
     from vlm_tamp.coupled_worker import CoupledWorker

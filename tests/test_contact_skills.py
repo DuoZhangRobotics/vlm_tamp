@@ -14,6 +14,24 @@ class LinearChain:
     def forward(self,q):return np.r_[np.asarray(q)[:3],[0,0,0,1.]]
 
 
+def test_rigid_feedback_accepts_a_spatially_supported_majority_with_background_outliers():
+    from scipy.spatial.transform import Rotation
+    rng=np.random.default_rng(2026);first=rng.uniform(-.15,.15,(30,3))
+    rotation=Rotation.from_euler('z',12,degrees=True).as_matrix();translation=np.array([.02,-.01,0.])
+    second=first@rotation.T+translation
+    second[17:]=rng.uniform(.5,.9,(13,3))
+    fit=fit_object_motion(first,second)
+    assert fit['accepted'] and fit['inliers']==17
+    assert np.allclose(np.array(fit['transform'])[:3,:3],rotation)
+    assert fit['rms_m']<1e-6
+
+
+def test_rigid_feedback_rejects_tied_motion_groups():
+    rng=np.random.default_rng(23);first=rng.uniform(-.15,.15,(20,3));second=first.copy()
+    second[:10]+=[.03,0,0];second[10:]+=[0,.04,0]
+    assert not fit_object_motion(first,second)['accepted']
+
+
 def test_push_can_slide_on_selected_part_but_hook_keeps_feature_contact_scope():
     from vlm_tamp.contact_collision_evidence import selected_contact_points
     scene=SimpleNamespace(moving_reference=np.array([[0.,0,0],[.05,0,0]]),
@@ -29,7 +47,8 @@ def test_contact_tracking_reuses_absolute_reference_and_returns_incremental_moti
     rng=np.random.default_rng(22);points=rng.uniform(-.1,.1,(30,3));instances=[]
     class Tracker:
         def __init__(self,*args,**kwargs):
-            self.reference_step=kwargs['reference_step'];self.references={'front':{},'side':{}}
+            self.reference_step=kwargs['reference_step']
+            self.references={name:{'points':points+np.array([self.reference_step*.001,0,0])} for name in args[0]}
             instances.append(self)
         def observe(self,cameras,*,control_step,estimate_joint):
             assert not estimate_joint
@@ -38,7 +57,9 @@ def test_contact_tracking_reuses_absolute_reference_and_returns_incremental_moti
     monkeypatch.setattr(module,'RGBDHingeTracker',Tracker)
     tracker=ContactTracker({'front':{},'side':{}},points,0)
     first=tracker.observe({'front':{}},10);second=tracker.observe({'front':{},'side':{}},25)
-    assert first['accepted'] and second['accepted'] and len(instances)==1
+    assert first['accepted'] and second['accepted'] and len(instances)==3
+    assert first['tracking_images_advanced']==['front']
+    assert np.allclose(tracker.tracker.references['front']['points'],points)
     assert np.array(first['transform'])[0,3]==pytest.approx(.010)
     assert np.array(second['transform'])[0,3]==pytest.approx(.015)
     assert second['reference_camera_count']==2 and tracker.last_view_counts['side']==30
@@ -94,13 +115,14 @@ def test_world_push_keeps_thin_selected_surface_in_contact_role_and_background_s
     assert len(scene.static_points)+len(scene.moving_reference)==len(occupied)
 
 
-def test_contact_target_ik_is_shared_by_alternative_approach_distances(monkeypatch):
+def test_duplicate_unreachable_standoffs_do_not_repeat_ik(monkeypatch):
     import vlm_tamp.contact_skills as module
     class Context:
         record={}
         def __enter__(self):return self
         def __exit__(self,*args):pass
         def validate(self,q):return {'accepted':True}
+        def validate_hand_pose(self,pose):return {'accepted':True}
     monkeypatch.setattr(module,'skill_native_scene',lambda *a,**k:Context())
     monkeypatch.setattr(module,'current_contact_candidate',lambda *a,**k:None)
     target=np.eye(4);contact={'name':'finger','point':np.zeros(3)}
@@ -114,8 +136,9 @@ def test_contact_target_ik_is_shared_by_alternative_approach_distances(monkeypat
     with pytest.raises(SkillStop,match='contact_search_exhausted') as error:
         module._plan_contact_at_point(ik,SimpleNamespace(),{},meta,evidence,None,'push',Budget(5))
     assert len(queries)==1
-    assert error.value.evidence['search_work']=={
-        'pose_approach_combinations':3,'target_ik_queries':1,'target_ik_reuses':2}
+    work=error.value.evidence['search_work']
+    assert work['pose_approach_combinations']==3 and work['standoff_ik_queries']==1
+    assert work['standoff_ik_reuses']==2 and work.get('target_ik_queries',0)==0
 
 
 def test_contact_timing_respects_cartesian_and_joint_limits():

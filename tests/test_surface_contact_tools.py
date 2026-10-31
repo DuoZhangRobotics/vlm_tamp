@@ -59,3 +59,23 @@ def test_surface_scene_cannot_silently_use_an_old_snapshot_after_motion():
     with pytest.raises(ValueError,match='before the last motion'):robot._check_surface_freshness()
     robot.state['control_steps']=100
     robot._check_surface_freshness()
+
+
+def test_contact_point_conversion_uses_calibrated_offset_under_rotation():
+    from scipy.spatial.transform import Rotation
+    from vlm_tamp.surface_contact_tools import contact_pose_candidates
+    from vlm_tamp.rekep_libero.geometry import pose_matrix,transform_points
+    original=[.2,-.1,1.,*Rotation.from_euler('z',35,degrees=True).as_quat()]
+    local=np.array([[x,y,z] for x in [.02,.025] for y in [-.005,.005] for z in [.04,.05]])
+    metadata={'eef_pose_world_xyzw':original,'gripper_qpos':[.04,-.04],
+        'robot_collision_volumes_world':[{'robot_geom_name':'gripper0_finger1_pad_collision',
+            'vertices_world':transform_points(local,pose_matrix(original))}]}
+    point=np.array([.3,.2,1.1]);rotation=Rotation.from_euler('y',90,degrees=True)
+    candidate=contact_pose_candidates(metadata,point,rotation.as_quat())[0]
+    target=pose_matrix(candidate['tcp_pose_world_xyzw'])
+    actual=target[:3,3]+target[:3,:3]@np.array(candidate['contact_local_m'])
+    assert np.allclose(actual,point)
+    assert np.linalg.norm(target[:3,3]-point)>.04
+    assert candidate['gripper_aperture_qpos']==[.04,-.04]
+    from vlm_tamp.robot_contracts import validate_operation
+    validate_operation('plan_contact_pose',{'point_world_m':point.tolist()})

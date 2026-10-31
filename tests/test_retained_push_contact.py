@@ -150,7 +150,27 @@ def test_explicit_small_chunks_do_not_accumulate_tracking_loss(contact_service):
     result=call(service,continued=True,distance_m=.03,stroke_length_m=.01)
     assert result['measured_contact_progress_m']==pytest.approx(.0275)
     assert result['stop_reason']=='stroke_executed'
-    assert len(result['stages'])==4
+    assert len(result['stages'])==3
+
+
+def test_blocked_hand_does_not_restart_nominal_waypoints_until_episode_exhaustion(contact_service):
+    service,counts,_=contact_service;call(service)
+    service.tracking_lag_m=1.
+    result=call(service,continued=True,distance_m=.03,stroke_length_m=.01)
+    assert len(result['stages'])==3
+    assert result['measured_contact_progress_m']==pytest.approx(0.)
+    assert result['hand_travel_shortfall_m']==pytest.approx(.03)
+    assert service.state['control_steps']<150
+
+
+def test_unresolved_later_feedback_preserves_last_measured_part_change(contact_service):
+    service,_,_=contact_service
+    first=call(service)
+    measured=first['part_motion_evidence']['last_measured_change']
+    service.fail_tracking=True
+    second=call(service,continued=True)
+    assert not second['part_motion_evidence']['latest']['accepted']
+    assert second['part_motion_evidence']['last_measured_change']==measured
 
 
 def test_changed_model_does_not_reuse_old_preview(contact_service):

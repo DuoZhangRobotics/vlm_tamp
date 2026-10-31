@@ -999,6 +999,7 @@ class RobotService:
     def select_surface_contact(self,camera,region_xyxy,radius_m=.02):
         if not self.sim:raise ValueError('Reset before selecting contact')
         from vlm_tamp.surface_contact_tools import contact_snapshot
+        from vlm_tamp.contact_skills import contact_landmarks
         scene,evidence=contact_snapshot(self.cameras,self.state['metadata'],camera,region_xyxy,
             self.ik.chain,radius_m=float(radius_m))
         self.scene=scene;self.contact_scene_kind='surface'
@@ -1020,7 +1021,19 @@ class RobotService:
         return {**evidence,'geometry_epoch':self.epoch,
             'point_clouds':str((dest/'points.npz').relative_to(self.workspace)),
             'control_steps':self.state['control_steps'],
-            'next_planning_interfaces':['plan_pose','plan_joint']}
+            'contact_landmarks_in_tcp':[{key:value.tolist() if hasattr(value,'tolist') else value for key,value in c.items()}
+                for c in contact_landmarks(self.state['metadata'],'fingertips')],
+            'next_planning_interfaces':['plan_contact_pose','plan_pose','plan_joint']}
+
+    def plan_contact_pose(self,point_world_m,quaternion_xyzw=None,contact_name=None,collision_policy=None,budget_seconds=30.):
+        self._check_surface_freshness()
+        if self.scene is None:raise ValueError('Ground the scene or select a surface contact first')
+        from vlm_tamp.surface_contact_tools import plan_contact_pose
+        query=self._query_scene(collision_policy);folder=self.folder('contact-pose-plan')
+        path,result=plan_contact_pose(self.ik,query,self.record,self.state['metadata'],point_world_m,folder,
+            quaternion_xyzw=quaternion_xyzw,contact_name=contact_name,budget_seconds=budget_seconds)
+        result.update(environment_collision_policy=collision_policy or self.config.get('environment_collision_policy','veto'))
+        return self.keep_plan(path,result,'free')
 
     def plan_pose(self,pose_world_xyzw,collision_policy=None):
         self._check_surface_freshness()
@@ -1308,7 +1321,9 @@ class RobotService:
         summary['control_steps_after_first_success']=len(actions)-1-successful_indices[0] if successful_indices else 0
         write_json(self.episode/'tracking.json',self.events)
         write_json(self.episode/'summary.json',summary)
-        summary['storage']=compact_episode(self.episode)
+        # Restrict cleanup to this service's own run, including isolated local
+        # diagnostic runs. The finished-episode and video checks still apply.
+        summary['storage']=compact_episode(self.episode,allowed_root=self.output)
         write_json(self.episode/'summary.json',summary)
         self.results.append(summary)
         write_json(self.output/'evaluation-private.json',{'attempts':self.results,
@@ -1365,7 +1380,7 @@ class RobotService:
             operations['apply_joint_estimate']=self.apply_joint_estimate
             operations['apply_part_motion']=self.apply_part_motion
         if getattr(self,'surface_contact_tools',False):
-            operations.update(select_surface_contact=self.select_surface_contact,plan_pose=self.plan_pose,
+            operations.update(select_surface_contact=self.select_surface_contact,plan_pose=self.plan_pose,plan_contact_pose=self.plan_contact_pose,
                 push=self.push,continue_push=self.continue_push,push_stroke=self.push_stroke,hook_pull=self.hook_pull)
         if self.completion_checks:
             operations.update(declare_completion=self.declare_completion,measure_surface=self.measure_surface,

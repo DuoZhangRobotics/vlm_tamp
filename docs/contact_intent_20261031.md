@@ -66,3 +66,62 @@ Diagnostic directions, pixel regions and recorded prefixes are not supplied to L
 
 Runtime page: `results/luna-explicit-motion-rerun-20261031/watch.html`.
 Repair evidence: `results/push-intent-validation-20261031/index.html`.
+
+## Stroke feedback and contact positioning repair
+
+The later `luna-explicit-motion-rerun-20261031` recordings exposed a separate
+execution bug. Opening state 37, event 57 requested 100 mm in 20 mm segments.
+Each segment reset the one-second physical-stall history before it could fill;
+the remaining-distance loop repeatedly restarted from the blocked measured
+position. That call used 349 controls and 64.71 seconds without opening the door.
+
+Sub-strokes now advance finite waypoints on the original requested path. Tracking
+lag is compensated toward the next waypoint; it does not create an unlimited
+sequence of replacement strokes. The same physical-stall history crosses
+sub-stroke boundaries. No environment admission check, collision padding, force
+sensor, or new execution threshold was added. A new public call starts a new
+history so an actor can deliberately attempt a different recovery.
+
+Contact acquisition applies its existing hand/scene check before IK. An arm
+branch cannot resolve collision of a fixed hand pose. Duplicate standoff queries
+are cached, and target IK waits for an accepted standoff. Contact insertion and
+controlled strokes still use physical execution. GraspGen remains unchanged.
+
+`plan_contact_pose(point_world_m, quaternion_xyzw=None, contact_name=None)` accepts
+an observed contact point and computes the calibrated fingertip/pad-to-TCP
+offset. It tries current/nearby orientations, or the supplied fixed orientation,
+and the closest scene-valid IK per candidate. It returns a normal plan for
+`execute(..., gripper=0)`. This operation is registered in callable schemas,
+compact tool discovery, and detailed help; `plan_pose` retains its TCP interface.
+
+Closing state 17 showed why face-normal alignment cannot establish task progress:
+the initial +X request reduced the evaluator's opening angle from 88.9 to 69.2
+degrees, but Luna reversed after interpreting a geometry warning as a task
+direction judgment. The warning now explicitly lacks task-direction/contact
+evidence, and stale alignment predictions are removed on continuation. Replies
+retain the last measured part change separately from an unresolved later fit.
+These diagnostic directions and native angles are not supplied to fresh actors.
+
+Tracking advances its image references after accepted motion while retaining the
+original world frame and other camera references. A failed physical-push fit can
+retry with two additional reference views; this does not gate execution. Explicit
+camera selection no longer has a four-view cap inconsistent with full captures.
+Rigid feedback retains the 4 mm residual, eight-inlier and 25 mm span requirements,
+but requires a strict majority rather than an arbitrary 60%: the observed 11/19
+consistent matches were previously rejected. Tied-motion regression cases remain
+rejected. The last closing stroke now yields measured motion with 2.09 mm RMS.
+
+Matched evidence is in `results/push-feedback-repairs-v2-20261031` and
+`results/push-feedback-closing-v5-20261031`. The opening prefix reproduced the
+recorded robot joints exactly. The blocked call returned at control 339 with
+261 controls retained, in 9.64 seconds. The two old push searches fell from
+14.47/10.88 to 5.43/1.25 seconds; the new contact-point planner found a plan in
+0.72 seconds. The closing diagnostic physically reduced the opening angle from
+88.92 to 68.55 degrees and now measured the final movement. These are targeted
+regressions, not full-task success or fresh-policy repeatability claims.
+
+The evaluator `scripts/validate_push_feedback_repairs.py` keeps transient RGB-D
+in its own local temporary run and archives small inspection artifacts. Service
+cleanup is restricted to that service's own output root, retaining finished-run
+and video verification requirements. Peak sampled memory was 5.24 GiB in the
+combined check; the final closing check had zero full I/O and memory pressure.

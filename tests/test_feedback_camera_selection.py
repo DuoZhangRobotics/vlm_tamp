@@ -39,3 +39,11 @@ def test_pair_counts_can_select_retained_views_not_in_the_last_small_capture():
 def test_wrist_view_is_captured_even_when_it_has_no_tracking_features():
     value=tracker({'a':30,'b':20,'c':10})
     assert feedback_camera_names(value,'requested',{'requested','wrist','a','b','c'})==['requested','wrist','a','b']
+def test_explicit_capture_can_use_more_than_four_existing_calibrated_views(monkeypatch):
+    from vlm_tamp.profiled_sim_worker import ProfiledWorker
+    from vlm_tamp.rekep_libero.sim_worker_v3 import ARM_VIEW_POLICIES
+    worker=ProfiledWorker()
+    names=['agentview','wrist','frontview',*list(ARM_VIEW_POLICIES)[:3]]
+    monkeypatch.setattr(worker,'_observe_selected',lambda output:{'cameras':worker.selected_capture_cameras.copy()})
+    assert worker.observe('unused',camera_names=names)['cameras']==names
+    assert worker.selected_capture_cameras is None

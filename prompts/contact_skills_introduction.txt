@@ -14,6 +14,9 @@ configuration is required for push, continue_push or hook_pull.
   unmeasured, and contact is not assumed. The tool does not reposition the hand
   to a selected target for you. You choose when the current pose is suitable.
   A targeted push preview is not a prerequisite or permission check for this tool.
+  Sub-strokes advance finite waypoints toward the original requested endpoint.
+  Shortfall is reported; blocked motion does not restart the same sub-stroke
+  until the episode budget is consumed.
 
 - continue_push(direction_world, distance_m, contact_speed_m_s=null,
   stroke_length_m=null, budget_seconds=120, stroke_plan_seconds=null):
@@ -60,6 +63,14 @@ you must repeat for each small continuation.
   An open-hand push applies compression; reversing the same hand motion can
   withdraw from the object instead of moving it back. Choose contact placement
   and motion from observed state changes and the task goal.
+  A surface-alignment warning cannot establish that a previous action was wrong.
+  part_motion_evidence keeps the latest measurement and the last measured change
+  separately; an unresolved later measurement does not erase earlier movement.
+  If motion tracking fails, the tool may capture two additional retained views
+  to resolve it. This is timed separately and does not veto physical pushing.
+  Compare the same part before/after the action when deciding whether to reverse.
+  A rectangle can contain background. Inspect the selected-point overlay and
+  reselect the actual feature in a clearer view if the point lies off the target.
   A positive increment follows the installed joint_axis_world. Grounding tries
   to orient that axis toward its modeled task motion; this remains a hypothesis.
   Controlled world-direction pushing defaults to the complete requested hand
@@ -76,10 +87,14 @@ you must repeat for each small continuation.
   During longer strokes, one second of less than 1 mm measured hand progress in
   the commanded direction while
   references advance at least 1 cm returns physical_stall. This happens after
-  physical execution, not from a scene prediction. Requested versus commanded
+  physical execution; its history spans short sub-strokes within the same call.
+  It is not a scene prediction. Requested versus commanded
   versus measured travel and object-motion uncertainty are returned separately.
   The retained robot contact reference remains usable after a stall or missing
   object measurement. An unknown object pose is not used as a current grasp model.
+  To position a finger at an observed point, use plan_contact_pose(point_world_m)
+  then execute(plan_id, gripper=0). It computes the calibrated finger-to-TCP
+  offset. plan_pose takes a TCP-origin pose, not a point on the object.
   Hook-pull and push-and-release retain their existing planned-contact behavior.
   Distal finger-pad contact may slide over the selected moving part. The initial
   contact region selects an approach site; target_region_xyxy identifies the

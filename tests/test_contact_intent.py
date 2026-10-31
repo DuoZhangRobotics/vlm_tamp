@@ -72,6 +72,7 @@ def test_acquisition_uses_physical_insertion_policy_but_checks_free_approach(mon
         def validate(self,q):
             checks.append((self.allow,float(q[0])))
             return {'accepted':not self.allow or q[0]==0.}
+        def validate_hand_pose(self,pose):return {'accepted':True}
         def plan(self,start,goal,**kwargs):return np.vstack([start,goal]),{'exact_solution':True}
     monkeypatch.setattr(module,'skill_native_scene',lambda *a,**k:Context(k.get('allow_contact',True)))
     monkeypatch.setattr(module,'current_contact_candidate',lambda *a:None)
@@ -90,3 +91,26 @@ def test_acquisition_uses_physical_insertion_policy_but_checks_free_approach(mon
     assert result['contact_insertion_policy']=='physical_execution_feedback'
     assert not any(allow and x!=0 for allow,x in checks)
     assert any(not allow and x!=0 for allow,x in checks)
+
+
+def test_blocked_standoff_hand_never_starts_ik(monkeypatch):
+    import vlm_tamp.contact_skills as module
+    class Context:
+        record={}
+        def __enter__(self):return self
+        def __exit__(self,*args):pass
+        def validate(self,q):return {'accepted':True}
+        def validate_hand_pose(self,pose):
+            return {'accepted':False,'blocking_robot_part':'gripper0_hand_collision','blocking_surface':'observed stationary geometry'}
+    monkeypatch.setattr(module,'skill_native_scene',lambda *a,**k:Context())
+    monkeypatch.setattr(module,'current_contact_candidate',lambda *a:None)
+    target=np.eye(4);contact={'name':'pad','point':np.zeros(3)}
+    monkeypatch.setattr(module,'contact_pose_menu',lambda *a:[(contact,target,target,np.array([1.,0,0]))])
+    def forbidden(*a,**k):raise AssertionError('Arm IK cannot resolve an already colliding hand pose')
+    meta={'joint_positions':[0.]*7,'eef_pose_world_xyzw':[0.,0,0,0,0,0,1.]}
+    evidence={'point_world_m':[0.,0,0],'direction_world':[1.,0,0],
+        'normal_toward_camera_world':[-1.,0,0],'contact_surface':'fingertips'}
+    with pytest.raises(SkillStop) as error:
+        module._plan_contact_at_point(SimpleNamespace(solve_many=forbidden),SimpleNamespace(),{},meta,evidence,None,'push',Budget(5))
+    assert error.value.evidence['attempts'][0]['reason']=='standoff_hand_collision'
+    assert error.value.evidence['search_work']['standoff_hand_rejections']==1

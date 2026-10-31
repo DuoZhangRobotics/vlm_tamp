@@ -29,6 +29,10 @@ results rather than whole histories, point arrays or every camera diagnostic.
 
 Observe: reset, observe, episode_status
 Geometry: ground, refresh_contact, set_model, inspect_scene
+Contact positioning: select_surface_contact, plan_contact_pose
+plan_contact_pose(point_world_m) converts an observed surface point into a
+calibrated fingertip/pad pose. plan_pose instead takes the TCP origin; never
+copy a surface point directly into that TCP position.
 Progress measurements when enabled: measure_surface, compare_surface_geometry
 Track: start_tracking, measure_tracking, apply_tracking
 Apply measured part pose: apply_part_motion (from track_part_motion/track_video_motion)
@@ -194,8 +198,9 @@ def compact_response(response):
             'tracking_reference_reused','tracking_reference_camera_count',
             'contact_motion_policy','stroke_scene_collision_veto','object_progress_is_execution_gate',
             'object_motion_status','object_progress_reference_control_step','planning_limit',
+            'part_motion_evidence',
             'continue_push_available','next_operation','grasp_scene_refresh_required','scene_refresh_scope',
-            'commanded_contact_distance_m','measured_contact_progress_m','contact_progress_error_m','stroke_distance_tolerance_m','hand_travel_shortfall_m',
+            'commanded_contact_distance_m','attempted_stroke_distance_m','measured_contact_progress_m','contact_progress_error_m','stroke_distance_tolerance_m','hand_travel_shortfall_m',
             'robot_motion_executed','requested_contact_speed_m_s','requested_distance_m','requested_joint_degrees',
             'measured_object_motion_along_request','progress_units','motion_measurement_scope','direction_source','task_direction_verified',
             'contact','momentum','report','images','timing_seconds',
@@ -242,7 +247,7 @@ def compact_response(response):
         'observed_part_pose_applied','hinge_preserved','signed_direction_preserved','retained_observed_scene_reused',
         'joint_model_from_registered_part','handle_model_required',
         'point_world_m', 'normal_toward_camera_world', 'radius_m', 'surface_fit_residual_m',
-        'configured_pad_centers_in_tcp', 'contact_permission', 'object_motion_predicted',
+        'configured_pad_centers_in_tcp', 'contact_landmarks_in_tcp','contact_pose','contact_permission', 'object_motion_predicted',
         'grasp_or_attachment_required', 'palm_arm_and_other_surface_checks_retained',
         'hinge_update_applied', 'scene_motion_applied', 'reference_control_step',
         'cameras_with_features', 'correspondences')))

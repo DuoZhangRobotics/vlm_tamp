@@ -1,13 +1,15 @@
 """Observed surface contacts for free-motion manipulation without a grasp."""
 from pathlib import Path
+import time
 
 import numpy as np
 from scipy.spatial import cKDTree
+from scipy.spatial.transform import Rotation
 
 from .coupled_scene import Scene,RobotVolumes
 from .coupled_storage import write_json,preserve_scene
 from .hinged_contact_tools import NativeScene
-from .rekep_libero.geometry import pose_matrix,transform_points
+from .rekep_libero.geometry import pose_matrix,matrix_pose,transform_points
 from .rekep_libero.scene_state_v7 import observed_points
 
 
@@ -70,6 +72,75 @@ def contact_snapshot(cameras,metadata,camera,region_xyxy,chain,*,radius_m=.02,ob
         'palm_arm_and_other_surface_checks_retained':True,
         'object_motion_predicted':False,'simulator_object_geometry_used':False}
     return scene,record
+
+
+def contact_pose_candidates(metadata,point_world_m,quaternion_xyzw=None,contact_name=None):
+    """Convert an observed contact point to TCP poses using current hand geometry."""
+    from .contact_skills import contact_landmarks
+    point=np.asarray(point_world_m,float)
+    if point.shape!=(3,) or not np.isfinite(point).all():raise ValueError('Use a finite world contact point')
+    current=pose_matrix(metadata['eef_pose_world_xyzw'])
+    rotations=[current[:3,:3]] if quaternion_xyzw is None else [pose_matrix([0.,0.,0.,*quaternion_xyzw])[:3,:3]]
+    if quaternion_xyzw is None:
+        for axis in np.eye(3):
+            for angle in [-np.pi/4,np.pi/4]:rotations.append(Rotation.from_rotvec(axis*angle).as_matrix()@current[:3,:3])
+    landmarks=contact_landmarks(metadata,'fingertips')
+    if contact_name is not None:landmarks=[c for c in landmarks if c['name']==contact_name]
+    if not landmarks:raise ValueError('Choose a configured fingertip/pad from contact_landmarks_in_tcp')
+    candidates=[]
+    for contact in landmarks:
+        for rotation in rotations:
+            pose=np.eye(4);pose[:3,:3]=rotation;pose[:3,3]=point-rotation@contact['point']
+            candidates.append({'contact_name':contact['name'],'contact_local_m':contact['point'].tolist(),
+                'point_world_m':point.tolist(),'tcp_pose_world_xyzw':matrix_pose(pose).tolist(),
+                'gripper_aperture_qpos':metadata.get('gripper_qpos'),
+                'conversion':'TCP translation = requested contact point - rotation × calibrated contact offset'})
+    return sorted(candidates,key=lambda c:np.linalg.norm(np.asarray(c['tcp_pose_world_xyzw'][:3])-current[:3,3])
+        +.04*Rotation.from_matrix(current[:3,:3].T@pose_matrix(c['tcp_pose_world_xyzw'])[:3,:3]).magnitude())
+
+
+def plan_contact_pose(ik,scene,record,metadata,point,folder,*,quaternion_xyzw=None,contact_name=None,budget_seconds=30.):
+    """Plan to a finger contact point; do not ask the actor to solve TCP offsets."""
+    folder=Path(folder);folder.mkdir();start=np.asarray(metadata['joint_positions'])
+    candidates=contact_pose_candidates(metadata,point,quaternion_xyzw,contact_name)
+    deadline=time.perf_counter()+float(budget_seconds);attempts=[];timing={}
+    with NativeScene(scene,record,metadata,start,.05,articulated=False) as context:
+        for candidate in candidates:
+            if time.perf_counter()>=deadline:break
+            pose=candidate['tcp_pose_world_xyzw'];attempt={'contact_pose':candidate};attempts.append(attempt)
+            before=time.perf_counter();hand=context.validate_hand_pose(pose)
+            timing['hand_scene_filter_seconds']=timing.get('hand_scene_filter_seconds',0.)+time.perf_counter()-before
+            attempt['hand_check']=hand
+            if not hand['accepted']:
+                attempt.update(reason='contact_hand_collision',diagnostic=hand);continue
+            before=time.perf_counter();solutions=ik.solve_many(pose,start,maximum=8)
+            timing['ik_seconds']=timing.get('ik_seconds',0.)+time.perf_counter()-before
+            solutions=sorted(solutions,key=lambda row:np.linalg.norm(np.asarray(row['joints'])-start))
+            attempt['robot_valid_ik_solutions']=len(solutions);attempt['endpoint_checks']=[]
+            attempt['reason']='no_scene_valid_ik' if solutions else 'no_contact_ik'
+            for solution in solutions:
+                check=context.validate(solution['joints']);attempt['endpoint_checks'].append(check)
+                if not check['accepted']:continue
+                remaining=deadline-time.perf_counter()
+                if remaining<=0:break
+                before=time.perf_counter();path,result=context.plan(start,solution['joints'],constrained=False,seconds=min(8.,remaining))
+                timing['approach_planning_seconds']=timing.get('approach_planning_seconds',0.)+time.perf_counter()-before
+                attempt['path_result']=result
+                if result['exact_solution']:
+                    attempt['reason']='solved'
+                    np.save(folder/'path.npy',path);write_json(folder/'attempts.json',attempts)
+                    return path,{**result,'contact_pose':candidate,'requested_pose_world_xyzw':pose,
+                        'grasp_required':False,'articulation_constraint_used':False,
+                        'search_timing_seconds':timing,'physical_contact_verified':False}
+                # One closest scene-valid arm solution per calibrated landmark.
+                attempt['reason']='approach_search_incomplete'
+                break
+    complete=len(attempts)==len(candidates) and time.perf_counter()<deadline
+    diagnostic={'status':'contact_pose_candidates_exhausted' if complete else 'contact_pose_search_incomplete',
+        'search_complete':complete,'physical_infeasibility_proved':False,'attempts':attempts,'timing_seconds':timing}
+    write_json(folder/'attempts.json',attempts)
+    error=ValueError('Contact-pose planning: '+diagnostic['status']);error.planning_diagnostic=diagnostic
+    raise error
 
 
 def plan_pose(ik,scene,record,metadata,pose,folder):

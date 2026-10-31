@@ -15,7 +15,11 @@ class PushProgress:
         self.local=np.asarray(configuration['contact_local_m'],float)
         self.references=np.asarray(configuration['reference_points_world_m'],float)
         self.initial=contact_point(initial_pose,self.local)
-        self.history=deque([(self.initial,self.initial)],maxlen=21)
+        previous=configuration.get('previous_history',[])
+        self.history=deque(((np.asarray(command,float),np.asarray(actual,float))
+            for command,actual in previous),maxlen=21)
+        self.carried_samples=len(self.history)
+        if not self.history:self.history.append((self.initial,self.initial))
         self.actual=self.initial;self.commanded=self.initial;self.samples=0;self.stalled=False
         self.window=None
 
@@ -34,6 +38,8 @@ class PushProgress:
     def result(self):
         return {'source':'measured robot pose during physics execution',
             'samples':self.samples,'stalled':self.stalled,'stall_window':self.window,
+            'carried_history_samples':self.carried_samples,
+            '_continuation_history':[[command.tolist(),actual.tolist()] for command,actual in self.history],
             'commanded_contact_displacement_m':float(np.linalg.norm(self.commanded-self.initial)),
             'measured_contact_displacement_m':float(np.linalg.norm(self.actual-self.initial)),
             'object_motion_inferred':False,'scene_prediction_veto':False}

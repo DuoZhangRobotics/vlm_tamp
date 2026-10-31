@@ -199,6 +199,8 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
     associated=context.get('object_target_associated',True) if context else True
     result['object_motion_status']='not_measured_yet' if associated else 'unmeasured'
     if not associated:result.update(input_mode='current_hand',contact_reused=False,scene_reused=False)
+    if context and context.get('part_motion_evidence'):
+        result['part_motion_evidence']=copy.deepcopy(context['part_motion_evidence'])
     result['collision_policy']=collision_policy
     result['contact_motion_policy']='physical_execution_feedback' if physical_push else 'planned_contact'
     result['stroke_scene_collision_veto']=not physical_push and collision_policy=='veto'
@@ -218,6 +220,7 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
         cached=None
         if context is not None:
             scene=copy.copy(context['scene']);evidence=copy.deepcopy(context['evidence'])
+            evidence.pop('surface_alignment_prediction',None)  # belongs to the earlier request/observed face
             evidence.update(point_world_m=context['contact_world'].tolist(),
                 direction_world=direction_world,joint_associated=False)
             engagement=resumed_engagement(context)
@@ -253,6 +256,7 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
         result['cartesian_path_deviation']={'diagnostic_threshold_m':.006,'maximum_m':0.,'samples_over_threshold':0,
             'execution_veto_applied':collision_policy=='veto' and not physical_push}
         scene.skill_path_deviation_log=result['cartesian_path_deviation']
+        evidence.setdefault('geometry_observed_at_control_step',initial_control_step)
         result['contact']=evidence;direction=unit(evidence['direction_world'])
         initial_direction=direction.copy()
         def collision_scene():
@@ -357,8 +361,9 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
             view_names=selected_views;result['feedback_cameras']=list(view_names)
         refresh_feedback_views(tracker)
 
+        feedback_history=[]
         def issue(refs,label,**stage_fields):
-            nonlocal executed,geometry_current
+            nonlocal executed,geometry_current,feedback_history
             budget.check()
             remaining_controls=control_steps_limit-service.state['control_steps']
             if len(refs)>remaining_controls:
@@ -372,9 +377,12 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
             if physical_push and label.startswith('push-stroke'):
                 from .push_execution_feedback import contact_point
                 feedback={'contact_local_m':contact_local.tolist(),
+                    'previous_history':feedback_history,
                     'reference_points_world_m':[contact_point(chain.forward(q),contact_local).tolist() for q in refs]}
             reply=service.issue(refs,0,label,camera_names=view_names,track_scene=False,
                 **({'push_feedback':feedback} if feedback is not None else {}))
+            if feedback is not None:
+                feedback_history=reply['execution'].get('push_feedback',{}).pop('_continuation_history',[])
             if reply['execution']['issued_commands']:geometry_current=False
             executed=True;timing['execution_and_capture_seconds']+=time.perf_counter()-phase
             events=service.events[before:]
@@ -410,23 +418,41 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
             phase=time.perf_counter();fit=tracker.observe(service.cameras,service.state['control_steps'])
             timing['motion_tracking_seconds']+=time.perf_counter()-phase
             step=int(service.state['control_steps'])
-            if not fit['accepted'] and not physical_push and len(service.cameras)<=4 and step not in recovered_steps and budget.remaining>0:
+            missing=sorted((name for name in tracker.tracker.references if name not in service.cameras),
+                key=lambda name:-len(tracker.tracker.references[name]['pixels']))[:2]
+            recoverable=not physical_push or (associated and bool(missing))
+            if not fit['accepted'] and recoverable and len(service.cameras)<=4 and step not in recovered_steps and budget.remaining>0:
                 recovered_steps.add(step);budget.check();service.calls+=1
                 phase=time.perf_counter()
-                try:result['observation']=service.capture()
+                # A failed motion estimate is feedback, never an execution gate.
+                # Add only two retained reference views for physical pushes;
+                # do not rebuild the scene or render every camera repeatedly.
+                requested_views=list(service.cameras)+missing if physical_push else None
+                try:result['observation']=service.capture(**({'camera_names':requested_views} if requested_views else {}))
                 except Exception as error:
                     timing['additional_view_recovery_seconds']+=time.perf_counter()-phase
                     result.setdefault('perception_recoveries',[]).append({'control_steps':step,
                         'recovered':False,'error_type':type(error).__name__,'error':str(error)})
-                    return fit
-                timing['additional_view_recovery_seconds']+=time.perf_counter()-phase
-                phase=time.perf_counter();retried=tracker.observe(service.cameras,step)
-                timing['motion_tracking_seconds']+=time.perf_counter()-phase
-                result.setdefault('perception_recoveries',[]).append({'control_steps':step,
-                    'original_reason':fit.get('reason'),'original_pairs':fit.get('pairs'),
-                    'recovered':bool(retried['accepted']),'retry_pairs':retried.get('pairs'),
-                    'current_observation_id':result['observation']['observation_id']})
-                fit=retried
+                else:
+                    timing['additional_view_recovery_seconds']+=time.perf_counter()-phase
+                    phase=time.perf_counter();retried=tracker.observe(service.cameras,step)
+                    timing['motion_tracking_seconds']+=time.perf_counter()-phase
+                    result.setdefault('perception_recoveries',[]).append({'control_steps':step,
+                        'original_reason':fit.get('reason'),'original_pairs':fit.get('pairs'),
+                        'recovered':bool(retried['accepted']),'retry_pairs':retried.get('pairs'),
+                        'current_observation_id':result['observation']['observation_id']})
+                    fit=retried
+            history=result.setdefault('part_motion_evidence',{'accepted_measurements':0,
+                'task_direction_verified':False,'scope':'Measured selected-part motion; neither surface normals nor hand travel establish task progress.'})
+            history['latest']={key:fit[key] for key in ('accepted','reason','pairs','inliers','rms_m') if key in fit}
+            history['latest']['control_step']=step
+            if fit['accepted']:
+                transform=np.asarray(fit['transform'])
+                history['accepted_measurements']+=1
+                history['last_measured_change']={'control_step':step,
+                    'rotation_vector_world_degrees':np.degrees(Rotation.from_matrix(transform[:3,:3]).as_rotvec()).tolist(),
+                    'rotation_magnitude_degrees':float(np.degrees(Rotation.from_matrix(transform[:3,:3]).magnitude())),
+                    'transform_world':transform.tolist()}
             return fit
 
         chain=service.ik.chain  # retained FK after native success closes the IK process
@@ -537,12 +563,17 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
             measured_before=float((hand_point-initial_hand)@initial_direction)
             length=(.01 if acquiring_release_contact else
                 min(stroke_length_m,distance_m) if mode=='push_and_release' else
-                min(stroke_length_m,distance_m-measured_before if hand_distance_request else
+                min(stroke_length_m,distance_m-commanded_distance if hand_distance_request else
                     distance_m-progress if joint_degrees is None else stroke_length_m))
             length=min(length,(control_steps_limit-service.state['control_steps'])*stroke_speed/20.)
             if length<=0:raise SkillStop('control_budget_exhausted')
             if kind=='hook_pull' and stroke==0:length=min(length,.005)
             angle=0.;delta=length*direction
+            if hand_distance_request:
+                # Advance finite waypoints on the original requested stroke.
+                # Compensate servo lag in the next waypoint, without restarting
+                # another full segment from a blocked measured hand forever.
+                delta=initial_hand+initial_direction*(commanded_distance+length)-hand_point
             if joint_degrees is not None:
                 radius=np.linalg.norm(np.cross(scene.axis,point-scene.origin))
                 angle=np.sign(joint_degrees)*min(target if mode=='push_and_release' else target-progress,length/max(radius,.01),np.pi/2)
@@ -573,8 +604,10 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
                 requested_contact_speed_m_s=stroke_speed,posture_search=search,
                 planning_timing_seconds=dict(nested),requested_motion_m=float(np.linalg.norm(delta)),
                 material_point_offset_m=separation)
-            if hand_distance_request:commanded_distance=measured_before+float(delta@initial_direction)
-            else:commanded_distance+=float(np.linalg.norm(delta))
+            # A blocked hand still consumed the issued stroke. Do not silently
+            # replace its shortfall with more attempts until the episode ends.
+            commanded_distance+=length if hand_distance_request else float(np.linalg.norm(delta))
+            result['attempted_stroke_distance_m']=result.get('attempted_stroke_distance_m',0.)+float(np.linalg.norm(delta))
             hand=pose_matrix(chain.forward(service.state['metadata']['joint_positions']))
             hand=hand[:3,3]+hand[:3,:3]@contact_local
             if not physical_push:result['commanded_contact_distance_m']=commanded_distance
@@ -705,6 +738,7 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
                 'direction_world':suggested,'control_step':int(service.state['control_steps']),
                 'contact_speed_m_s':contact_speed_m_s,'stroke_length_m':stroke_length_m,
                 'stroke_plan_seconds':stroke_plan_seconds,'ineffective_strokes':ineffective,'tracker':tracker,
+                'part_motion_evidence':copy.deepcopy(result.get('part_motion_evidence')),
                 'object_pose_current':geometry_current,'scene_control_step':scene_control_step}
             service.active_push_contact['object_target_associated']=associated
         retained=getattr(service,'active_push_contact',None)

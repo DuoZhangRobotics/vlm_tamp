@@ -8,7 +8,7 @@ import json
 import math
 from numbers import Real
 
-VERSION = 'robot-request-contract-v12'
+VERSION = 'robot-request-contract-v13'
 GROUND_FIELDS = ('camera', 'contact_box_xyxy', 'moving_panel_box_xyxy',
                  'hinge_pixels_xy', 'initial_image_direction_xy')
 GROUND_HELP = '''- ground(regions): fit an upright door and vertical handle from current RGB-D.
@@ -295,6 +295,9 @@ def operation_schemas(image_sizes=None):
         'plan_joint': ('Plan simulation free motion under the declared environment prediction policy to seven joint angles in radians.', parameters({'joints': array(7),'collision_policy':policy}, ['joints'])),
         'ik': ('Compute IK proposals for your world TCP pose; no robot motion.', parameters({'pose_world_xyzw': pose}, ['pose_world_xyzw'])),
         'plan_pose': ('Plan simulation free motion under the declared environment prediction policy to your world TCP pose.', parameters({'pose_world_xyzw': pose,'collision_policy':policy}, ['pose_world_xyzw'])),
+        'plan_contact_pose': ('Plan a fingertip/pad to your observed world contact point. Computes calibrated TCP offsets and tries current/nearby orientations; an optional quaternion fixes orientation. Returns a plan_id for execute with gripper=0. No grasp or confirmed contact is assumed.', parameters({
+            'point_world_m':array(3),'quaternion_xyzw':nullable(array(4)),'contact_name':nullable(text),
+            'collision_policy':policy,'budget_seconds':number(exclusiveMinimum=0,maximum=1800)},['point_world_m'])),
         'execute': ('Execute a fresh complete plan. gripper=-1 opens, 0 holds, +1 closes; default +1. Choose explicitly for a grasp approach.', parameters({'plan_id': text, 'gripper': {'type': 'integer', 'enum': [-1, 0, 1]}, 'speed': speed, 'hold': {'type':'integer','minimum':0}}, ['plan_id'])),
         'gripper': ('Physically open/close while holding the arm. If measured arm joints have drifted beyond planner limits, command one inward joint reference increment and report it; simulator state is never assigned.', parameters({'close': {'type': 'boolean'}, 'steps': {'type':'integer','minimum':1}})),
         'plan_sequence': ('Plan a small GraspGen-only approach; retain the signed manipulation request for fresh planning after measured closure.', parameters({'degrees': angle, 'max_candidates': candidates, 'seed': seed, 'grasp_constraint': grasp,
