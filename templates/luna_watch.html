@@ -6,15 +6,15 @@
 </style></head><body>
 <h1>Luna experiments</h1>
 <p id="status">Loading saved results…</p><p id="stamp" class="muted"></p>
-<p><button id="refresh">Refresh results</button> <label><input id="live" type="checkbox"> Live status updates (60 seconds)</label></p>
-<p id="displayMode" class="muted">Display updates are paused. Experiments continue independently.</p>
+<p><button id="refresh">Refresh overview</button> <label><input id="live" type="checkbox"> Live overview updates (60 seconds)</label></p>
+<p id="displayMode" class="muted">Manual display updates. The experiment continues independently.</p>
 <section><div id="totals" class="stats"></div><p id="message"></p><p id="studyLinks" class="links"></p></section>
 <section><h2>All recorded videos <span id="videoCount" class="muted"></span></h2>
 <p class="muted">Every available episode in this study is listed here. Nothing downloads until you press Play. Paused playback stays at its current position when results update.</p>
 <div id="videos" class="gallery"></div><p id="videoEmpty" class="muted"></p></section>
 <section><h2>All runs</h2><div class="scroll"><table><thead><tr><th>Run / case</th><th>Memory</th><th>Task outcome</th><th>Controls</th><th>Actor time</th><th>Details</th></tr></thead><tbody id="runs"></tbody></table></div></section>
 <section id="detailPanel" hidden><h2 id="runTitle"></h2><p id="runStatus"></p><progress id="controls" value="0" max="600"></progress>
-<p><button id="updateRun">Update selected run</button> <span id="updateNote"></span></p><p class="muted">This inspection stays fixed until you request an update or select another run.</p>
+<p><button id="updateRun">Refresh this trial</button> <span id="updateNote"></span></p><p class="muted">One click fetches the latest trial data. Video position and expanded details are preserved.</p>
 <p id="runLinks" class="links"></p>
 <details id="frameDetails" data-open-key="frame"><summary>Recorded robot view</summary><img id="frame" alt="Recorded robot view" hidden></details>
 <details id="contactDetails" data-open-key="contact"><summary>Contact overlay</summary><img id="overlay" alt="Selected contact" hidden></details>

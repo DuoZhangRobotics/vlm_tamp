@@ -4,7 +4,7 @@ const key='luna-inspection:'+location.pathname;
 let saved={};try{saved=JSON.parse(sessionStorage.getItem(key)||'{}')}catch{}
 const initialScroll=saved.scrollY||0;
 let state=null,chosen=new URLSearchParams(location.search).get('run')||saved.chosen||null;
-let selectedVersion=null,busy=false,detailBusy=false,restoring=false;
+let selectedVersion=null,overviewRequest=null,detailBusy=false,restoring=false;
 const cards=new Map(),rows=new Map(),detailsCache=new Map();
 const num=x=>typeof x==='number'?x.toFixed(1):'—';
 function text(id,value){el(id).textContent=value??''}
@@ -17,7 +17,7 @@ function save(){
  for(const [path,c] of cards)if(c.video.getAttribute('src'))saved.video[path]=c.video.currentTime;
  try{sessionStorage.setItem(key,JSON.stringify(saved))}catch{}
 }
-function pauseDisplay(reason='Display updates are paused. Experiments continue independently.'){
+function pauseDisplay(reason='Manual display updates. The experiment continues independently.'){
  el('live').checked=false;text('displayMode',reason);save();
 }
 function image(id,path){const n=el(id);n.hidden=!path;if(path&&n.getAttribute('src')!==path)n.src=path;if(!path)n.removeAttribute('src')}
@@ -72,11 +72,11 @@ function updateOverview(next){
  text('videoCount','('+cards.size+')');text('videoEmpty',cards.size?'':'No encoded recordings yet. New episode videos appear when they are saved.');
  text('health',state.health_text||'');
  const selected=(state.runs||[]).find(r=>r.id===chosen);
- text('updateNote',selected&&selectedVersion!==null&&selected.detail_version!==selectedVersion?'New data is available. Update when you are ready.':'');
+ text('updateNote',selected&&selectedVersion!==null&&selected.detail_version!==selectedVersion?'New data is available. Press Refresh this trial to load it.':'');
 }
-async function fetchDetail(row){
- const cached=detailsCache.get(row.id);if(cached?.version===row.detail_version)return cached.data;
- const response=await fetch(row.detail+'?v='+row.detail_version,{cache:'no-cache'});
+async function fetchDetail(row,force=false){
+ const cached=detailsCache.get(row.id);if(!force&&cached?.version===row.detail_version)return cached.data;
+ const response=await fetch(row.detail+'?v='+row.detail_version+(force?'&refresh='+Date.now():''),{cache:force?'no-store':'no-cache'});
  if(!response.ok)throw Error('Run details are not available yet');const data=await response.json();
  detailsCache.set(row.id,{version:row.detail_version,data});return data;
 }
@@ -106,16 +106,21 @@ function renderDetail(data,row){
  showImageWhenOpen('frameDetails','frame');showImageWhenOpen('contactDetails','overlay');
  selectedVersion=row.detail_version;text('updateNote','');
 }
-async function inspectRun(id,move=false){
+async function inspectRun(id,move=false,force=false){
  if(detailBusy)return;detailBusy=true;save();pauseDisplay();
  const row=(state?.runs||[]).find(r=>r.id===id);if(!row){detailBusy=false;return}
  const y=scrollY;
- try{const data=await fetchDetail(row);chosen=id;renderDetail(data,row);save();
+ try{const data=await fetchDetail(row,force);chosen=id;renderDetail(data,row);save();
   if(move)el('detailPanel').scrollIntoView({behavior:'instant',block:'start'});else scrollTo(0,y);
  }catch(error){text('updateNote',error.message)}finally{detailBusy=false}
 }
-async function refreshResults(background=false){
- if(busy||(background&&!el('live').checked))return;busy=true;
+function refreshResults(background=false){
+ if(background&&!el('live').checked)return Promise.resolve();
+ if(overviewRequest)return overviewRequest;
+ overviewRequest=refreshOverview().finally(()=>{overviewRequest=null});
+ return overviewRequest;
+}
+async function refreshOverview(){
  const y=scrollY,anchor=document.elementFromPoint(24,80)?.closest('section,article');
  const anchorTop=anchor?.getBoundingClientRect().top;
  try{const r=await fetch('watch-status.json',{cache:'no-cache'});if(!r.ok)throw Error('No saved status yet');updateOverview(await r.json());
@@ -125,11 +130,16 @@ async function refreshResults(background=false){
   // Never replace an inspection or a player during a status refresh.
   if(chosen&&selectedVersion===null)await inspectRun(chosen,false);
   if(anchor&&document.contains(anchor))scrollBy(0,anchor.getBoundingClientRect().top-anchorTop);else scrollTo(0,y);
- }catch(error){text('status','Open this file with VS Code Live Preview. '+error.message)}finally{busy=false}
+ }catch(error){text('status','Open this file with VS Code Live Preview. '+error.message)}
 }
 el('refresh').onclick=()=>refreshResults(false);
-el('updateRun').onclick=()=>{if(chosen)inspectRun(chosen,false)};
-el('live').onchange=()=>{text('displayMode',el('live').checked?'Live status is on. Selected details and video positions stay fixed.':'Display updates are paused. Experiments continue independently.');if(el('live').checked)refreshResults(true)};
+el('updateRun').onclick=async()=>{
+ const id=chosen;if(!id||detailBusy)return;
+ el('updateRun').disabled=true;
+ try{await refreshResults(false);if(chosen===id)await inspectRun(id,false,true)}
+ finally{el('updateRun').disabled=false}
+};
+el('live').onchange=()=>{text('displayMode',el('live').checked?'Live overview is on. Use Refresh this trial to update its details.':'Manual display updates. The experiment continues independently.');if(el('live').checked)refreshResults(true)};
 el('detailPanel').addEventListener('toggle',event=>{
  if(restoring)return;if(event.target.open)pauseDisplay('Display updates paused for inspection. Experiments continue independently.');
  showImageWhenOpen('frameDetails','frame');showImageWhenOpen('contactDetails','overlay');save();
