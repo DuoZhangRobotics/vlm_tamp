@@ -23,6 +23,7 @@ def test_advisory_release_flow_and_native_success_termination(tmp_path,monkeypat
     evidence={'point_world_m':[0.,0.,0.],'normal_toward_camera_world':[-1.,0.,0.],
         'direction_world':[1.,0.,0.],'contact_surface':'fingertips','joint_associated':False}
     monkeypatch.setattr(module,'build_contact_scene',lambda *a,**k:(scene,evidence.copy(),np.zeros((12,3))))
+    monkeypatch.setattr(module,'observed_contact_cloud',lambda service:((np.zeros((12,3)),{}),False))
     monkeypatch.setattr(module,'_overlay',lambda *a,**k:None)
     monkeypatch.setattr(module,'momentum_status',lambda:{'available':True,'validated':False,'validation_reason':'not_validated'})
     empty=np.empty((0,7));one=np.zeros((1,7))
@@ -33,7 +34,6 @@ def test_advisory_release_flow_and_native_success_termination(tmp_path,monkeypat
         'attempts':[],'candidate_index':0,'timing_seconds':{},'total_seconds':0.,
         'native_contact_policy':{},'reuse_existing_contact':reuse}
     monkeypatch.setattr(module,'plan_engagement',lambda *a,**k:engagement)
-    monkeypatch.setattr(module,'refresh_collision_observations',lambda s,*a:(s,{'source':'test observation'}))
     class Tracker:
         def __init__(self,cameras,points,step):
             self.step=step;self.tracker=SimpleNamespace(references={n:{'pixels':np.zeros((20,1,2))} for n in cameras})

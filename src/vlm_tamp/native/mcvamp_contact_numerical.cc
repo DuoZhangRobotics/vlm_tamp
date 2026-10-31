@@ -385,6 +385,23 @@ void* mcvamp_clone(void* original,const float* config,const float* gripper,int n
         return s.release();
     } catch (...) { return nullptr; }
 }
+void* mcvamp_create_reusing_static(void* original,const float* moving,int nm,const float* contact,int nc,
+                                  const float* config,const float* gripper,int ng) {
+    try {
+        if(!original) return nullptr;
+        const auto& previous=*static_cast<Scene*>(original);
+        auto s=std::make_unique<Scene>();
+        s->stationary=previous.stationary;
+        s->point_grids[0]=previous.point_grids[0];
+        s->point_radius=previous.point_radius;
+        s->moving=tree(moving,nm,s->point_radius);
+        s->contact=tree(contact,nc,s->point_radius);
+        s->point_grids[1]=std::make_shared<PointGrid>(moving,nm);
+        s->point_grids[2]=std::make_shared<PointGrid>(contact,nc);
+        mcvamp_configure(s.get(),config,gripper,ng);
+        return s.release();
+    } catch (...) { return nullptr; }
+}
 void mcvamp_destroy(void* p) { delete static_cast<Scene*>(p); }
 int mcvamp_set_grasp_constraint(void* p,int mode) {
     if(mode<0 || mode>2) return 0;

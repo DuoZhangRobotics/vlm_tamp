@@ -57,7 +57,7 @@ def region_points(cameras,metadata,camera,box,occupied=None):
     points=xyz[mask]
     if occupied is None:occupied,_=observed_points(cameras,metadata,spacing=.003)
     if not len(points) or not len(occupied):raise SkillStop('insufficient_target_depth')
-    points=points[cKDTree(occupied).query(points)[0]<=.0035]
+    points=points[cKDTree(occupied).query(points,distance_upper_bound=np.nextafter(.0035,np.inf))[0]<=.0035]
     if len(points)<12:raise SkillStop('insufficient_target_depth',supported_points=len(points))
     return points
 
@@ -102,13 +102,10 @@ def hook_feature(points,direction,cameras=None):
 
 
 def build_contact_scene(cameras,metadata,chain,camera,region,target_region,contact_surface,
-                        direction=None,joint_degrees=None,joint_scene=None,*,skill_kind='push'):
-    base,patch=contact_snapshot(cameras,metadata,camera,region,chain,radius_m=.035)
+                        direction=None,joint_degrees=None,joint_scene=None,*,skill_kind='push',observed=None):
+    base,patch=contact_snapshot(cameras,metadata,camera,region,chain,radius_m=.035,observed=observed)
     occupied=np.vstack([base.static_points,base.contact_reference])
     selected=region_points(cameras,metadata,camera,region,occupied)
-    # Other measured views can resolve the reverse side of a thin retaining
-    # feature. Limit association to the local selected component's vicinity.
-    multiview_selected=occupied[cKDTree(selected).query(occupied)[0]<.012]
     target=region_points(cameras,metadata,camera,target_region or region,occupied)
     origin=np.asarray(patch['point_world_m']);normal=np.asarray(patch['normal_toward_camera_world'])
     # A broad image rectangle can include the table/background through a handle
@@ -179,7 +176,7 @@ def build_contact_scene(cameras,metadata,chain,camera,region,target_region,conta
         'front_plane':{'point_world_m':origin.tolist()},'panel_normal_world':normal.tolist()}
     # Only target-associated measured endpoints move. Other observed surfaces
     # remain stationary obstacles even when inside a loose image selection.
-    owned=(cKDTree(target).query(occupied)[0]<=.004)|(cKDTree(contact_points).query(occupied)[0]<=.0035)
+    owned=(cKDTree(target).query(occupied,distance_upper_bound=np.nextafter(.004,np.inf))[0]<=.004)|(cKDTree(contact_points).query(occupied,distance_upper_bound=np.nextafter(.0035,np.inf))[0]<=.0035)
     target=occupied[owned]
     if len(target)<12:raise SkillStop('insufficient_target_depth')
     scene=Scene.from_points(occupied[~owned],target,contact_points,spec,
@@ -260,6 +257,37 @@ def robot_only_planning_scene(scene):
     # The measured contact reference remains metadata. NativeScene indexes
     # only moving endpoints, so this introduces no synthetic obstacle points.
     return planning
+
+
+def advance_contact_scene(scene,transform,cameras,control_step):
+    """Move the retained rigid target from measured feedback; reuse the static map."""
+    transform=np.asarray(transform,float);rotation=transform[:3,:3]
+    new=copy.copy(scene)
+    for name in ('moving_reference','contact_reference','inferred_panel_reference'):
+        points=transform_points(getattr(scene,name,np.empty((0,3))),transform)
+        points.setflags(write=False);setattr(new,name,points)
+    new.panel_origin=transform_points([scene.panel_origin],transform)[0]
+    new.panel_normal=rotation@scene.panel_normal
+    if hasattr(scene,'spec'):
+        new.spec=copy.deepcopy(scene.spec)
+        new.spec['front_plane']['point_world_m']=new.panel_origin.tolist()
+        new.spec['panel_normal_world']=new.panel_normal.tolist()
+        if 'source_anchor_world_m' in new.spec:
+            new.spec['source_anchor_world_m']=transform_points([new.spec['source_anchor_world_m']],transform)[0].tolist()
+    new.moving_tree=cKDTree(new.moving_reference);new.contact_tree=cKDTree(new.contact_reference)
+    new.collision_reference=np.vstack([new.moving_reference,new.inferred_panel_reference])
+    new.collision_reference.setflags(write=False);new.collision_tree=cKDTree(new.collision_reference)
+    new._moving_cache={}
+    new._reference_contact_distance=new.contact_tree.query(new.collision_reference)[0]
+    new._reference_panel_distance=np.abs((new.collision_reference-new.panel_origin)@new.panel_normal)
+    if len(new.contact_reference):new._reference_contact_height=np.quantile(new.contact_reference[:,2],[.01,.99])
+    new.skill_observed_cameras=cameras
+    new.pose_update={'source':'rgbd_rigid_motion','reference_control_step':int(control_step),
+        'transform_world':transform.tolist(),'stationary_points_changed':False,
+        'fresh_depth_endpoints_added':False,'full_scene_rebuilt':False,'hinge_refined':False}
+    return new,{'source':'accepted RGB-D rigid target motion','static_points_reused':len(new.static_points),
+        'moving_points_transported':len(new.moving_reference),'full_scene_rebuilt':False,
+        'new_depth_points_added':0,'simulator_object_state_used':False}
 
 
 def refresh_collision_observations(scene,cameras,metadata):
@@ -452,26 +480,29 @@ def plan_engagement(ik,scene,record,metadata,evidence,selected,kind,budget,maxim
             return result
         return _plan_contact_at_point(ik,scene,record,metadata,evidence,selected,kind,budget,maximum_approach_controls)
     started=time.perf_counter();points=region_contact_candidates(selected,evidence['point_world_m'])
-    attempts=[];timing=Counter()
+    attempts=[];timing=Counter();work=Counter()
     for index,point in enumerate(points):
-        budget.check();local=copy.deepcopy(evidence);local['point_world_m']=point.tolist()
+        if budget.remaining<=0:break
+        local=copy.deepcopy(evidence);local['point_world_m']=point.tolist()
         if local['joint_associated']:
             local['direction_world']=unit(scene.skill_joint_sign*np.cross(scene.axis,point-scene.origin)).tolist()
         allowance=min(budget.remaining,max(6.,budget.remaining/(len(points)-index)))
         try:
             result=_plan_contact_at_point(ik,scene,record,metadata,local,selected,kind,budget.child(allowance),maximum_approach_controls)
             timing.update(result['timing_seconds']);evidence.update(local)
+            work.update(result.get('search_work',{}))
             evidence['region_contact_candidates_world_m']=[p.tolist() for p in points]
             result.update(region_candidate_index=index,point_attempts=attempts,
-                timing_seconds=dict(timing),total_seconds=time.perf_counter()-started)
+                timing_seconds=dict(timing),search_work=dict(work),total_seconds=time.perf_counter()-started)
             return result
         except SkillStop as error:
             timing.update(error.evidence.get('timing_seconds',{}))
+            work.update(error.evidence.get('search_work',{}))
             attempts.append({'point_world_m':point.tolist(),'reason':error.reason,**error.evidence})
             if error.reason in {'start_configuration_blocked','initial_target_contact_requires_release'}:raise
     raise SkillStop('contact_search_budget_exhausted' if budget.remaining<=0 else 'contact_search_exhausted',
-        point_attempts=attempts,search_complete=all(a['reason']!='budget_exhausted' for a in attempts),
-        global_infeasibility_proved=False,timing_seconds=dict(timing))
+        point_attempts=attempts,search_complete=len(attempts)==len(points) and all(a['reason']!='budget_exhausted' for a in attempts),
+        global_infeasibility_proved=False,timing_seconds=dict(timing),search_work=dict(work))
 
 
 def approach_connection(robot_context,observed_context,start,goal,budget,timing):
@@ -497,23 +528,7 @@ def approach_connection(robot_context,observed_context,start,goal,budget,timing)
     return path,result,{**selection,'selected':'robot_valid_advisory_approach' if observed_context is not None else 'observed_scene_plan'}
 
 
-def _plan_contact_at_point(ik,scene,record,metadata,evidence,selected,kind,budget,maximum_approach_controls=None):
-    started=time.perf_counter();timing=Counter();attempts=[];q=np.asarray(metadata['joint_positions'])
-    approach_speed=float(getattr(scene,'skill_approach_speed_rad_s',.6))
-    approach_hold=int(getattr(scene,'skill_approach_hold_steps',0))
-    budget.context={'attempts':attempts,'timing_seconds':timing}
-    point=np.asarray(evidence['point_world_m']);d=unit(evidence['direction_world']);normal=unit(evidence['normal_toward_camera_world'])
-    if kind=='push' and d@(-normal)<.1:
-        alignment={'force_alignment':float(d@(-normal)),'usual_compressive_alignment_minimum':.1,
-            'interpretation':'Requested motion points away from or nearly tangent to the estimated visible face.'}
-        if getattr(scene,'skill_collision_policy','veto')=='advisory':
-            evidence['surface_alignment_prediction']=alignment
-        else:raise SkillStop('wrong_side_contact',**alignment)
-    if kind=='hook_pull':
-        point,feature=hook_feature(selected,d,cameras=getattr(scene,'skill_observed_cameras',None));evidence['hook_feature']=feature
-        scene.contact_reference=scene.moving_reference[cKDTree(np.asarray([point])).query(scene.moving_reference)[0]<.035]
-        if len(scene.contact_reference)<5:raise SkillStop('hook_back_surface_unobserved')
-    if callable(maximum_approach_controls):maximum_approach_controls=maximum_approach_controls(point)
+def contact_pose_menu(metadata,evidence,point,d,kind,feature=None):
     current=pose_matrix(metadata['eef_pose_world_xyzw'])[:3,:3]
     menu=[]
     if kind=='push':
@@ -553,6 +568,27 @@ def _plan_contact_at_point(ik,scene,record,metadata,evidence,selected,kind,budge
             menu.append((contact,target,standoff,approach))
     current_position=np.asarray(metadata['eef_pose_world_xyzw'])[:3]
     menu.sort(key=lambda row:np.linalg.norm(row[1][:3,3]-current_position)+.04*Rotation.from_matrix(current.T@row[1][:3,:3]).magnitude())
+    return menu
+
+
+def _plan_contact_at_point(ik,scene,record,metadata,evidence,selected,kind,budget,maximum_approach_controls=None):
+    started=time.perf_counter();timing=Counter();work=Counter();attempts=[];q=np.asarray(metadata['joint_positions'])
+    approach_speed=float(getattr(scene,'skill_approach_speed_rad_s',.6))
+    approach_hold=int(getattr(scene,'skill_approach_hold_steps',0))
+    budget.context={'attempts':attempts,'timing_seconds':timing,'search_work':work}
+    point=np.asarray(evidence['point_world_m']);d=unit(evidence['direction_world']);normal=unit(evidence['normal_toward_camera_world'])
+    if kind=='push' and d@(-normal)<.1:
+        alignment={'force_alignment':float(d@(-normal)),'usual_compressive_alignment_minimum':.1,
+            'interpretation':'Requested motion points away from or nearly tangent to the estimated visible face.'}
+        if getattr(scene,'skill_collision_policy','veto')=='advisory':
+            evidence['surface_alignment_prediction']=alignment
+        else:raise SkillStop('wrong_side_contact',**alignment)
+    if kind=='hook_pull':
+        point,feature=hook_feature(selected,d,cameras=getattr(scene,'skill_observed_cameras',None));evidence['hook_feature']=feature
+        scene.contact_reference=scene.moving_reference[cKDTree(np.asarray([point])).query(scene.moving_reference)[0]<.035]
+        if len(scene.contact_reference)<5:raise SkillStop('hook_back_surface_unobserved')
+    if callable(maximum_approach_controls):maximum_approach_controls=maximum_approach_controls(point)
+    current=pose_matrix(metadata['eef_pose_world_xyzw'])[:3,:3]
     setup_started=time.perf_counter()
     advisory=getattr(scene,'skill_collision_policy','veto')=='advisory'
     planning_scene=robot_only_planning_scene(scene) if advisory else scene
@@ -580,20 +616,26 @@ def _plan_contact_at_point(ik,scene,record,metadata,evidence,selected,kind,budge
                 'native_contact_policy':context.record}
         free_initial=free_context.validate(q)
         if not free_initial['accepted']:raise SkillStop('initial_target_contact_requires_release',diagnostic=free_initial)
+        menu=contact_pose_menu(metadata,evidence,point,d,kind,feature if kind=='hook_pull' else None)
+        target_cache={}
         for index,(contact,target,standoff,approach) in enumerate(menu):
-            budget.check();began=time.perf_counter()
-            endpoints=ik.solve_many(matrix_pose(target),q,maximum=8)
-            timing['ik_seconds']+=time.perf_counter()-began;budget.check()
-            check_started=time.perf_counter()
-            endpoint_checks=[context.validate(s['joints']) for s in endpoints]
-            timing['goal_collision_checks_seconds']+=time.perf_counter()-check_started
+            budget.check();work['pose_approach_combinations']+=1
+            key=target.tobytes();reused=key in target_cache
+            if reused:
+                endpoints,endpoint_checks,first=target_cache[key];work['target_ik_reuses']+=1
+            else:
+                began=time.perf_counter();endpoints=ik.solve_many(matrix_pose(target),q,maximum=8)
+                timing['ik_seconds']+=time.perf_counter()-began;work['target_ik_queries']+=1;budget.check()
+                check_started=time.perf_counter();endpoint_checks=[context.validate(s['joints']) for s in endpoints]
+                timing['goal_collision_checks_seconds']+=time.perf_counter()-check_started
+                first=index;target_cache[key]=(endpoints,endpoint_checks,first)
             if not any(e['accepted'] for e in endpoint_checks):
                 attempts.append({'candidate':index,'reason':'no_contact_ik' if not endpoints else 'contact_endpoint_collision',
-                    'contact_name':contact['name'],'endpoint_checks':endpoint_checks})
+                    'contact_name':contact['name'],**({'reused_endpoint_candidate':first} if reused else {'endpoint_checks':endpoint_checks})})
                 continue
             began=time.perf_counter()
             solutions=ik.solve_many(matrix_pose(standoff),q,maximum=8)
-            timing['ik_seconds']+=time.perf_counter()-began;budget.check()
+            timing['ik_seconds']+=time.perf_counter()-began;work['standoff_ik_queries']+=1;budget.check()
             if not solutions:attempts.append({'candidate':index,'reason':'no_standoff_ik'});continue
             for solution in solutions:
                 budget.check();goal=np.asarray(solution['joints'])
@@ -629,10 +671,10 @@ def _plan_contact_at_point(ik,scene,record,metadata,evidence,selected,kind,budge
                     'contact_world':point,'rotation':target[:3,:3],'insertion_direction':approach,
                     'approach_selection':approach_selection,
                     'contact_name':contact['name'],'attempts':attempts,'candidate_index':index,
-                    'timing_seconds':dict(timing),'total_seconds':time.perf_counter()-started,
+                    'timing_seconds':dict(timing),'search_work':dict(work),'total_seconds':time.perf_counter()-started,
                     'predicted_contact_only':True,'native_contact_policy':context.record}
     raise SkillStop('contact_search_exhausted',attempts=attempts,search_complete=True,
-        candidates=len(menu),global_infeasibility_proved=False,timing_seconds=dict(timing))
+        candidates=len(menu),global_infeasibility_proved=False,timing_seconds=dict(timing),search_work=dict(work))
 
 
 def fit_object_motion(first,second):

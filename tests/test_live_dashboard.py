@@ -63,6 +63,23 @@ def test_inactive_publisher_does_not_keep_writing_heartbeats(tmp_path,monkeypatc
     assert not json.loads((study/'watch-status.json').read_text())['running']
 
 
+def test_continuation_outcome_and_per_call_timings_are_visible(tmp_path,monkeypatch):
+    study,run,_=fixture(tmp_path,monkeypatch)
+    result={'skill':'push','stop_reason':'requested_stroke_complete','contact_reused':True,
+        'scene_reused':True,'full_scene_builds':0,'contact_searches':0,
+        'timing_seconds':{'stroke_planning_seconds':1.3,'execution_and_capture_seconds':3.2}}
+    event={'sequence':12,'request':{'operation':'continue_push','arguments':{}},'wall_seconds':5.2,
+        'response':{'ok':True,'result':result}}
+    (run/'tool-events.jsonl').write_text(json.dumps(event)+'\n')
+    dashboard.publish(study,force=True)
+    data=json.loads((run/'watch-data.json').read_text())
+    assert not data['issues']
+    call=data['contact_calls'][0]
+    assert call['wall_seconds']==5.2 and call['contact_searches']==0 and call['scene_reused']
+    assert call['timing_seconds']['stroke_planning_seconds']==1.3
+    assert data['timing']['nested_contact_skill_seconds']['execution_and_capture_seconds']==3.2
+
+
 def test_static_page_uses_lazy_media_and_data_polling():
     assert 'location.reload' not in dashboard.CLIENT_JS
     assert "video.preload='none'" in dashboard.CLIENT_JS

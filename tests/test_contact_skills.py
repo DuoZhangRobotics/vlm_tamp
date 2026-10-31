@@ -14,6 +14,30 @@ class LinearChain:
     def forward(self,q):return np.r_[np.asarray(q)[:3],[0,0,0,1.]]
 
 
+def test_contact_target_ik_is_shared_by_alternative_approach_distances(monkeypatch):
+    import vlm_tamp.contact_skills as module
+    class Context:
+        record={}
+        def __enter__(self):return self
+        def __exit__(self,*args):pass
+        def validate(self,q):return {'accepted':True}
+    monkeypatch.setattr(module,'skill_native_scene',lambda *a,**k:Context())
+    monkeypatch.setattr(module,'current_contact_candidate',lambda *a,**k:None)
+    target=np.eye(4);contact={'name':'finger','point':np.zeros(3)}
+    monkeypatch.setattr(module,'contact_pose_menu',lambda *a:[
+        (contact,target,target.copy(),np.array([1.,0,0])) for _ in range(3)])
+    queries=[]
+    ik=SimpleNamespace(solve_many=lambda *a,**k:(queries.append(a) or []))
+    meta={'joint_positions':[0.]*7,'eef_pose_world_xyzw':[0.,0,0,0,0,0,1.]}
+    evidence={'point_world_m':[0.,0,0],'direction_world':[1.,0,0],
+        'normal_toward_camera_world':[-1.,0,0],'contact_surface':'fingertips'}
+    with pytest.raises(SkillStop,match='contact_search_exhausted') as error:
+        module._plan_contact_at_point(ik,SimpleNamespace(),{},meta,evidence,None,'push',Budget(5))
+    assert len(queries)==1
+    assert error.value.evidence['search_work']=={
+        'pose_approach_combinations':3,'target_ik_queries':1,'target_ik_reuses':2}
+
+
 def test_contact_timing_respects_cartesian_and_joint_limits():
     path=np.array([[0.]*7,[.03,0,0,0,0,0,0]])
     refs=schedule_contact(path,LinearChain(),[0,0,0],contact_speed_m_s=.03)
@@ -237,6 +261,39 @@ def test_continuation_does_not_permit_a_new_finger_collision(calibrated_robot):
         assert context.validate(q)['accepted']
         failure=context.validate(later)
         assert not failure['accepted'] and failure['moving_rejections']>0
+    clear_native_cache()
+
+
+def test_stationary_index_reuse_keeps_collisions_and_live_queries_across_eviction(calibrated_robot):
+    from vlm_tamp.coupled_scene import Scene
+    from vlm_tamp.mcvamp_contact_numerical import NativeScene,clear_native_cache,_TREE_CACHE
+    meta,record=calibrated_robot;q=meta['joint_positions'];clear_native_cache()
+    palm=next(v for v in meta['robot_collision_volumes_world'] if v['robot_geom_name']=='gripper0_hand_collision')
+    point=np.asarray(palm['vertices_world']).mean(0,keepdims=True);far=point+3
+    spec={'joint_origin_world_m':far[0].tolist(),'joint_axis_world':[0,0,1],
+        'front_plane':{'point_world_m':far[0].tolist()},'panel_normal_world':[1,0,0]}
+    first=Scene.from_points(point,far,far,spec)
+    with NativeScene(first,record,meta,q,.05,articulated=False) as live:
+        assert not live.record['stationary_index_reused']
+        assert not live.validate(q)['accepted']
+        # Make the matching static template oldest. Creating the next moving
+        # scene evicts that template while the shared index is pinned.
+        other=Scene.from_points(far,far+.1,far+.1,spec)
+        with NativeScene(other,record,meta,q,.05,articulated=False) as query:
+            assert not query.record['stationary_index_reused']
+            assert query.validate(q)['accepted']
+        for n in range(1,6):
+            moved=far+[n*.01,0,0];scene=Scene.from_points(point,moved,moved,spec)
+            with NativeScene(scene,record,meta,q,.05,articulated=False) as query:
+                assert query.record['stationary_index_reused']
+                assert not query.validate(q)['accepted']
+            assert len(_TREE_CACHE)<=2
+        clear_native_cache()
+        assert not live.validate(q)['accepted']
+    clear=Scene.from_points(far,far+.1,far+.1,spec)
+    with NativeScene(clear,record,meta,q,.05,articulated=False) as query:
+        assert not query.record['stationary_index_reused']
+        assert query.validate(q)['accepted']
     clear_native_cache()
 
 

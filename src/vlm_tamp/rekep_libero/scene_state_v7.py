@@ -26,7 +26,12 @@ def voxel_points(points, spacing=.002):
     if not len(points):
         return points
     cells = np.floor(points / spacing).astype(np.int64)
-    return points[np.unique(cells, axis=0, return_index=True)[1]]
+    # Stable integer sorting preserves the same first sample per voxel and
+    # lexicographic output order without structured-array flatten/sort copies.
+    order=np.lexsort((cells[:,2],cells[:,1],cells[:,0]))
+    ordered=cells[order]
+    first=np.r_[True,np.any(ordered[1:]!=ordered[:-1],axis=1)]
+    return points[order[first]]
 
 
 def observed_points(cameras, metadata, *, spacing=.002, robot_depth_tolerance=.0001):

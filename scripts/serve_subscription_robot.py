@@ -101,6 +101,9 @@ class RobotService:
         self.motion_feedback=[]
         self.active_grasp_contact_offset_m=0.
         self.last_gripper_command=-1
+        self.active_push_contact=None
+        self.push_preview_cache=None
+        self.contact_observation_cache=None
         self.plans = {}
         self.epoch = 0
         self.contact_scene_kind='articulated'
@@ -144,6 +147,8 @@ class RobotService:
         return p
 
     def capture(self,camera_names=None):
+        self.contact_observation_cache=None
+        self.push_preview_cache=None
         if getattr(self,'sim',None) is None:
             raise ValueError('Call reset before observing an episode')
         folder = self.folder('observation')
@@ -273,6 +278,9 @@ class RobotService:
         self.motion_feedback=[]
         self.active_grasp_contact_offset_m=0.
         self.last_gripper_command=-1
+        self.active_push_contact=None
+        self.push_preview_cache=None
+        self.contact_observation_cache=None
         self.spec = self.scene = self.tracker = None
         self.scene_reference_control_step=None
         self.retained_articulated_model=None
@@ -753,7 +761,9 @@ class RobotService:
         return scene
 
     def motion_settings(self):
+        from vlm_tamp.push_contact_state import contact_summary
         return {'maximum_control_steps':getattr(self,'maximum_control_steps',control_limit(self.state)),
+            'push_continuation':contact_summary(getattr(self,'active_push_contact',None)),
             'remaining_control_steps':self.episode_status()['remaining_control_steps'],
             'controller_joint_reference_limit_rad_s':1.,'controller_reference_mode':self.reference_mode,'collision_padding_m':0.,
             'environment_collision_policy':self.config.get('environment_collision_policy','veto'),
@@ -1050,6 +1060,13 @@ class RobotService:
         arguments={key:value for key,value in locals().items() if key not in {'self','run_skill'}}
         return run_skill(self,'hook_pull',**arguments)
 
+    def continue_push(self,direction_world,distance_m,contact_speed_m_s=None,
+                      stroke_length_m=None,budget_seconds=120.,stroke_plan_seconds=None,max_ineffective_strokes=2):
+        from vlm_tamp.contact_skill_service import run_skill
+        return run_skill(self,'push',direction_world=direction_world,distance_m=distance_m,
+            contact_speed_m_s=contact_speed_m_s,stroke_length_m=stroke_length_m,budget_seconds=budget_seconds,
+            stroke_plan_seconds=stroke_plan_seconds,max_ineffective_strokes=max_ineffective_strokes,continuation=True)
+
     def execute_plan(self, plan_id, gripper=1, speed=.35, hold=6):
         plan = self.plans[plan_id]
         if plan['kind']=='sequence':
@@ -1086,6 +1103,9 @@ class RobotService:
     def issue(self, refs, gripper, label, *, articulated=False,camera_names=None,track_scene=True):
         if len(refs)>control_limit(self.state)-self.state['control_steps']:
             raise ValueError('Complete requested trajectory exceeds remaining physical-step budget')
+        if len(refs):
+            from vlm_tamp.push_contact_state import clear_motion_context
+            clear_motion_context(self)
         began=time.perf_counter();timing={};stage=began
         grip_before=self.state['metadata']
         sync_mode = getattr(self,'config',{}).get('scene_pose_sync','none')
@@ -1235,6 +1255,8 @@ class RobotService:
             'voluntary_early_finish_allowed':not getattr(self,'persistent_episode',False)}
 
     def finish_attempt(self, reason):
+        from vlm_tamp.push_contact_state import clear_motion_context
+        clear_motion_context(self);self.contact_observation_cache=None
         perception=getattr(self,'_perception_tools',None)
         if perception is not None:perception.close();self._perception_tools=None
         if self.sim is None:
@@ -1331,7 +1353,7 @@ class RobotService:
             operations['apply_part_motion']=self.apply_part_motion
         if getattr(self,'surface_contact_tools',False):
             operations.update(select_surface_contact=self.select_surface_contact,plan_pose=self.plan_pose,
-                push=self.push,hook_pull=self.hook_pull)
+                push=self.push,continue_push=self.continue_push,hook_pull=self.hook_pull)
         if self.completion_checks:
             operations.update(declare_completion=self.declare_completion,measure_surface=self.measure_surface,
                 compare_surfaces=self.compare_surfaces,compare_surface_geometry=self.compare_surface_geometry,

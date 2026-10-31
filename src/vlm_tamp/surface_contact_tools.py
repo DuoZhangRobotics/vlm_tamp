@@ -21,7 +21,7 @@ class ObservedContactPatchScene(Scene):
             'allow_finger_handle_contact':True}
 
 
-def contact_snapshot(cameras,metadata,camera,region_xyxy,chain,*,radius_m=.02):
+def contact_snapshot(cameras,metadata,camera,region_xyxy,chain,*,radius_m=.02,observed=None):
     if camera not in cameras:raise ValueError('Choose an observed camera')
     if not np.isfinite(radius_m) or not .005<=radius_m<=.04:
         raise ValueError('Contact-patch radius must be 0.005..0.04 metres')
@@ -32,9 +32,9 @@ def contact_snapshot(cameras,metadata,camera,region_xyxy,chain,*,radius_m=.02):
         raise ValueError('Select a bounded pixel region in the current image')
     yy,xx=np.indices((h,w));selected=(xx>=box[0])&(xx<=box[2])&(yy>=box[1])&(yy<=box[3])
     candidate=world[selected&np.isfinite(world).all(2)]
-    occupied,filter_record=observed_points(cameras,metadata,spacing=.003)
+    occupied,filter_record=(observed_points(cameras,metadata,spacing=.003) if observed is None else observed)
     if len(occupied)==0 or len(candidate)<8:raise ValueError('Insufficient observed surface points')
-    candidate=candidate[cKDTree(occupied).query(candidate)[0]<=.0035]
+    candidate=candidate[cKDTree(occupied).query(candidate,distance_upper_bound=np.nextafter(.0035,np.inf))[0]<=.0035]
     if len(candidate)<8:raise ValueError('Selected pixels lack non-robot depth support')
     median=np.median(candidate,axis=0)
     center=candidate[np.argmin(np.linalg.norm(candidate-median,axis=1))]
@@ -44,7 +44,7 @@ def contact_snapshot(cameras,metadata,camera,region_xyxy,chain,*,radius_m=.02):
     normal=vt[-1]
     origin=pose_matrix(view['camera_to_world'])[:3,3]
     if normal@(origin-center)<0:normal=-normal
-    in_patch=cKDTree(patch).query(occupied)[0]<=.0035
+    in_patch=cKDTree(patch).query(occupied,distance_upper_bound=np.nextafter(.0035,np.inf))[0]<=.0035
     contact=occupied[in_patch];static=occupied[~in_patch]
     if len(contact)<3:raise ValueError('Contact patch disappeared during scene assembly')
     # These reference-frame fields are required by Scene/NativeScene. No

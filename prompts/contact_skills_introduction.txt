@@ -2,7 +2,28 @@ Contact skills: choosing how to move an observed part
 
 You choose the target, desired motion, contact mode and experiments. Numerical
 tools compute robot poses, IK, collisions and timing. No TCP quaternion or joint
-configuration is required for push or hook_pull.
+configuration is required for push, continue_push or hook_pull.
+
+- continue_push(direction_world, distance_m, contact_speed_m_s=null,
+  stroke_length_m=null, budget_seconds=120, stroke_plan_seconds=null):
+  Use after a controlled push returns continue_push_available=true. It reuses
+  the established contact and the observed scene: no new region, hinge model,
+  contact search or preview is needed. Fingertip contact is the default for
+  acquisition; continuation keeps the contact surface you already selected.
+  direction_world and distance_m specify the commanded contact/hand stroke.
+  Actual hand and object motion are reported separately. Speed defaults to the
+  retained setting. A continuation is one complete requested stroke by default;
+  stroke_length_m can explicitly split a larger request. The returned suggested direction
+  follows the observed part rotation and can be used for a subsequent stroke.
+  Robot/gripper movement through another operation clears the retained contact;
+  observations alone do not. Acquire a fresh contact only when the tool reports
+  continuation unavailable or you intend to push a different target.
+
+An unchanged push preview is reused by execution; its geometry and approach are
+not recomputed. During a push, static geometry is retained and the selected rigid
+part is updated from RGB-D motion feedback. This does not certify unseen changes
+elsewhere in the scene. Initial region selection is for acquisition, not something
+you must repeat for each small continuation.
 
 - push(observation_id, camera, region_xyxy, target_region_xyxy=null,
   direction_world=null, distance_m=0.03, joint_degrees=null,
@@ -50,8 +71,10 @@ configuration is required for push or hook_pull.
   The 0.03, 0.06 and 0.12 m/s settings have matched replay data. Other positive
   speed requests are allowed experiments; replies report achieved speed.
   Larger signed joint requests are tracked through incremental observed rotations.
-  Search budgets default to one quarter and one twenty-fourth of budget_seconds
-  for initial and subsequent plans; you can override them explicitly.
+  Search budgets default to 30 seconds for initial contact and 5 seconds for
+  subsequent stroke plans, capped by the remaining skill/episode allowance.
+  They do not shrink proportionally when you request a shorter whole-skill
+  budget. You can override them explicitly.
 - hook_pull(observation_id, camera, region_xyxy, target_region_xyxy=null,
   direction_world=null, distance_m=0.03, joint_degrees=null,
   joint_model_epoch=null, contact_speed_m_s=0.03, preview=false,

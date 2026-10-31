@@ -134,7 +134,7 @@ def render(study,watch=None):
         timing={'service_calls_inclusive':tool_seconds}
         if actor_wall is not None:
             timing.update(actor_wall=actor_wall,actor_outside_service_approx=max(0,actor_wall-tool_seconds))
-        selected=[e for e in events if e.get('request',{}).get('operation') in {'push','hook_pull'}]
+        selected=[e for e in events if e.get('request',{}).get('operation') in {'push','continue_push','hook_pull'}]
         calls=Counter(e['request']['operation'] for e in selected)
         previews=sum(bool(e['request'].get('arguments',{}).get('preview')) for e in selected)
         executed=sum(bool(e.get('response',{}).get('result',{}).get('robot_motion_executed')) for e in selected)
@@ -151,7 +151,7 @@ def render(study,watch=None):
             'physically_executed_contact_calls':executed,'agent_exit':agent})
         last=events[-1] if events else {};last_result=last.get('response',{}).get('result',{})
         card=f'<article><h2>Luna — {esc(run.name)}</h2><p>Native outcomes: {esc(success) if episodes else "running / no completed attempt"}. '
-        card+=(f'Tools available: {"push, hook_pull, grasped manipulation" if protocol.get("surface_contact_tools") else "see protocol"}. '
+        card+=(f'Tools available: {"push, continue_push, hook_pull, grasped manipulation" if protocol.get("surface_contact_tools") else "see protocol"}. '
             f'Selections: {esc(dict(calls))}; previews: {previews}; calls with physical contact-skill motion: {executed}.</p>'
             f'<p>Last returned tool: {esc(last.get("request",{}).get("operation","none"))}; '
             f'outcome: {esc(last_result.get("stop_reason",last_result.get("status","see log")))}.</p>'+timing_table(timing)

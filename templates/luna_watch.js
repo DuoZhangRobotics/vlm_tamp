@@ -87,6 +87,14 @@ function renderDetail(data,row){
  el('frame').dataset.path=data.frame||'';el('overlay').dataset.path=data.contact_overlay||'';
  image('frame',null);image('overlay',null);
  el('skill').replaceChildren();table(el('skill'),Object.entries(data.skill||{}));
+ el('contactHistory').replaceChildren();table(el('contactHistory'),[
+  ['Event / tool','Outcome','Total','Scene prep','Contact search','Stroke plan','Execute + capture','Feedback','Reused','Builds / searches'],
+  ...(data.contact_calls||[]).map(c=>{const t=c.timing_seconds||{};return [c.event+' / '+c.operation,
+   c.stop_reason,num(c.wall_seconds),num(t.perception_seconds||0),num(t.contact_search_seconds||0),
+   num(t.stroke_planning_seconds||0),num(t.execution_and_capture_seconds||0),
+   num((t.tracker_initialization_seconds||0)+(t.motion_tracking_seconds||0)+(t.moving_geometry_update_seconds||0)),
+   [c.contact_reused?'contact':null,c.scene_reused?'scene':null,c.preview_reused?'preview':null].filter(Boolean).join(', ')||'none',
+   (c.full_scene_builds??'—')+' / '+(c.contact_searches??'—')];})]);
  const timing=data.timing||{};text('timeScope',timing.outside_service_scope||'Only completed requests have timings.');
  el('times').replaceChildren();table(el('times'),[['Actor total (s)',num(timing.actor_wall_seconds)],['Robot tools, inclusive (s)',num(timing.service_wall_seconds)],['Outside tools: Luna + transport + local analysis (s)',num(timing.outside_service_seconds)]]);
  table(el('times'),Object.entries(timing.service_seconds_by_operation||{}).map(([name,value])=>[name,num(value)+' s']));

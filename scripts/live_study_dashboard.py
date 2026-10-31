@@ -86,12 +86,20 @@ def _run_data(study,run,entry,active):
     outcome=(f'{success}/{len(attempts)} success' if attempts else 'Interrupted' if interruption else 'In progress' if active else 'No terminal result')
     controls=attempts[-1].get('control_steps') if attempts else status.get('control_steps')
     addenda=read(run/'evaluator-diagnostics.json',{}).get('events',{})
-    issues=[];skills=[]
+    issues=[];skills=[];contact_calls=[]
     for event in events:
         op=event['request']['operation'];response=event.get('response',{});value=response.get('result',{})
-        if op in {'push','hook_pull','execute_sequence','execute','gripper'}:skills.append(event)
+        if op in {'push','continue_push','hook_pull','execute_sequence','execute','gripper'}:skills.append(event)
+        if op in {'push','continue_push','hook_pull'}:
+            contact_calls.append({'event':event['sequence'],'operation':op,'mode':value.get('mode'),
+                'stop_reason':value.get('stop_reason') or response.get('error'),
+                'wall_seconds':event.get('wall_seconds'),'timing_seconds':value.get('timing_seconds',{}),
+                'contact_reused':value.get('contact_reused'),'scene_reused':value.get('scene_reused'),
+                'preview_reused':value.get('preview_reused'),'full_scene_builds':value.get('full_scene_builds'),
+                'contact_searches':value.get('contact_searches')})
         reason=response.get('error') if response.get('ok') is False else value.get('stop_reason')
-        if reason and reason!='preview_only':
+        if reason and reason not in {'preview_only','requested_progress_reached','requested_stroke_complete',
+                'requested_reference_motion_complete','native_task_success','bounded_release_stroke_complete'}:
             diagnostic=response.get('planning_diagnostic',value.get('diagnostic'))
             addendum=addenda.get(str(event['sequence']))
             issues.append({'event':event['sequence'],'operation':op,'reason':str(reason)[:1800],
@@ -110,6 +118,12 @@ def _run_data(study,run,entry,active):
            'Measured object motion':progress or '—','Last skill feedback observations':result.get('feedback_count','—'),
            'Reported feedback count across tools':sum(e.get('response',{}).get('result',{}).get('feedback_count',0) for e in events),
            'Stop reason':result.get('stop_reason','—')}
+    if result.get('skill'):
+        skill.update({'Contact reused':result.get('contact_reused',False),'Scene reused':result.get('scene_reused',False),
+            'Preview reused':result.get('preview_reused',False),'Full scene builds':result.get('full_scene_builds'),
+            'Contact searches':result.get('contact_searches'),'Continuation available':result.get('continue_push_available',False),
+            'Commanded contact travel (m)':result.get('commanded_contact_distance_m'),
+            'Measured contact progress (m)':result.get('measured_contact_progress_m')})
     cleared=result.get('current_robot_point_filter')
     if cleared:
         skill.update({'Last current-pose points cleared':cleared.get('last_removed_points',cleared.get('total_removed_points')),
@@ -150,7 +164,7 @@ def _run_data(study,run,entry,active):
     data={'id':run.name,'label':label,'status_text':f'{outcome}; {controls if controls is not None else 0} controls. {reason}',
           'control_steps':controls,'maximum_control_steps':status.get('maximum_control_steps',600),
           'links':links,'frame':frame,'contact_overlay':overlay,'videos':videos,'skill':skill,
-          'timing':timing,'issues':issues[-8:],'reported_issue_count':len(issues),
+          'timing':timing,'contact_calls':contact_calls,'issues':issues[-8:],'reported_issue_count':len(issues),
           'attempts':[{'attempt':a.get('attempt'),'task':a.get('task'),'state_index':a.get('state_index'),
                        'success':a.get('official_task_success'),'controls':a.get('control_steps')} for a in attempts]}
     path=run/'watch-data.json';written=_json(path,data)

@@ -222,6 +222,8 @@ class NativeScene:
         self.lib.mcvamp_destroy.restype=None
         self.lib.mcvamp_clone.restype=ctypes.c_void_p
         self.lib.mcvamp_clone.argtypes=[ctypes.c_void_p,FLOAT,FLOAT,ctypes.c_int]
+        self.lib.mcvamp_create_reusing_static.restype=ctypes.c_void_p
+        self.lib.mcvamp_create_reusing_static.argtypes=[ctypes.c_void_p,FLOAT,ctypes.c_int,FLOAT,ctypes.c_int,FLOAT,FLOAT,ctypes.c_int]
         self.lib.mcvamp_set_gripper_convex.argtypes=[ctypes.c_void_p,FLOAT,INTEGER,FLOAT,ctypes.c_int,ctypes.c_float]
         self.lib.mcvamp_set_arm_convex.argtypes=[ctypes.c_void_p,FLOAT,INTEGER,FLOAT,ctypes.c_int,FLOAT,FLOAT,FLOAT]
         self.lib.mcvamp_set_existing_palm_tolerance.argtypes=[ctypes.c_void_p,ctypes.c_float]
@@ -280,10 +282,26 @@ class NativeScene:
             identity.update(name.encode());identity.update(str((array.shape,array.dtype.str)).encode())
             identity.update(array.tobytes())
         identity.update(str(point_radius).encode())
-        key=identity.hexdigest()
+        static_identity=hashlib.sha256()
+        static_identity.update(str((static.shape,static.dtype.str,point_radius)).encode())
+        static_identity.update(static.tobytes())
+        static_key=static_identity.hexdigest();key=(static_key,identity.hexdigest())
+        pinned=None
+        if key not in _TREE_CACHE:
+            previous=next((value for old,value in reversed(_TREE_CACHE.items()) if old[0]==static_key),None)
+            if previous is not None:
+                # Pin shared ownership across the cache's eviction-before-build.
+                pinned=self.lib.mcvamp_clone(previous[1],_pointer(config),_pointer(grip),len(grip))
+                if not pinned:raise RuntimeError('Could not retain stationary collision index')
         before=time.perf_counter()
-        cached,reused=_TREE_CACHE.acquire(key,self.lib,lambda: self.lib.mcvamp_create(_pointer(static),len(static),_pointer(moving),len(moving),
-                _pointer(contact),len(contact),_pointer(config),_pointer(grip),len(grip),point_radius))
+        try:
+            cached,reused=_TREE_CACHE.acquire(key,self.lib,lambda:
+                self.lib.mcvamp_create_reusing_static(pinned,_pointer(moving),len(moving),_pointer(contact),len(contact),
+                    _pointer(config),_pointer(grip),len(grip)) if pinned else
+                self.lib.mcvamp_create(_pointer(static),len(static),_pointer(moving),len(moving),
+                    _pointer(contact),len(contact),_pointer(config),_pointer(grip),len(grip),point_radius))
+        finally:
+            if pinned:self.lib.mcvamp_destroy(pinned)
         self.handle=self.lib.mcvamp_clone(cached[1],_pointer(config),_pointer(grip),len(grip))
         if not self.handle:raise RuntimeError('Native CAPT construction failed')
         self._release=weakref.finalize(self,self.lib.mcvamp_destroy,self.handle)
@@ -302,6 +320,7 @@ class NativeScene:
         if not self.lib.mcvamp_set_arm_convex(self.handle,_pointer(arm_planes),arm_offsets.ctypes.data_as(INTEGER),_pointer(arm_bounds),len(arm_bounds),_pointer(axes),_pointer(anchors),_pointer(reference)):
             self.close();raise RuntimeError('Configured arm geometry installation failed')
         self.record={'planner':'MC-VAMP CRRTC','upstream_revision':build['upstream_revision'],
+            'stationary_index_reused':bool(reused or pinned),'maximum_cached_scene_templates':2,
             'environment_collision_policy':self.collision_policy,'observed_point_counts':observed_counts,
             'physical_simulator_contacts_enabled':True,'environment_collision_free_certificate':False,
             'native_adapter_sha256':build['source_sha256'],'frame_validation':frames,
