@@ -92,7 +92,7 @@ class ProfiledWorker(CoupledWorker):
             return {'observation_dir':str(output),'metadata_file':str(output/'metadata.json'),
                 'evaluation':{'task_success':bool(self.env.check_success())},'control_steps':self.control_steps,
                 'maximum_control_steps':self.maximum_control_steps,'step_limit_reached':self.control_steps>=self.maximum_control_steps}
-    def joint_trajectory(self,references,gripper=1,stop_on_success=False):
+    def joint_trajectory(self,references,gripper=1,stop_on_success=False,push_feedback=None):
         self._require_env();refs=np.asarray(references,float)
         if refs.ndim!=2 or refs.shape[1]!=7 or not np.isfinite(refs).all():raise ValueError('Finite seven-joint trajectory required')
         if len(refs)>self.maximum_control_steps-self.control_steps:raise ValueError('Complete trajectory exceeds remaining budget')
@@ -100,6 +100,11 @@ class ProfiledWorker(CoupledWorker):
         if gripper not in (-1,0,1):raise ValueError('Invalid gripper command')
         stop_on_success=bool(stop_on_success or getattr(self,'stop_on_success',False))
         terminal=bool(stop_on_success and self.env.check_success())
+        feedback=None;stalled=False
+        if push_feedback is not None:
+            from .push_execution_feedback import PushProgress
+            feedback=PushProgress(push_feedback,self._eef_pose())
+            if feedback.references.shape!=(len(refs),3):raise ValueError('Push reference points must match the joint references')
         before=time.perf_counter();events=[];self.in_batch=True
         try:
             for i,q in enumerate(refs):
@@ -113,11 +118,15 @@ class ProfiledWorker(CoupledWorker):
                     'joint_reference_error_rad':float(np.max(np.abs(measured-q))),
                     'command_issued':True,'execution_veto_checks':0})
                 terminal=bool(stop_on_success and self.action_log[-1]['evaluation_task_success'])
+                if feedback is not None:
+                    stalled=feedback.update(state['metadata']['eef_pose_world_xyzw'],i)
+                    if terminal or stalled:break
         finally:self.in_batch=False;self._write_action_log()
         state=self._response_state()
         return {**state,'trajectory':{'all_commands_issued':len(events)==len(refs),'planned_commands':len(refs),'issued_commands':len(events),
             'terminated_on_simulator_success':terminal,
-            'termination_reason':'simulator_success' if terminal else 'trajectory_complete',
+            'termination_reason':'simulator_success' if terminal else 'measured_push_stall' if stalled else 'trajectory_complete',
+            **({'push_feedback':feedback.result()} if feedback is not None else {}),
             'worker_seconds':time.perf_counter()-before,'execution_veto_checks':0,
             'maximum_joint_reference_error_rad':max((r['joint_reference_error_rad'] for r in events),default=0.),'events':events}}
     def dispatch(self,request):

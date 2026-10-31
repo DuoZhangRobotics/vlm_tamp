@@ -48,6 +48,13 @@ def _live_process(active):
 def issue_explanation(diagnostic):
     """Keep the failed module and cause visible without opening a large JSON log."""
     if not isinstance(diagnostic,dict):return None
+    feedback=diagnostic.get('feedback',{})
+    if feedback.get('stalled') and feedback.get('stall_window'):
+        window=feedback['stall_window']
+        return (f"Physical execution attempted {feedback.get('samples',0)} controls. Over the last "
+            f"{window['simulation_seconds']:.1f}s, references advanced {1000*window['commanded_travel_m']:.1f} mm "
+            f"but the hand advanced {1000*window['measured_directional_progress_m']:.2f} mm in that direction. "
+            'This is measured directional stalling, not a point-cloud collision veto; the current hand can be commanded again.')
     start=diagnostic.get('start_rejection')
     if start:
         text=f"Start-state collision check: {start.get('blocking_robot_part','robot')} / {start.get('blocking_surface','bounds or self collision')}."
@@ -89,8 +96,8 @@ def _run_data(study,run,entry,active):
     issues=[];skills=[];contact_calls=[]
     for event in events:
         op=event['request']['operation'];response=event.get('response',{});value=response.get('result',{})
-        if op in {'push','continue_push','hook_pull','execute_sequence','execute','gripper'}:skills.append(event)
-        if op in {'push','continue_push','hook_pull'}:
+        if op in {'push','continue_push','push_stroke','hook_pull','execute_sequence','execute','gripper'}:skills.append(event)
+        if op in {'push','continue_push','push_stroke','hook_pull'}:
             contact_calls.append({'event':event['sequence'],'operation':op,'mode':value.get('mode'),
                 'stop_reason':value.get('stop_reason') or response.get('error'),
                 'wall_seconds':event.get('wall_seconds'),'timing_seconds':value.get('timing_seconds',{}),
@@ -99,7 +106,7 @@ def _run_data(study,run,entry,active):
                 'contact_searches':value.get('contact_searches')})
         reason=response.get('error') if response.get('ok') is False else value.get('stop_reason')
         if reason and reason not in {'preview_only','requested_progress_reached','requested_stroke_complete',
-                'requested_reference_motion_complete','native_task_success','bounded_release_stroke_complete'}:
+                'stroke_executed','requested_reference_motion_complete','native_task_success','bounded_release_stroke_complete'}:
             diagnostic=response.get('planning_diagnostic',value.get('diagnostic'))
             addendum=addenda.get(str(event['sequence']))
             issues.append({'event':event['sequence'],'operation':op,'reason':str(reason)[:1800],
@@ -120,8 +127,15 @@ def _run_data(study,run,entry,active):
            'Stop reason':result.get('stop_reason','—')}
     if result.get('skill'):
         skill.update({'Contact reused':result.get('contact_reused',False),'Scene reused':result.get('scene_reused',False),
+            'Input mode':result.get('input_mode','targeted contact'),
+            'Feedback cameras':', '.join(result.get('feedback_cameras',[])),
+            'Contact stroke policy':result.get('contact_motion_policy','planned contact'),
+            'Object motion measurement':result.get('object_motion_status','see feedback'),
+            'Object pose current':result.get('continuation',{}).get('object_pose_current'),
             'Preview reused':result.get('preview_reused',False),'Full scene builds':result.get('full_scene_builds'),
             'Contact searches':result.get('contact_searches'),'Continuation available':result.get('continue_push_available',False),
+            'Tracking reference reused':result.get('tracking_reference_reused',False),
+            'Retained reference cameras':result.get('tracking_reference_camera_count'),
             'Commanded contact travel (m)':result.get('commanded_contact_distance_m'),
             'Measured contact progress (m)':result.get('measured_contact_progress_m')})
     cleared=result.get('current_robot_point_filter')
@@ -140,6 +154,13 @@ def _run_data(study,run,entry,active):
             candidate=contact_image(run,image,False)
             if candidate is not None:overlay=_relative(candidate,study);break
         if overlay:break
+    wrist=None
+    for event in reversed(events):
+        value=event.get('response',{}).get('result',{})
+        source=value.get('observation',value).get('images',{})
+        if not isinstance(source,dict) or not source.get('wrist'):continue
+        candidate=contact_image(run,source['wrist'],False)
+        if candidate is not None:wrist=_relative(candidate,study);break
     frame=None
     if active:
         frames=sorted(run.glob('attempt*/initial/frames/step*.jpg'))
@@ -163,7 +184,7 @@ def _run_data(study,run,entry,active):
     reason=interruption.get('reason') or status.get('termination_reason') or status.get('last_completed_operation') or 'Waiting for first observation'
     data={'id':run.name,'label':label,'status_text':f'{outcome}; {controls if controls is not None else 0} controls. {reason}',
           'control_steps':controls,'maximum_control_steps':status.get('maximum_control_steps',600),
-          'links':links,'frame':frame,'contact_overlay':overlay,'videos':videos,'skill':skill,
+          'links':links,'frame':frame,'wrist_view':wrist,'contact_overlay':overlay,'videos':videos,'skill':skill,
           'timing':timing,'contact_calls':contact_calls,'issues':issues[-8:],'reported_issue_count':len(issues),
           'attempts':[{'attempt':a.get('attempt'),'task':a.get('task'),'state_index':a.get('state_index'),
                        'success':a.get('official_task_success'),'controls':a.get('control_steps')} for a in attempts]}

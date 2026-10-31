@@ -123,6 +123,13 @@ def test_timeout_and_wrong_direction_explanations_name_the_failed_stage():
     assert 'all 4' in text and 'requested push direction' in text
 
 
+def test_physical_stall_explanation_distinguishes_motion_from_prediction():
+    text=dashboard.issue_explanation({'feedback':{'stalled':True,'samples':22,'stall_window':{
+        'simulation_seconds':1.,'commanded_travel_m':.03,'measured_directional_progress_m':.0008}}})
+    assert '22 controls' in text and '30.0 mm' in text and '0.80 mm' in text
+    assert 'not a point-cloud collision veto' in text
+
+
 def test_rerun_shows_scored_success_and_small_resource_snapshot(tmp_path,monkeypatch):
     study,run,manifest=fixture(tmp_path,monkeypatch)
     manifest.update(scheduled_stages=['baseline'],baseline_completed=True,

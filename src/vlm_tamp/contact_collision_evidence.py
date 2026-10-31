@@ -15,6 +15,10 @@ CONTACT_ASSOCIATION_M=.0035
 
 def selected_contact_points(scene):
     """The exact association used by native contact-scene admission."""
+    if getattr(scene,'skill_kind',None)=='push':
+        # A push can slide over the selected moving part. The initial image
+        # patch chooses where to approach; it is not a material-point tether.
+        return np.ones(len(scene.moving_reference),dtype=bool)
     return cKDTree(scene.contact_reference).query(scene.moving_reference)[0]<=CONTACT_ASSOCIATION_M
 
 

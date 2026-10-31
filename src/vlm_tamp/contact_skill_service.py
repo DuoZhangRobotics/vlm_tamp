@@ -17,7 +17,7 @@ from .contact_skills import (Budget,SkillStop,ContactTracker,build_contact_scene
     cartesian_path,plan_engagement,plan_contact_stroke,measured_contact_speed,advance_contact_scene,
     skill_native_scene,predicted_scene,unit)
 from .push_contact_state import (observed_contact_cloud,preview_key,active_contact,
-    contact_summary,resumed_engagement,copied_preview,clear_motion_context)
+    contact_summary,resumed_engagement,copied_preview,clear_motion_context,current_hand_reference)
 from .current_robot_scene import clear_current_robot_scene
 from .coupled_storage import write_json,read_json
 from .rekep_libero.geometry import pose_matrix,matrix_pose,transform_points
@@ -37,7 +37,7 @@ def planning_allowances(search_seconds=None,stroke_plan_seconds=None):
 
 
 @contextmanager
-def planning_stage(parent,seconds,stage,result,timing,timing_key):
+def planning_stage(parent,seconds,stage,result,timing,timing_key,*,accept_finished_work=False):
     """Account for failed searches as well as successful plans, under one deadline."""
     child=parent.child(seconds);nested=Counter();started=time.perf_counter()
     row={'stage':stage,'requested_seconds':float(seconds),'effective_seconds':child.seconds,
@@ -46,7 +46,7 @@ def planning_stage(parent,seconds,stage,result,timing,timing_key):
     try:
         child.check()
         yield child,nested
-        child.check()
+        if not accept_finished_work:child.check()
         row['status']='completed'
     except SkillStop as error:
         row.update(status='stopped',stop_reason=error.reason)
@@ -116,9 +116,11 @@ def _overlay(service,camera,region,target_region,point,direction,dest):
 def feedback_camera_names(tracker,requested,available,previous=()):
     """Choose current reference views; never reuse the original ranking blindly."""
     references=tracker.tracker.references
+    counts=getattr(tracker,'last_view_counts',{})
     ranked=sorted((name for name in references if name in available),
-        key=lambda name:-len(references[name]['pixels']))
-    names=list(dict.fromkeys(([requested] if requested in available else [])+ranked))[:4]
+        key=lambda name:-counts.get(name,len(references[name]['pixels'])))
+    names=list(dict.fromkeys(([requested] if requested in available else [])+
+        (['wrist'] if 'wrist' in available else [])+ranked))[:4]
     # Keep ordering stable when the captured set itself has not changed.
     return list(previous) if set(names)==set(previous) else names
 
@@ -130,10 +132,13 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
               stroke_length_m=None,search_seconds=None,stroke_plan_seconds=None,max_ineffective_strokes=2,withdrawal_distance_m=.015,
               continuation=False):
     started=time.perf_counter();timing=Counter();stages=[];executed=False
+    physical_push=kind=='push' and mode=='controlled'
+    hand_distance_request=physical_push and joint_degrees is None
     if service.sim is None:raise ValueError('Reset before using contact skills')
     context=None
     if continuation:
-        context=active_contact(service)
+        try:context=active_contact(service)
+        except ValueError:context=current_hand_reference(service,unit(direction_world))
         if kind!='push' or mode!='controlled' or joint_degrees is not None or preview:
             raise ValueError('Continued pushing uses direction/distance and executes controlled strokes')
         direction_world=unit(direction_world).tolist()
@@ -146,7 +151,7 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
         if stroke_plan_seconds is None:stroke_plan_seconds=context['stroke_plan_seconds']
     if observation_id!=service.latest_observation['observation_id']:
         raise ValueError('Use the latest observation_id; contact requests cannot reuse stale pixels')
-    if service.latest_observation['control_steps']!=service.state['control_steps']:
+    if not continuation and service.latest_observation['control_steps']!=service.state['control_steps']:
         raise ValueError('Capture the current physical state before selecting contact')
     initial_control_step=int(service.state['control_steps'])
     control_steps_limit=control_limit(service.state,getattr(service,'config',None))
@@ -159,7 +164,7 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
     if not np.isfinite(approach_speed_rad_s) or not 0<approach_speed_rad_s<=1:raise ValueError('Approach reference speed must be in (0,1] rad/s')
     if not np.isfinite(distance_m) or distance_m<=0:raise ValueError('Distance must be finite and positive')
     if not np.isfinite(budget_seconds) or not 0<budget_seconds<=1800:raise ValueError('Budget must be (0,1800] seconds')
-    stroke_length_m=float((.03 if mode=='push_and_release' else .01) if stroke_length_m is None else stroke_length_m)
+    stroke_length_m=float((distance_m if hand_distance_request else .03 if mode=='push_and_release' else .01) if stroke_length_m is None else stroke_length_m)
     if not np.isfinite(stroke_length_m) or stroke_length_m<=0:raise ValueError('Stroke length must be finite and positive')
     search_seconds,stroke_plan_seconds=planning_allowances(search_seconds,stroke_plan_seconds)
     if type(max_ineffective_strokes) is not int or max_ineffective_strokes<1:raise ValueError('Use a positive ineffective-stroke count')
@@ -186,12 +191,19 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
     result.update(input_mode='continue_contact' if continuation else 'acquire_contact',
         contact_reused=bool(continuation),scene_reused=bool(continuation),preview_reused=False,
         full_scene_builds=0,contact_searches=0)
+    associated=context.get('object_target_associated',True) if context else True
+    result['object_motion_status']='not_measured_yet' if associated else 'unmeasured'
+    if not associated:result.update(input_mode='current_hand',contact_reused=False,scene_reused=False)
     result['collision_policy']=collision_policy
+    result['contact_motion_policy']='physical_execution_feedback' if physical_push else 'planned_contact'
+    result['stroke_scene_collision_veto']=not physical_push and collision_policy=='veto'
+    result['object_progress_is_execution_gate']=not physical_push
     result['environment_collision_predictions']={'count':0,'examples':[],
         'all_environment_states_checked':False,'collision_free_certificate':False}
     result['simulator_physical_contacts_enabled']=True
     scene=engagement=contact_local=point=None
     can_continue=geometry_current=False
+    scene_control_step=context.get('scene_control_step',initial_control_step) if context else initial_control_step
     initial_direction=None;cumulative=np.eye(4)
     commanded_distance=0.
     cache_key=None
@@ -227,7 +239,7 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
                     skill_kind=kind,observed=observed)
                 result['full_scene_builds']=1
                 timing['perception_seconds']+=time.perf_counter()-phase
-        geometry_current=True
+        geometry_current=bool(context.get('object_pose_current',True)) if context else True
         if kind=='hook_pull' and direction_world is None and joint_degrees is None:
             evidence['direction_world']=list(evidence['normal_toward_camera_world'])
         scene.skill_collision_policy=collision_policy
@@ -235,7 +247,7 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
         scene.skill_approach_hold_steps=0
         scene.skill_contact_collision_log=result['environment_collision_predictions']
         result['cartesian_path_deviation']={'diagnostic_threshold_m':.006,'maximum_m':0.,'samples_over_threshold':0,
-            'execution_veto_applied':collision_policy=='veto'}
+            'execution_veto_applied':collision_policy=='veto' and not physical_push}
         scene.skill_path_deviation_log=result['cartesian_path_deviation']
         result['contact']=evidence;direction=unit(evidence['direction_world'])
         initial_direction=direction.copy()
@@ -318,18 +330,23 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
             raise SkillStop('insufficient_control_budget',approach_steps=len(engagement['references']),
                 remaining=control_steps_limit-service.state['control_steps'],minimum_following_controls=next_controls)
         contact_local=engagement['contact_local'];point=engagement['contact_world'].copy()
-        can_continue=kind=='push' and bool(engagement.get('reuse_existing_contact'))
+        reused_pose=bool(engagement.get('reuse_existing_contact') or engagement.get('reuse_current_hand_pose'))
+        can_continue=kind=='push' and reused_pose
         original_point=point.copy();cumulative=np.eye(4);progress=0.
         ineffective=int(context.get('ineffective_strokes',0)) if context else 0
         unwrapped_angle=0.
         tracked_target=scene.moving_reference.copy()
         phase=time.perf_counter()
-        tracker=ContactTracker(service.cameras,tracked_target,service.state['control_steps'])
+        tracker=context.get('tracker') if context else None
+        result['tracking_reference_reused']=tracker is not None and associated
+        if tracker is None:tracker=ContactTracker(service.cameras,tracked_target,service.state['control_steps'])
+        result['tracking_reference_camera_count']=len(tracker.tracker.references)
         timing['tracker_initialization_seconds']+=time.perf_counter()-phase
         view_names=[]
         def refresh_feedback_views(reference_tracker):
             nonlocal view_names
-            selected_views=feedback_camera_names(reference_tracker,camera,service.cameras,view_names)
+            available=set(service.cameras)|set(reference_tracker.tracker.references)
+            selected_views=feedback_camera_names(reference_tracker,camera,available,view_names)
             if selected_views!=view_names:
                 result.setdefault('feedback_camera_changes',[]).append({
                     'control_steps':int(service.state['control_steps']),'cameras':selected_views})
@@ -339,11 +356,21 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
         def issue(refs,label,**stage_fields):
             nonlocal executed,geometry_current
             budget.check()
-            if len(refs)>control_steps_limit-service.state['control_steps']:raise SkillStop('control_budget_exhausted',required_steps=len(refs))
+            remaining_controls=control_steps_limit-service.state['control_steps']
+            if len(refs)>remaining_controls:
+                if physical_push and label.startswith('push-stroke') and remaining_controls>0:
+                    stage_fields['control_budget_truncated']=True;refs=refs[:remaining_controls]
+                else:raise SkillStop('control_budget_exhausted',required_steps=len(refs))
             service.calls+=1;before=len(service.events);q=service.state['metadata']['joint_positions']
             phase=time.perf_counter()
             clear_motion_context(service)
-            reply=service.issue(refs,0,label,camera_names=view_names,track_scene=False)
+            feedback=None
+            if physical_push and label.startswith('push-stroke'):
+                from .push_execution_feedback import contact_point
+                feedback={'contact_local_m':contact_local.tolist(),
+                    'reference_points_world_m':[contact_point(chain.forward(q),contact_local).tolist() for q in refs]}
+            reply=service.issue(refs,0,label,camera_names=view_names,track_scene=False,
+                **({'push_feedback':feedback} if feedback is not None else {}))
             if reply['execution']['issued_commands']:geometry_current=False
             executed=True;timing['execution_and_capture_seconds']+=time.perf_counter()-phase
             events=service.events[before:]
@@ -351,12 +378,18 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
             stage={'stage':label,'artifact_id':service.calls,'control_steps':service.state['control_steps'],
                 'execution':reply['execution'],'measured_contact_speed':measured_contact_speed(events,service.ik.chain if service.ik else chain,contact_local,q)}
             stage.update(stage_fields)
+            if reply['execution'].get('push_feedback'):stage['physical_motion']=reply['execution']['push_feedback']
             issued=int(reply['execution']['issued_commands'])
             desired=pose_matrix(chain.forward(refs[issued-1] if issued else q))
             actual=pose_matrix(chain.forward(service.state['metadata']['joint_positions']))
             stage['robot_reference_tracking']={'position_error_m':float(np.linalg.norm(actual[:3,3]-desired[:3,3])),
                 'orientation_error_deg':float(np.degrees(Rotation.from_matrix(desired[:3,:3].T@actual[:3,:3]).magnitude())),
                 'reference':'last issued robot command; not an object-motion or grasp certificate'}
+            if feedback is not None:
+                actual_point=actual[:3,3]+actual[:3,:3]@contact_local
+                commanded_point=desired[:3,3]+desired[:3,:3]@contact_local
+                result['commanded_contact_distance_m']=float((commanded_point-initial_hand)@initial_direction)
+                result['measured_contact_progress_m']=float((actual_point-initial_hand)@initial_direction)
             timing['speed_measurement_seconds']+=time.perf_counter()-phase
             stages.append(stage);result['observation']=reply['observation']
             result['episode_done']=bool(reply.get('episode_done'))
@@ -373,7 +406,7 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
             phase=time.perf_counter();fit=tracker.observe(service.cameras,service.state['control_steps'])
             timing['motion_tracking_seconds']+=time.perf_counter()-phase
             step=int(service.state['control_steps'])
-            if not fit['accepted'] and len(service.cameras)<=4 and step not in recovered_steps and budget.remaining>0:
+            if not fit['accepted'] and not physical_push and len(service.cameras)<=4 and step not in recovered_steps and budget.remaining>0:
                 recovered_steps.add(step);budget.check();service.calls+=1
                 phase=time.perf_counter()
                 try:result['observation']=service.capture()
@@ -394,22 +427,24 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
 
         chain=service.ik.chain  # retained FK after native success closes the IK process
         measured=None
-        if not engagement.get('reuse_existing_contact'):
+        if not reused_pose:
             issue(engagement['free_references'],'free-approach')
             measured=observe_motion(tracker)
             stages[-1]['object_motion']=measured
-            if not measured['accepted']:raise SkillStop('object_motion_unresolved',measurement=measured)
-            approach_transform=np.asarray(measured['transform'])
+            if not measured['accepted']:
+                if not physical_push:raise SkillStop('object_motion_unresolved',measurement=measured)
+                result.setdefault('motion_warnings',[]).append({'reason':'object_motion_unresolved','measurement':measured})
+            approach_transform=np.asarray(measured['transform']) if measured['accepted'] else np.eye(4)
             approach_object_displacement=np.linalg.norm(transform_points([point],approach_transform)[0]-point)
             stages[-1]['uncommanded_object_motion_m']=float(approach_object_displacement)
             if approach_object_displacement>.08:
-                if collision_policy=='veto':
+                if collision_policy=='veto' and not physical_push:
                     raise SkillStop('target_moved_beyond_local_recovery',observed_displacement_m=float(approach_object_displacement),maximum_m=.08)
                 result.setdefault('motion_warnings',[]).append({'reason':'large_measured_motion_during_approach',
                     'observed_displacement_m':float(approach_object_displacement),'pose_update_source':'accepted independent RGB-D fit'})
 
         def update_motion(fit):
-            nonlocal scene,point,cumulative,tracked_target,direction,progress,unwrapped_angle,geometry_current
+            nonlocal scene,point,cumulative,tracked_target,direction,progress,unwrapped_angle,geometry_current,scene_control_step
             transform=np.asarray(fit['transform']);r=transform[:3,:3];t=transform[:3,3]
             joint_mismatch=None
             if joint_degrees is not None:
@@ -424,6 +459,7 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
             timing['moving_geometry_update_seconds']+=time.perf_counter()-phase
             stages[-1]['scene_update']=update
             geometry_current=True
+            scene_control_step=int(service.state['control_steps'])
             tracked_target=scene.moving_reference
             if joint_degrees is None:
                 progress=float((point-original_point)@direction)
@@ -441,54 +477,50 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
                     measured_part_pose_retained=True,direction_only_continuation_supported=bool(can_continue))
             return float((point-old)@direction)
 
-        if measured is not None:update_motion(measured)
+        if measured is not None and measured['accepted']:update_motion(measured)
         # Replan the short insertion from the actual servo endpoint. A nominal
         # reference endpoint does not establish physical arrival at standoff.
-        if not engagement.get('reuse_existing_contact'):
-            phase=time.perf_counter();tracker=ContactTracker(service.cameras,tracked_target,service.state['control_steps'])
+        if not reused_pose:
             refresh_feedback_views(tracker)
-            timing['tracker_initialization_seconds']+=time.perf_counter()-phase
             meta=service.state['metadata'];start=np.asarray(meta['joint_positions'])
             insertion_goal=np.eye(4);insertion_goal[:3,:3]=engagement['rotation']
             insertion_goal[:3,3]=point-engagement['rotation']@contact_local
-            planning_scene=collision_scene()
-            with planning_stage(budget,stroke_plan_seconds,'contact_insertion',result,timing,'stroke_planning_seconds') as (planning,nested):
-                insertion=cartesian_path(service.ik,planning_scene,service.record,meta,start,matrix_pose(insertion_goal),planning,timing=nested)
+            planning_scene=copy.copy(scene) if physical_push else collision_scene()
+            if physical_push:planning_scene.skill_collision_policy='advisory'
+            with planning_stage(budget,stroke_plan_seconds,'contact_insertion',result,timing,'stroke_planning_seconds',accept_finished_work=physical_push) as (planning,nested):
+                insertion=cartesian_path(service.ik,planning_scene,service.record,meta,start,matrix_pose(insertion_goal),planning,timing=nested,allow_partial=physical_push)
             stage=issue(schedule_contact(insertion,chain,contact_local,contact_speed_m_s=.03,endpoint_hold_steps=3),'contact-insertion',
                 requested_contact_speed_m_s=.03,planning_timing_seconds=dict(nested))
             measured=observe_motion(tracker);stage['object_motion']=measured
-            if not measured['accepted']:raise SkillStop('object_motion_unresolved',measurement=measured)
             can_continue=kind=='push'
-            update_motion(measured)
+            if measured['accepted']:update_motion(measured)
+            elif not physical_push:raise SkillStop('object_motion_unresolved',measurement=measured)
+            else:result.setdefault('motion_warnings',[]).append({'reason':'object_motion_unresolved','measurement':measured})
         # Measure the requested push from contact arrival, not from the initial
         # free approach. A continuation normally executes one complete stroke.
         initial_direction=direction.copy();cumulative=np.eye(4)
         initial_hand=pose_matrix(chain.forward(service.state['metadata']['joint_positions']))
         initial_hand=initial_hand[:3,3]+initial_hand[:3,:3]@contact_local
         target=distance_m if joint_degrees is None else abs(np.radians(joint_degrees))
+        result['object_progress_reference_control_step']=scene_control_step
         scene.skill_collision_policy=collision_policy
         scene.skill_contact_collision_log=result['environment_collision_predictions']
         release_contact_ready=collision_policy=='advisory'
         stroke=-1
         while True:
             stroke+=1
-            if continuation and commanded_distance>=distance_m-1e-10:
-                tolerance=float(getattr(service,'config',{}).get('ik_position_tolerance_m',.003))
+            if hand_distance_request and commanded_distance>=distance_m-1e-10:
                 error=float(result.get('measured_contact_progress_m',0.)-distance_m)
-                complete=abs(error)<=tolerance
-                reason='requested_stroke_complete' if complete else 'stroke_tracking_incomplete'
-                result.update(status=reason,stop_reason=reason,contact_progress_error_m=error,
-                    stroke_distance_tolerance_m=tolerance)
+                result.update(status='executed',stop_reason='stroke_executed',contact_progress_error_m=error,
+                    hand_travel_shortfall_m=max(0.,-error),object_progress_is_execution_gate=False)
                 break
-            if not continuation and mode=='controlled' and progress>=target-(.001 if joint_degrees is None else np.radians(.5)):
+            if not hand_distance_request and mode=='controlled' and progress>=target-(.001 if joint_degrees is None else np.radians(.5)):
                 result.update(status='requested_progress_reached',stop_reason='requested_progress_reached');break
             budget.check()
             # The measured robot is the starting fact, not another observation
             # gate. Correct the collision cloud once, then plan against it.
-            planning_scene=collision_scene()
-            phase=time.perf_counter();tracker=ContactTracker(service.cameras,tracked_target,service.state['control_steps'])
+            planning_scene=scene if physical_push else collision_scene()
             refresh_feedback_views(tracker)
-            timing['tracker_initialization_seconds']+=time.perf_counter()-phase
             meta=service.state['metadata'];start=np.asarray(meta['joint_positions']);tcp=pose_matrix(chain.forward(start))
             hand_point=tcp[:3,3]+tcp[:3,:3]@contact_local
             # A push can slide across the part. Separation from the original
@@ -501,7 +533,7 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
             measured_before=float((hand_point-initial_hand)@initial_direction)
             length=(.01 if acquiring_release_contact else
                 min(stroke_length_m,distance_m) if mode=='push_and_release' else
-                min(stroke_length_m,distance_m-measured_before if continuation else
+                min(stroke_length_m,distance_m-measured_before if hand_distance_request else
                     distance_m-progress if joint_degrees is None else stroke_length_m))
             length=min(length,(control_steps_limit-service.state['control_steps'])*stroke_speed/20.)
             if length<=0:raise SkillStop('control_budget_exhausted')
@@ -514,9 +546,9 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
                 delta=scene.origin+rotation@(point-scene.origin)-point
             goal=tcp.copy();goal[:3,3]+=delta
             scene.skill_contact_collision_log['stage']='contact_test' if acquiring_release_contact else 'contact_stroke'
-            with planning_stage(budget,stroke_plan_seconds,'contact_stroke',result,timing,'stroke_planning_seconds') as (planning,nested):
-                path,search=plan_contact_stroke(service.ik,planning_scene,service.record,meta,contact_local,delta,planning,angle=angle,timing=nested)
-            if collision_policy=='advisory' and budget.remaining>2.:
+            with planning_stage(budget,stroke_plan_seconds,'contact_stroke',result,timing,'stroke_planning_seconds',accept_finished_work=physical_push) as (planning,nested):
+                path,search=plan_contact_stroke(service.ik,planning_scene,service.record,meta,contact_local,delta,planning,angle=angle,timing=nested,physical_feedback=physical_push)
+            if collision_policy=='advisory' and not physical_push and budget.remaining>2.:
                 phase=time.perf_counter();log=scene.skill_contact_collision_log
                 try:
                     predicted=predicted_scene(planning_scene,delta,angle)
@@ -537,11 +569,11 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
                 requested_contact_speed_m_s=stroke_speed,posture_search=search,
                 planning_timing_seconds=dict(nested),requested_motion_m=float(np.linalg.norm(delta)),
                 material_point_offset_m=separation)
-            if continuation:commanded_distance=measured_before+float(delta@initial_direction)
+            if hand_distance_request:commanded_distance=measured_before+float(delta@initial_direction)
             else:commanded_distance+=float(np.linalg.norm(delta))
             hand=pose_matrix(chain.forward(service.state['metadata']['joint_positions']))
             hand=hand[:3,3]+hand[:3,:3]@contact_local
-            result['commanded_contact_distance_m']=commanded_distance
+            if not physical_push:result['commanded_contact_distance_m']=commanded_distance
             result['measured_contact_progress_m']=float((hand-initial_hand)@initial_direction)
             fit=observe_motion(tracker);stage['object_motion']=fit
             finish_release=mode=='push_and_release' and collision_policy=='advisory' and not acquiring_release_contact
@@ -552,14 +584,24 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
                 except SkillStop as error:
                     if not finish_release:raise
                     result.setdefault('motion_warnings',[]).append({'reason':error.reason,**error.evidence})
-            elif not finish_release:raise SkillStop('object_motion_unresolved',measurement=fit)
-            else:result.setdefault('motion_warnings',[]).append({'reason':'object_motion_unresolved','measurement':fit})
+            elif not finish_release and not physical_push:raise SkillStop('object_motion_unresolved',measurement=fit)
+            elif associated:result.setdefault('motion_warnings',[]).append({'reason':'object_motion_unresolved','measurement':fit})
+            if physical_push:can_continue=True
             stage['observed_contact_progress_m']=moved
             stage['engagement']={'status':'object_motion_unresolved' if moved is None else
                 'object_followed_contact' if moved>.001 else 'no_supported_object_progress',
                 'pinch_assumed':False,'force_or_tactile_measurement':False}
             result['observed_progress']=progress if motion_applied else None
             result['progress_units']='radians' if joint_degrees is not None else 'metres'
+            result['object_motion_status']='measured' if motion_applied else 'unresolved' if associated else 'unmeasured'
+            if stage['execution'].get('termination_reason')=='measured_push_stall':
+                raise SkillStop('physical_stall',feedback=stage['execution'].get('push_feedback'),
+                    execution_attempted=True,scene_prediction_veto=False)
+            if physical_push and search.get('reachable_prefix'):
+                result.update(status='reachable_prefix_executed',stop_reason='reachable_prefix_executed',
+                    planning_limit=search['reachable_prefix']);break
+            if physical_push and joint_degrees is not None and not motion_applied:
+                result.update(status='motion_feedback_unresolved',stop_reason='motion_feedback_unresolved');break
             if kind=='hook_pull' and stroke==0 and moved<=.001:raise SkillStop('hook_engagement_not_established',measured_progress_m=moved)
             if acquiring_release_contact:
                 if moved<=.001:raise SkillStop('push_contact_not_established',measured_progress_m=moved,
@@ -567,7 +609,7 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
                 release_contact_ready=True
                 continue
             ineffective=ineffective+1 if moved is not None and moved<=.001 else 0
-            if ineffective>=max_ineffective_strokes:raise SkillStop('no_progress_after_stroke_budget',measured_progress_m=moved,consecutive_ineffective_strokes=ineffective)
+            if ineffective>=max_ineffective_strokes and not hand_distance_request:raise SkillStop('no_progress_after_stroke_budget',measured_progress_m=moved,consecutive_ineffective_strokes=ineffective)
             if mode=='push_and_release':
                 scene.skill_contact_collision_log['stage']='withdrawal'
                 phase=time.perf_counter()
@@ -610,6 +652,13 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
     except SkillStop as error:
         result.update(stop_reason=error.reason,diagnostic=error.evidence)
         if error.reason!='native_task_success':result['status']='returned_without_task_success'
+        if error.reason=='physical_stall':
+            result['recovery_options']=['inspect wrist/global views and measured motion',
+                'change direction, distance or speed with push_stroke or continue_push',
+                'reposition the hand if the current contact is unsuitable']
+        elif error.reason.startswith('contact_search'):
+            result['recovery_options']=['push_stroke can attempt motion directly from the current hand pose without contact acquisition',
+                'choose another approach/region when repositioning to a target is needed']
         if error.reason in {'object_motion_unresolved','motion_inconsistent_with_fixed_joint','no_progress_after_stroke_budget','hook_engagement_not_established'}:
             if error.reason in {'object_motion_unresolved','hook_engagement_not_established'}:can_continue=False
             result['recovery_options']=['select an opaque currently observed region','use a current surface push without a hinge assumption','apply an independently measured part/joint update']
@@ -638,9 +687,11 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
             if history is not None:
                 result['retained_scene_reference_control_step']=history['reference_control_step']
                 result['next_geometry_interfaces'].insert(0,'apply_part_motion with matching reference and current observed tracks')
-        if (kind=='push' and mode=='controlled' and not preview and can_continue and geometry_current
+        if (kind=='push' and mode=='controlled' and not preview and can_continue
                 and service.sim is not None and not result.get('episode_done') and not result.get('task_success')):
             evidence=copy.deepcopy(result['contact'])
+            if not associated:
+                point=np.asarray(service.state['metadata']['eef_pose_world_xyzw'][:3],float)
             evidence['point_world_m']=point.tolist()
             suggested=unit(cumulative[:3,:3]@initial_direction)
             evidence['direction_world']=suggested.tolist()
@@ -649,7 +700,9 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
                 'contact_name':engagement['contact_name'],'contact_surface':contact_surface,'camera':camera,
                 'direction_world':suggested,'control_step':int(service.state['control_steps']),
                 'contact_speed_m_s':contact_speed_m_s,'stroke_length_m':stroke_length_m,
-                'stroke_plan_seconds':stroke_plan_seconds,'ineffective_strokes':ineffective}
+                'stroke_plan_seconds':stroke_plan_seconds,'ineffective_strokes':ineffective,'tracker':tracker,
+                'object_pose_current':geometry_current,'scene_control_step':scene_control_step}
+            service.active_push_contact['object_target_associated']=associated
         retained=getattr(service,'active_push_contact',None)
         result['continuation']=contact_summary(retained)
         result['continue_push_available']=bool(retained)
@@ -657,7 +710,7 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
             result['grasp_scene_refresh_required']=result['scene_refresh_required']
             result['scene_refresh_required']=False
             result['next_operation']='continue_push'
-            result['scene_refresh_scope']='Continued pushing reuses the tracked contact scene; grasp/joint-model planning requires its own current grounding.'
+            result['scene_refresh_scope']='Direction-only pushing reuses the robot contact reference. Object pose freshness is reported separately; grasp/joint-model planning requires current grounding.'
         result['robot_motion_executed']=executed
         result['remaining_skill_seconds']=budget.remaining
         if joint_degrees is not None and result.get('observed_progress') is not None:

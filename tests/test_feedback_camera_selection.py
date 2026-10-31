@@ -27,3 +27,15 @@ def test_camera_selection_cannot_use_uncaptured_reference_views():
 def test_existing_view_order_is_preserved_when_membership_is_unchanged():
     previous=['requested','a','b','c'];value=tracker({'a':10,'b':20,'c':30,'requested':100})
     assert feedback_camera_names(value,'requested',set(previous),previous)==previous
+
+
+def test_pair_counts_can_select_retained_views_not_in_the_last_small_capture():
+    value=tracker({'requested':50,'occluded':100,'clear_a':30,'clear_b':20,'clear_c':10})
+    value.last_view_counts={'requested':2,'occluded':0,'clear_a':20,'clear_b':18,'clear_c':15}
+    assert feedback_camera_names(value,'requested',set(value.tracker.references))==[
+        'requested','clear_a','clear_b','clear_c']
+
+
+def test_wrist_view_is_captured_even_when_it_has_no_tracking_features():
+    value=tracker({'a':30,'b':20,'c':10})
+    assert feedback_camera_names(value,'requested',{'requested','wrist','a','b','c'})==['requested','wrist','a','b']

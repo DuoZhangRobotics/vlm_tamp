@@ -28,7 +28,7 @@ def profile_run(run,events,actor_wall):
     for event in events:
         operations[event['request']['operation']]+=event.get('wall_seconds',0.)
         result=event.get('response',{}).get('result',{})
-        if event['request']['operation'] in {'push','continue_push','hook_pull'}:contact.update(result.get('timing_seconds',{}))
+        if event['request']['operation'] in {'push','continue_push','push_stroke','hook_pull'}:contact.update(result.get('timing_seconds',{}))
         for stage in result.get('stages',[]):
             if 'planning_seconds' in stage:arcs['post_closure_arc_planning_seconds']+=stage['planning_seconds']
     for file in run.glob('attempt*/*-issue-timing.json*'):
@@ -190,7 +190,7 @@ img,video{max-width:100%;max-height:480px}a{color:#1264a2}.note{background:#e8f1
         elif not protocol.get('learning_practice'):trial_rows.append((run.name,protocol.get('case',{}).get('task','starting'),protocol.get('maximum_control_steps_per_attempt'),
             'interrupted' if interruption else 'running',status_row.get('control_steps'),None,wall,service_seconds))
         card=f'<article id="{esc(run.name)}"><h2>{esc(run.name)}</h2><p>Tools selected: {esc(dict(calls))}.</p>'
-        skills=[e for e in events if e['request']['operation'] in {'push','continue_push','hook_pull'}]
+        skills=[e for e in events if e['request']['operation'] in {'push','continue_push','push_stroke','hook_pull'}]
         card+=f'<p>Contact skill selections: {len(skills)}; previews: {sum(bool(e["request"].get("arguments",{}).get("preview")) for e in skills)}; calls with physical motion: {sum(bool(e.get("response",{}).get("result",{}).get("robot_motion_executed")) for e in skills)}. Availability, selection, execution and native task success are separate measurements.</p>'
         if interruption:card+='<p>Infrastructure/implementation interruption: '+esc(interruption.get('reason'))+'. Excluded from task-success counts.</p>'
         card+='<p>'+link(run/'tool-events.jsonl',study,'Tool requests and responses')+' · '+link(run/'agent-events.jsonl',study,'Luna input/output')+' · '+link(run/'agent-prompt.txt',study,'Initial prompt')+'</p>'
@@ -213,7 +213,7 @@ img,video{max-width:100%;max-height:480px}a{color:#1264a2}.note{background:#e8f1
             for e in failed:card+='<tr><td>'+esc(f"{e['sequence']} / {e['request']['operation']}")+'</td><td>'+esc(e['response'].get('error','See full log'))+'</td></tr>'
             card+='</table></details>'
         for event in events:
-            if event['request']['operation'] in {'push','continue_push','hook_pull'}:
+            if event['request']['operation'] in {'push','continue_push','push_stroke','hook_pull'}:
                 result=event.get('response',{}).get('result',{})
                 card+='<details><summary>'+esc(f"{event['request']['operation']} event {event['sequence']}: {result.get('stop_reason','see log')}")+'</summary>'
                 card+=skill_card(f'Event {event["sequence"]}',result,run/'tool-events.jsonl',study,{})+'</details>'

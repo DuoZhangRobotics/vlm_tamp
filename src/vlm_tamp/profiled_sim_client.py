@@ -33,18 +33,20 @@ class ProfiledClient(CoupledClient):
         self.rpc_events.append(row)
         if self.timeline:self.timeline.marks.append({'name':'rpc_complete','at_s':self.timeline.now(),**row})
         return result
-    def joint_trajectory(self,references,gripper=1,stop_on_success=False):
-        return self.request('joint_trajectory',references=np.asarray(references,float).tolist(),gripper=int(gripper),stop_on_success=bool(stop_on_success))
+    def joint_trajectory(self,references,gripper=1,stop_on_success=False,push_feedback=None):
+        return self.request('joint_trajectory',references=np.asarray(references,float).tolist(),gripper=int(gripper),stop_on_success=bool(stop_on_success),
+            **({'push_feedback':push_feedback} if push_feedback is not None else {}))
     def observe(self,output_dir,camera_names=None):
         return self.request('observe',output_dir=str(output_dir),**({'camera_names':camera_names} if camera_names is not None else {}))
 
 
-def execute_batch(sim,state,references,*,gripper=1,maximum_control_steps=None,event_sink=None,stop_on_success=False):
+def execute_batch(sim,state,references,*,gripper=1,maximum_control_steps=None,event_sink=None,stop_on_success=False,push_feedback=None):
     refs=np.asarray(references,float)
     if refs.ndim!=2 or refs.shape[1]!=7 or not np.isfinite(refs).all():raise ValueError('Finite seven-joint references required')
     limit=control_limit(state) if maximum_control_steps is None else min(control_limit(state),maximum_control_steps)
     if len(refs)>limit-int(state['control_steps']):raise ValueError('Complete trajectory exceeds remaining budget')
-    before=time.perf_counter();state=sim.joint_trajectory(refs,gripper=gripper,**({'stop_on_success':True} if stop_on_success else {}));done=state.pop('trajectory')
+    before=time.perf_counter();state=sim.joint_trajectory(refs,gripper=gripper,**({'stop_on_success':True} if stop_on_success else {}),
+        **({'push_feedback':push_feedback} if push_feedback is not None else {}));done=state.pop('trajectory')
     done['wall_seconds']=time.perf_counter()-before
     if event_sink:
         for event in done['events']:event_sink(event)

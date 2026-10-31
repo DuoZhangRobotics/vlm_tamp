@@ -4,6 +4,17 @@ You choose the target, desired motion, contact mode and experiments. Numerical
 tools compute robot poses, IK, collisions and timing. No TCP quaternion or joint
 configuration is required for push, continue_push or hook_pull.
 
+- push_stroke(direction_world, distance_m, contact_speed_m_s=null,
+  stroke_length_m=null, budget_seconds=120, stroke_plan_seconds=null):
+  Move the current hand directly, holding its current aperture. This requires
+  only a reset robot, a world direction and a distance. No contact acquisition,
+  region annotation, hinge estimate or previous push is required. It attempts
+  the stroke through simulator physics and reports actual motion/stalls.
+  Prior target tracking is reused when available; otherwise object motion is
+  unmeasured, and contact is not assumed. The tool does not reposition the hand
+  to a selected target for you. You choose when the current pose is suitable.
+  A targeted push preview is not a prerequisite or permission check for this tool.
+
 - continue_push(direction_world, distance_m, contact_speed_m_s=null,
   stroke_length_m=null, budget_seconds=120, stroke_plan_seconds=null):
   Use after a controlled push returns continue_push_available=true. It reuses
@@ -16,11 +27,12 @@ configuration is required for push, continue_push or hook_pull.
   stroke_length_m can explicitly split a larger request. The returned suggested direction
   follows the observed part rotation and can be used for a subsequent stroke.
   Robot/gripper movement through another operation clears the retained contact;
-  observations alone do not. Acquire a fresh contact only when the tool reports
-  continuation unavailable or you intend to push a different target.
-  Two ineffective strokes return control to you, but retain a successfully
-  tracked contact scene. You can explicitly change direction, distance or speed
-  with continue_push; low object progress is not by itself proof of lost contact.
+  observations alone do not. Without a retained contact, continue_push behaves
+  like push_stroke from the current hand pose. Acquire a fresh targeted contact
+  when you need the tool to approach a particular selected region.
+  Weak or unresolved object motion is feedback, not a veto of a direction-only
+  push. The robot contact reference remains available. You can explicitly change
+  direction, distance or speed without repeating contact acquisition.
 
 An unchanged push preview is reused by execution; its geometry and approach are
 not recomputed. During a push, static geometry is retained and the selected rigid
@@ -42,14 +54,30 @@ you must repeat for each small continuation.
   sign is not synonymous with open or close. Check that it serves the task.
   A positive increment follows the installed joint_axis_world. Grounding tries
   to orient that axis toward its modeled task motion; this remains a hypothesis.
-  Controlled pushing defaults to 1 cm strokes at 0.03 m/s. You may request
-  another positive stroke_length_m or contact_speed_m_s; timing always respects
+  Controlled world-direction pushing defaults to the complete requested hand
+  distance in one stroke at 0.03 m/s. A 0.10 m request is allowed. Joint-linked
+  goals use incremental strokes while joint progress remains measurable.
+  You may request another positive stroke_length_m or contact_speed_m_s; timing always respects
   the controller's 1 rad/s joint-reference limit. Feedback occurs between strokes. Choose contact_surface="palm" explicitly
   to plan palm contact with the chosen target patch. preview=true plans without motion.
-  Scene collisions block plans through approach, contact and withdrawal.
-  Only distal finger-pad contact with the selected target patch is allowed by
-  default. The arm, palm, proximal fingers and unrelated surfaces are checked.
-  Explicit contact_surface="palm" permits only that selected palm/target pair.
+  Free approach planning uses the requested scene collision policy. Controlled
+  push insertion and strokes execute through simulator physics: predicted scene
+  collisions and uncertain visual object tracking do not veto the stroke.
+  Reachable kinematic prefixes may execute if the complete request cannot be
+  planned. Actual mechanical joint bounds and the 1 rad/s reference limit remain.
+  During longer strokes, one second of less than 1 mm measured hand progress in
+  the commanded direction while
+  references advance at least 1 cm returns physical_stall. This happens after
+  physical execution, not from a scene prediction. Requested versus commanded
+  versus measured travel and object-motion uncertainty are returned separately.
+  The retained robot contact reference remains usable after a stall or missing
+  object measurement. An unknown object pose is not used as a current grasp model.
+  Hook-pull and push-and-release retain their existing planned-contact behavior.
+  Distal finger-pad contact may slide over the selected moving part. The initial
+  contact region selects an approach site; target_region_xyxy identifies the
+  moving part that may be touched. The arm, palm, proximal fingers and unrelated
+  surfaces are checked. Explicit contact_surface="palm" also permits palm contact
+  with that selected part. Hook-pull keeps its retaining-feature contact scope.
   The planner's own checks use zero added padding. There is no extra dense
   validation pass and no automatic robot-only/advisory route fallback.
   Before planning, points inside the measured current robot geometry are removed
@@ -115,10 +143,12 @@ a handle model: use a current registered mask (current_part_id), or valid tracks
 carrying the original part to the current capture. motion_sign sets the sign of
 the fitted unsigned axis; it does not certify the task's opening/closing direction.
 
-After unresolved tracking, the skill may refresh all current views and retry
-the same independent correspondence fit. If the fit remains unresolved, the
-result includes current observations and recovery options; it does not invent
-object motion from hand motion. Withdrawal replies report actual robot travel,
+Contact tracking retains its original multi-view references across strokes;
+camera selection includes wrist RGB-D and follows measured track availability.
+Controlled pushes do not force a full-scene recapture or stop for a failed object
+fit. The result reports object_motion_status="unresolved"; it does not invent
+object motion from hand motion. Request more observations when useful.
+Withdrawal replies report actual robot travel,
 not a physical detachment certificate. Inspect current geometry if contact may remain.
 
 Grasp sequences can calibrate a rough hinge through small physical increments:

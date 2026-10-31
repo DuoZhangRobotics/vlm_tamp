@@ -108,7 +108,7 @@ def run(source,output,repetitions=3):
                     'distance_m':.03,'budget_seconds':60.})
             continued=[r for r in row['steps'] if r['operation']=='continue_push']
             row['continuation_passed']=len(continued)==2 and all(r['full_scene_builds']==r['contact_searches']==0
-                and r['stop_reason'] in {'requested_stroke_complete','native_task_success'}
+                and r['stop_reason'] in {'requested_stroke_complete','stroke_executed','native_task_success'}
                 and abs((r['measured_contact_progress_m'] or 0)-.03)<=.003 for r in continued)
         except Exception as error:row.update(error=f'{type(error).__name__}: {error}',continuation_passed=False)
         finally:

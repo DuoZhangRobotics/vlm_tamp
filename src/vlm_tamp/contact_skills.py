@@ -207,11 +207,13 @@ def build_contact_scene(cameras,metadata,chain,camera,region,target_region,conta
         robot=RobotVolumes(chain,metadata['robot_collision_volumes_world'],metadata['joint_positions']),
         reference_volumes=metadata['robot_collision_volumes_world'])
     scene.skill_contact_surface=contact_surface
+    scene.skill_kind=skill_kind
     scene.contact_policy_kind='contact_skill'
     scene.skill_observed_cameras=cameras
     scene.skill_joint_sign=float(np.sign(joint_degrees)) if associated else None
     return scene,{**patch,'direction_world':d.tolist(),'joint_associated':associated,
         'contact_surface':contact_surface,'target_observed_points':len(target),'feature_source':feature_source,
+        'contact_permission_scope':'selected moving part; sliding allowed' if skill_kind=='push' else 'selected retaining feature',
         'permitted_contact':'distal fingertips/pads'+(' and selected palm' if contact_surface=='palm' else ''),
         'target_association':('projected selected region across observed views, within the existing 15 mm local-plane band and 45 cm extent'
             if skill_kind=='push' and not associated else 'selected region, within 15 mm of the observed local contact plane and 45 cm of its centre'),
@@ -368,7 +370,7 @@ def fresh_collision_snapshot(scene,cameras,metadata):
         'simulator_object_state_used':False,'robot_filter':filtering}
 
 
-def cartesian_path(ik,scene,record,metadata,start,target_pose,budget,*,displacement=None,angle=0.,timing=None,contact_local=None):
+def cartesian_path(ik,scene,record,metadata,start,target_pose,budget,*,displacement=None,angle=0.,timing=None,contact_local=None,allow_partial=False):
     """Short Cartesian continuation with collision checks at dense joint samples.
 
     Never substitute an unconstrained RRT detour for a contact stroke.
@@ -378,7 +380,12 @@ def cartesian_path(ik,scene,record,metadata,start,target_pose,budget,*,displacem
     rotation=Rotation.from_matrix(target[:3,:3]@begin[:3,:3].T).as_rotvec()
     count=max(1,int(np.ceil(distance/.003)),int(np.ceil(np.linalg.norm(rotation)/.04)))
     path=[np.asarray(start)]
+    def prefix(reason):
+        scene.skill_partial_plan={'reason':reason,'completed_waypoints':len(path)-1,'requested_waypoints':count,
+            'global_infeasibility_proved':False}
+        return np.asarray(path)
     for fraction in np.linspace(0,1,count+1)[1:]:
+        if allow_partial and len(path)>1 and budget.remaining<=0:return prefix('planning_time_limit')
         budget.check();pose=begin.copy();pose[:3,3]+=fraction*(target[:3,3]-begin[:3,3])
         pose[:3,:3]=Rotation.from_rotvec(fraction*rotation).as_matrix()@begin[:3,:3]
         if contact_local is not None:
@@ -387,9 +394,16 @@ def cartesian_path(ik,scene,record,metadata,start,target_pose,budget,*,displacem
             last=target[:3,3]+target[:3,:3]@contact_local
             pose[:3,3]=first+fraction*(last-first)-pose[:3,:3]@contact_local
         began=time.perf_counter();solutions=ik.solve_many(matrix_pose(pose),path[-1],maximum=8)
-        timing['ik_seconds']+=time.perf_counter()-began;budget.check()
+        timing['ik_seconds']+=time.perf_counter()-began
+        if allow_partial and len(path)>1 and budget.remaining<=0:return prefix('planning_time_limit')
+        budget.check()
         valid=None;rejects=[]
         solutions=sorted(solutions,key=lambda s:np.linalg.norm(np.asarray(s['joints'])-path[-1]))
+        if allow_partial and getattr(scene,'skill_collision_policy','veto')=='advisory' and solutions:
+            # Physical push execution trusts the robot-valid IK references.
+            # Do not add a second dense interpolation/admission pass; actual
+            # contact and directional stalling are measured during execution.
+            path.append(np.asarray(solutions[0]['joints']));continue
         for solution in solutions:
             q=np.asarray(solution['joints']);delta=q-path[-1]
             # Dense checks include every interpolation interval; no wrist-step
@@ -405,6 +419,7 @@ def cartesian_path(ik,scene,record,metadata,start,target_pose,budget,*,displacem
                 first_point=first[:3,3]+first[:3,:3]@local
                 last_point=last[:3,3]+last[:3,:3]@local
                 for u in np.linspace(0,1,checks+1):
+                    if allow_partial and len(path)>1 and budget.remaining<=0:return prefix('planning_time_limit')
                     budget.check();sample=path[-1]+delta*u
                     # Endpoint IK alone does not make joint interpolation a
                     # short Cartesian stroke. A different IK branch can swing
@@ -424,14 +439,18 @@ def cartesian_path(ik,scene,record,metadata,start,target_pose,budget,*,displacem
                     if not e['accepted']:rejects.append(e);accepted=False;break
             timing['collision_seconds']+=time.perf_counter()-began
             if accepted:valid=q;break
-        if valid is None:raise SkillStop('contact_path_blocked',fraction=float(fraction),ik_solutions=len(solutions),rejections=rejects[-8:])
+        if valid is None:
+            if allow_partial and len(path)>1:return prefix('no_next_kinematic_increment')
+            raise SkillStop('contact_path_blocked',fraction=float(fraction),ik_solutions=len(solutions),rejections=rejects[-8:])
         path.append(valid)
     return np.asarray(path)
 
 
-def plan_contact_stroke(ik,scene,record,metadata,contact_local,delta,budget,*,angle=0.,timing=None):
+def plan_contact_stroke(ik,scene,record,metadata,contact_local,delta,budget,*,angle=0.,timing=None,physical_feedback=False):
     """Try local wrist alternatives while preserving the contact landmark path."""
     start=np.asarray(metadata['joint_positions']);tcp=pose_matrix(ik.chain.forward(start))
+    if physical_feedback:
+        scene=copy.copy(scene);scene.skill_collision_policy='advisory'
     point=tcp[:3,3]+tcp[:3,:3]@contact_local;direction=unit(delta)
     transverse=np.cross(direction,np.eye(3)[np.argmin(abs(direction))]);transverse=unit(transverse)
     rotations=[tcp[:3,:3]]
@@ -440,10 +459,12 @@ def plan_contact_stroke(ik,scene,record,metadata,contact_local,delta,budget,*,an
     attempts=[]
     for index,rotation in enumerate(rotations):
         budget.check();goal=tcp.copy();goal[:3,:3]=rotation;goal[:3,3]=point+delta-rotation@contact_local
+        scene.skill_partial_plan=None
         try:
             path=cartesian_path(ik,scene,record,metadata,start,matrix_pose(goal),budget,
-                displacement=delta,angle=angle,timing=timing,contact_local=contact_local)
-            return path,{'orientation_candidate':index,'earlier_attempts':attempts}
+                displacement=delta,angle=angle,timing=timing,contact_local=contact_local,allow_partial=physical_feedback)
+            return path,{'orientation_candidate':index,'earlier_attempts':attempts,
+                'reachable_prefix':scene.skill_partial_plan,'physical_feedback':physical_feedback}
         except SkillStop as error:
             attempts.append({'orientation_candidate':index,'reason':error.reason,**error.evidence})
             if error.reason=='budget_exhausted':raise SkillStop('stroke_planning_budget_exhausted',orientation_attempts=attempts,search_complete=False)
@@ -730,11 +751,22 @@ class ContactTracker:
     def __init__(self,cameras,target,step):
         from .rigid_hinge_tracking import RGBDHingeTracker
         self.tracker=RGBDHingeTracker(cameras,target,prior=np.mean(target,axis=0),reference_step=step,camera_names=list(cameras))
+        self.last_transform=np.eye(4)
+        self.last_view_counts={}
     def observe(self,cameras,step):
-        # Tracking correspondence extraction is shared; the skill uses a full
-        # 3D fit rather than assuming an upright hinge or attached hand.
-        self.tracker.observe(cameras,control_step=step)
-        return fit_object_motion(*self.tracker.last_pairs)
+        # Keep the original multi-view references across strokes. Re-seeding
+        # from a reduced camera capture made full-view recovery ineffective:
+        # its newly captured cameras no longer had reference features.
+        evidence=self.tracker.observe(cameras,control_step=step,estimate_joint=False)
+        self.last_view_counts.update({v['camera']:v['tracked_pairs'] for v in evidence['camera_counts']})
+        result=fit_object_motion(*self.tracker.last_pairs)
+        result.update(reference_control_step=self.tracker.reference_step,
+            reference_camera_count=len(self.tracker.references))
+        if result['accepted']:
+            absolute=np.asarray(result['transform'])
+            result['transform']=(absolute@np.linalg.inv(self.last_transform)).tolist()
+            self.last_transform=absolute
+        return result
 
 
 def measured_contact_speed(events,chain,contact_local,start_q):

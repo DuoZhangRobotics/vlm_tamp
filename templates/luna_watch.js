@@ -85,6 +85,7 @@ function renderDetail(data,row){
  el('controls').max=data.maximum_control_steps||600;el('controls').value=data.control_steps||0;
  el('runLinks').replaceChildren();for(const [name,path] of Object.entries(data.links||{}))link(el('runLinks'),name,path);
  el('frame').dataset.path=data.frame||'';el('overlay').dataset.path=data.contact_overlay||'';
+ el('wrist').dataset.path=data.wrist_view||'';image('wrist',null);
  image('frame',null);image('overlay',null);
  el('skill').replaceChildren();table(el('skill'),Object.entries(data.skill||{}));
  el('contactHistory').replaceChildren();table(el('contactHistory'),[
@@ -112,6 +113,7 @@ function renderDetail(data,row){
  }
  restoring=true;for(const d of el('detailPanel').querySelectorAll('details[data-open-key]'))d.open=!!saved.open?.[chosen]?.[d.dataset.openKey];restoring=false;
  showImageWhenOpen('frameDetails','frame');showImageWhenOpen('contactDetails','overlay');
+ showImageWhenOpen('wristDetails','wrist');
  selectedVersion=row.detail_version;text('updateNote','');
 }
 async function inspectRun(id,move=false,force=false){
@@ -150,7 +152,7 @@ el('updateRun').onclick=async()=>{
 el('live').onchange=()=>{text('displayMode',el('live').checked?'Live overview is on. Use Refresh this trial to update its details.':'Manual display updates. The experiment continues independently.');if(el('live').checked)refreshResults(true)};
 el('detailPanel').addEventListener('toggle',event=>{
  if(restoring)return;if(event.target.open)pauseDisplay('Display updates paused for inspection. Experiments continue independently.');
- showImageWhenOpen('frameDetails','frame');showImageWhenOpen('contactDetails','overlay');save();
+ showImageWhenOpen('frameDetails','frame');showImageWhenOpen('contactDetails','overlay');showImageWhenOpen('wristDetails','wrist');save();
 },true);
 window.addEventListener('pagehide',save);
 let scrollSave;window.addEventListener('scroll',()=>{clearTimeout(scrollSave);scrollSave=setTimeout(save,200)},{passive:true});

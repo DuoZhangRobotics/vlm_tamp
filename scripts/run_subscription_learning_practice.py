@@ -319,6 +319,8 @@ def summarize(output, attempts, returncode, seconds):
             'execution_veto_checks': sum(row['execution_veto_checks'] for row in episodes),
             'all_issued_trajectories_completed': all(row['all_issued_trajectories_completed'] for row in episodes),
             'all_trajectories_completed_or_success_terminated':all(row.get('all_trajectories_completed_or_success_terminated',row['all_issued_trajectories_completed']) for row in episodes),
+            'all_trajectories_completed_or_feedback_terminated':all(row.get('all_trajectories_completed_or_feedback_terminated',
+                row.get('all_trajectories_completed_or_success_terminated',row['all_issued_trajectories_completed'])) for row in episodes),
             'control_steps_after_first_success':sum(row.get('control_steps_after_first_success',0) for row in episodes),
             'returncode': returncode, 'session_wall_seconds': seconds,
             'held_out_evaluation': False, 'generalization_measured': False,

@@ -21,7 +21,7 @@ def contact_service(tmp_path,monkeypatch):
         'front_plane':{'point_world_m':[0,0,0]},'panel_normal_world':[-1,0,0]}
     target=np.array([[0.,0,0],[0,.01,0],[0,0,.01]])
     raw=Scene.from_points([[1.,1.,1.]],target,target,spec)
-    counts={'builds':0,'searches':0,'strokes':0}
+    counts={'builds':0,'searches':0,'strokes':0,'trackers':0}
     def build(*args,**kwargs):
         counts['builds']+=1;scene=copy.copy(raw);scene.skill_contact_surface=args[6]
         joint=args[8] is not None
@@ -36,16 +36,18 @@ def contact_service(tmp_path,monkeypatch):
             'reuse_existing_contact':True,'timing_seconds':{},'attempts':[],'total_seconds':0.}
     def plan(ik,scene,record,metadata,local,delta,budget,**kwargs):
         counts['strokes']+=1
-        assert scene.current_robot_filter['reference_control_step']==svc.state['control_steps']
+        if not kwargs.get('physical_feedback'):assert scene.current_robot_filter['reference_control_step']==svc.state['control_steps']
         start=np.asarray(metadata['joint_positions']);goal=start.copy();goal[:3]+=delta
         return np.vstack([start,goal]),{'orientation_candidate':0}
     class Tracker:
         def __init__(self,*args):
+            counts['trackers']+=1
             self.reference=svc.object_position.copy()
             self.tracker=SimpleNamespace(references={'test':{'pixels':np.zeros((20,2))}})
         def observe(self,*args):
             if svc.fail_tracking:return {'accepted':False,'reason':'inconsistent_matches','pairs':10}
             transform=np.eye(4);transform[:3,3]=svc.object_position-self.reference
+            self.reference=svc.object_position.copy()
             return {'accepted':True,'transform':transform.tolist(),'pairs':20}
     monkeypatch.setattr(service_module,'build_contact_scene',build)
     monkeypatch.setattr(service_module,'plan_engagement',engage)
@@ -102,7 +104,7 @@ def test_continued_push_reuses_contact_scene_and_reports_hand_vs_object_motion(c
     assert initial['grasp_scene_refresh_required'] and service.scene is None
     service.object_fraction=.8
     result=call(service,continued=True,distance_m=.03)
-    assert result['stop_reason']=='requested_stroke_complete'
+    assert result['stop_reason']=='stroke_executed'
     assert result['commanded_contact_distance_m']==pytest.approx(.03)
     assert result['measured_contact_progress_m']==pytest.approx(.03)
     assert result['observed_progress']==pytest.approx(.024)
@@ -110,6 +112,7 @@ def test_continued_push_reuses_contact_scene_and_reports_hand_vs_object_motion(c
     assert result['contact_reused'] and result['scene_reused']
     assert result['timing_seconds'].get('perception_seconds',0)==0
     assert counts['builds']==counts['searches']==1
+    assert counts['trackers']==1 and result['tracking_reference_reused']
     assert service.active_push_contact['scene'].static_points is raw.static_points
     assert result['continuation']['contact_id']==initial['continuation']['contact_id']
     assert all(not stage['scene_update']['full_scene_rebuilt'] for stage in result['stages'])
@@ -131,7 +134,7 @@ def test_continuation_is_one_requested_stroke_by_default(contact_service):
     result=call(service,continued=True,distance_m=.03)
     assert counts['strokes']==before+1
     assert result['measured_contact_progress_m']==pytest.approx(.0275)
-    assert result['stop_reason']=='requested_stroke_complete'
+    assert result['stop_reason']=='stroke_executed'
 
 
 def test_explicit_small_chunks_do_not_accumulate_tracking_loss(contact_service):
@@ -139,7 +142,7 @@ def test_explicit_small_chunks_do_not_accumulate_tracking_loss(contact_service):
     service.tracking_lag_m=.0025
     result=call(service,continued=True,distance_m=.03,stroke_length_m=.01)
     assert result['measured_contact_progress_m']==pytest.approx(.0275)
-    assert result['stop_reason']=='requested_stroke_complete'
+    assert result['stop_reason']=='stroke_executed'
     assert len(result['stages'])==4
 
 
@@ -155,15 +158,21 @@ def test_observe_alone_keeps_contact_but_unrelated_motion_clears_it(contact_serv
     service.calls+=1;service.capture()
     assert call(service,continued=True)['continue_push_available']
     q=np.asarray(service.state['metadata']['joint_positions']);service.issue(q[None],0,'unrelated')
-    with pytest.raises(ValueError,match='No retained push contact'):call(service,continued=True)
+    fresh=call(service,continued=True)
+    assert fresh['input_mode']=='current_hand' and not fresh['contact_reused']
+    assert fresh['object_motion_status']=='unmeasured' and fresh['robot_motion_executed']
     assert counts['builds']==1
 
 
-def test_unresolved_motion_does_not_retain_a_stale_continuation(contact_service):
+def test_unresolved_object_motion_does_not_block_direction_only_continuation(contact_service):
     service,_,_=contact_service;call(service);service.fail_tracking=True
     result=call(service,continued=True)
-    assert result['stop_reason']=='object_motion_unresolved'
-    assert not result['continue_push_available'] and service.active_push_contact is None
+    assert result['stop_reason']=='stroke_executed'
+    assert result['object_motion_status']=='unresolved' and result['observed_progress'] is None
+    assert result['continue_push_available'] and not result['continuation']['object_pose_current']
+    again=call(service,continued=True,distance_m=.1)
+    assert again['stop_reason']=='stroke_executed'
+    assert again['measured_contact_progress_m']==pytest.approx(.1)
 
 
 def test_ineffective_strokes_accumulate_across_continuation_calls(contact_service):
@@ -171,12 +180,11 @@ def test_ineffective_strokes_accumulate_across_continuation_calls(contact_servic
     first=call(service,continued=True)
     assert first['continue_push_available'] and first['continuation']['ineffective_strokes']==1
     second=call(service,continued=True)
-    assert second['stop_reason']=='no_progress_after_stroke_budget'
+    assert second['stop_reason']=='stroke_executed'
     assert second['continue_push_available'] and second['continuation']['ineffective_strokes']==2
-    assert 'continue_push' in second['recovery_options'][0]
     service.object_fraction=1.
     recovered=call(service,continued=True,direction_world=[0.,1.,0.])
-    assert recovered['stop_reason']=='requested_stroke_complete'
+    assert recovered['stop_reason']=='stroke_executed'
     assert recovered['continuation']['ineffective_strokes']==0
 
 
@@ -186,13 +194,24 @@ def test_bad_hinge_does_not_discard_measured_pose_for_direction_only_continuatio
     assert initial['stop_reason']=='motion_inconsistent_with_fixed_joint'
     assert initial['continue_push_available'] and not initial['joint_model_supported']
     result=call(service,continued=True,direction_world=[0,1,0])
-    assert result['stop_reason']=='requested_stroke_complete'
+    assert result['stop_reason']=='stroke_executed'
     assert counts['builds']==counts['searches']==1
 
 
 def test_continuation_schema_needs_only_direction_and_distance():
     validate_operation('continue_push',{'direction_world':[1,0,0],'distance_m':.02})
+    validate_operation('push_stroke',{'direction_world':[1,0,0],'distance_m':.1})
     with pytest.raises(ValueError):validate_operation('continue_push',{'direction_world':[1,0,0]})
+
+
+def test_current_hand_stroke_has_no_contact_or_perception_prerequisite(contact_service):
+    service,counts,_=contact_service
+    result=call(service,continued=True,distance_m=.1)
+    assert result['stop_reason']=='stroke_executed' and result['input_mode']=='current_hand'
+    assert result['measured_contact_progress_m']==pytest.approx(.1)
+    assert counts['builds']==counts['searches']==counts['trackers']==0
+    assert result['object_motion_status']=='unmeasured' and result['observed_progress'] is None
+    assert not result['contact_reused'] and not result['continuation']['object_target_associated']
 
 
 def test_observation_cache_is_one_entry_per_current_capture(monkeypatch):

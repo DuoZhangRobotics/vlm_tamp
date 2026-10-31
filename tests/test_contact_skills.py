@@ -14,6 +14,57 @@ class LinearChain:
     def forward(self,q):return np.r_[np.asarray(q)[:3],[0,0,0,1.]]
 
 
+def test_push_can_slide_on_selected_part_but_hook_keeps_feature_contact_scope():
+    from vlm_tamp.contact_collision_evidence import selected_contact_points
+    scene=SimpleNamespace(moving_reference=np.array([[0.,0,0],[.05,0,0]]),
+        contact_reference=np.array([[0.,0,0]]),skill_kind='push')
+    assert selected_contact_points(scene).tolist()==[True,True]
+    scene.skill_kind='hook_pull'
+    assert selected_contact_points(scene).tolist()==[True,False]
+
+
+def test_contact_tracking_reuses_absolute_reference_and_returns_incremental_motion(monkeypatch):
+    import vlm_tamp.rigid_hinge_tracking as module
+    from vlm_tamp.contact_skills import ContactTracker
+    rng=np.random.default_rng(22);points=rng.uniform(-.1,.1,(30,3));instances=[]
+    class Tracker:
+        def __init__(self,*args,**kwargs):
+            self.reference_step=kwargs['reference_step'];self.references={'front':{},'side':{}}
+            instances.append(self)
+        def observe(self,cameras,*,control_step,estimate_joint):
+            assert not estimate_joint
+            self.last_pairs=(points,points+np.array([control_step*.001,0,0]))
+            return {'camera_counts':[{'camera':'side','tracked_pairs':30}]}
+    monkeypatch.setattr(module,'RGBDHingeTracker',Tracker)
+    tracker=ContactTracker({'front':{},'side':{}},points,0)
+    first=tracker.observe({'front':{}},10);second=tracker.observe({'front':{},'side':{}},25)
+    assert first['accepted'] and second['accepted'] and len(instances)==1
+    assert np.array(first['transform'])[0,3]==pytest.approx(.010)
+    assert np.array(second['transform'])[0,3]==pytest.approx(.015)
+    assert second['reference_camera_count']==2 and tracker.last_view_counts['side']==30
+
+
+def test_physical_push_planner_does_not_consult_environment_predictions(monkeypatch):
+    import vlm_tamp.contact_skills as module
+    def forbidden(*a,**k):raise AssertionError('Observed environment must not veto a physical push stroke')
+    monkeypatch.setattr(module,'skill_native_scene',forbidden)
+    scene=SimpleNamespace(skill_collision_policy='veto')
+    ik=SimpleNamespace(chain=LinearChain(),self_valid=lambda q:True,
+        solve_many=lambda pose,seed,**kwargs:[{'joints':np.r_[pose[:3],np.zeros(4)]}])
+    meta={'joint_positions':[0.]*7}
+    path,report=module.plan_contact_stroke(ik,scene,{},meta,np.zeros(3),np.array([.1,0,0]),Budget(5),physical_feedback=True)
+    assert path[-1,0]==pytest.approx(.1) and report['physical_feedback']
+
+
+def test_physical_push_keeps_a_reachable_prefix_when_the_next_ik_fails(monkeypatch):
+    import vlm_tamp.contact_skills as module
+    scene=SimpleNamespace(skill_collision_policy='veto')
+    ik=SimpleNamespace(chain=LinearChain(),self_valid=lambda q:True,
+        solve_many=lambda pose,seed,**kwargs:[] if pose[0]>.02 else [{'joints':np.r_[pose[:3],np.zeros(4)]}])
+    path,report=module.plan_contact_stroke(ik,scene,{}, {'joint_positions':[0.]*7},np.zeros(3),np.array([.1,0,0]),Budget(5),physical_feedback=True)
+    assert .015<path[-1,0]<=.02 and report['reachable_prefix']['reason']=='no_next_kinematic_increment'
+
+
 def test_projected_contact_roles_include_other_views_without_widening_the_region():
     from vlm_tamp.contact_skills import projected_surface_membership
     view={'camera_to_world':np.eye(4),'intrinsic':np.array([[100.,0,50],[0,100,50],[0,0,1]])}

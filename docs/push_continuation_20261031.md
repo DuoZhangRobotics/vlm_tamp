@@ -1,5 +1,8 @@
 # Continued finger pushes
 
+Historical implementation notes. The current simulation push policy and direct
+hand primitive are documented in [physical_push_execution_20261031.md](physical_push_execution_20261031.md).
+
 `continue_push(direction_world, distance_m)` retains the last reached push contact
 and observed scene. It does not need another image region, hinge estimate, preview,
 contact search, or full scene build. Its default is one complete requested hand

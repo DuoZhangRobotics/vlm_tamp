@@ -234,10 +234,10 @@ def operation_schemas(image_sizes=None):
     definitions = {
         'compare_surface_geometry': ('Compare two currently measured surfaces, including different parts. Returns relative plane angles and offsets; no motion or native goal threshold is supplied.',
             parameters({'first_id':text,'second_id':text},['first_id','second_id'])),
-        'push': ('Plan and execute simulation pushing with RGB-D feedback. Scene collisions block approach, contact and withdrawal plans; only the explicitly selected contact surfaces may touch the target. preview=true issues no motion.',
+        'push': ('Acquire contact and push in simulation. Controlled contact strokes execute using physical feedback; predicted scene contact and uncertain object tracking do not veto them. A world distance commands hand travel, as one stroke by default. Free approach planning retains the scene collision policy. preview=true issues no motion.',
             parameters({**contact_arguments,'mode':{'type':'string','enum':['controlled','push_and_release']},
                 'contact_surface':{'type':'string','enum':['fingertips','palm']},'withdrawal_distance_m':number(exclusiveMinimum=0)},['observation_id','camera','region_xyxy'])),
-        'continue_push': ('Continue the retained push contact using only a world direction and contact-stroke distance. Reuses the contact and static scene, updates the moving part from RGB-D feedback, and performs no new contact search. Distance is commanded hand/contact travel; measured object motion is reported separately. No hinge model, image region or preview is needed.',
+        'continue_push': ('Attempt a physical hand stroke in the supplied world direction. Reuse prior contact/target feedback when available; otherwise move from the current hand pose without acquiring a contact. Distance is commanded hand travel; uncertain object tracking does not veto motion. No hinge model, image region, contact search or preview is needed.',
             parameters({'direction_world':array(3),'distance_m':number(exclusiveMinimum=0),
                 'contact_speed_m_s':nullable(number(exclusiveMinimum=0)),
                 'stroke_length_m':nullable(number(exclusiveMinimum=0)),
@@ -311,6 +311,7 @@ def operation_schemas(image_sizes=None):
         'check_completion': ('Check your declared goal against supplied measured evidence.', parameters({'evidence': {'type': 'object', 'additionalProperties': {'type': 'string'}}, 'interpretation': text}, ['evidence', 'interpretation'])),
         'finish': ('Finish only when the active episode policy permits; never fabricates success.', parameters({'claim': {'enum': ['completed', 'incomplete', 'uncertain']}, 'reason': {'type': 'string'}, 'check_id': nullable(text)})),
     }
+    definitions['push_stroke']=('Move the current hand in a world direction for the requested distance, using physical execution feedback. Requires only reset, direction and distance: no prior push, target region, object model or contact search. Retains current gripper aperture. Reports measured hand motion, physical stalls and native task success; object motion is separate when a target was previously associated.',definitions['continue_push'][1])
     return {name: {'type': 'function', 'function': {'name': name, 'description': description, 'parameters': schema}}
             for name, (description, schema) in definitions.items()}
 

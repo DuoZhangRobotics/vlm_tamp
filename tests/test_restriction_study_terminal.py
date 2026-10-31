@@ -35,6 +35,14 @@ def test_cli_deadline_preserves_completed_budget_failure(completed_control_budge
     assert evaluation == before
 
 
+def test_measured_stall_is_an_allowed_recovery_stop_not_task_success(completed_control_budget):
+    agent,evaluation=completed_control_budget
+    evaluation['attempts'][0].update(all_trajectories_completed_or_success_terminated=False,
+        all_trajectories_completed_or_feedback_terminated=True,feedback_terminated_trajectories=2)
+    result=study.validate_terminal(143,agent,evaluation)
+    assert not result['official_task_success'] and result['feedback_terminated_trajectories']==2
+
+
 @pytest.mark.parametrize('reason,success,controls,wall', [
     ('simulator_success', True, 214, 1260.),
     ('wall_budget_exhausted', False, 1182, 0.),

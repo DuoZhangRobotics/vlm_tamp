@@ -1,5 +1,8 @@
 # Failed continuation: contact role versus collision padding
 
+Historical diagnosis before the user-authorized physical-push execution policy.
+Current behavior is documented in [physical_push_execution_20261031.md](physical_push_execution_20261031.md).
+
 The first fresh Luna trial on closing state 49 ended unsuccessfully at 600
 controls. The following opening trial was stopped by Codex for diagnosis; it is
 an operator interruption, not a scored task failure. The initial run was stable:

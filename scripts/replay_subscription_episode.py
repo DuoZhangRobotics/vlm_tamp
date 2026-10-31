@@ -37,8 +37,8 @@ def source_commands(run,attempt):
     for event in events:
         op=event['request']['operation'];args=event['request'].get('arguments',{})
         if op=='reset' and event['response']['ok']:current+=1
-        if current!=attempt or op not in {'execute','gripper','execute_sequence','push','hook_pull'} or not event['response']['ok']:continue
-        if op in {'execute_sequence','push','hook_pull'}:
+        if current!=attempt or op not in {'execute','gripper','execute_sequence','push','continue_push','push_stroke','hook_pull'} or not event['response']['ok']:continue
+        if op in {'execute_sequence','push','continue_push','push_stroke','hook_pull'}:
             for stage in event['response'].get('result',{}).get('stages',[]):
                 artifact=stage['artifact_id'];name=stage['stage']
                 label=f'{args["plan_id"]}-{name}' if op=='execute_sequence' else name

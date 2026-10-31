@@ -763,6 +763,7 @@ class RobotService:
     def motion_settings(self):
         from vlm_tamp.push_contact_state import contact_summary
         return {'maximum_control_steps':getattr(self,'maximum_control_steps',control_limit(self.state)),
+            'push_stroke_available':self.sim is not None and not self.episode_status()['episode_done'],
             'push_continuation':contact_summary(getattr(self,'active_push_contact',None)),
             'remaining_control_steps':self.episode_status()['remaining_control_steps'],
             'controller_joint_reference_limit_rad_s':1.,'controller_reference_mode':self.reference_mode,'collision_padding_m':0.,
@@ -772,7 +773,9 @@ class RobotService:
             'joint_reserve_rad':self.config.get('command_joint_reserve_rad',0.),
             'native_joint_reserve_rad':self.config.get('native_joint_reserve_rad',0.),
             'default_approach_speed_rad_s':self.config.get('grasp_approach_speed_rad_s',.6),
-            'contact_defaults':{'stroke_length_m':.01,'contact_speed_m_s':.03,'release_stroke_length_m':.03},
+            'contact_defaults':{'world_push_stroke':'requested hand distance','joint_or_hook_stroke_length_m':.01,
+                'contact_speed_m_s':.03,'release_stroke_length_m':.03,
+                'controlled_push_policy':'physical execution feedback; visual object tracking is not a motion veto'},
             'current_robot_point_filter':{'enabled':True,'padding_m':0.,
                 'scope':'collision points inside measured current robot geometry are removed before downstream planning; candidate poses cannot clear points'},
             'policy':'Contact stroke length/speed and search budgets are explicit experiment settings. Numerical uncertainty does not prove physical infeasibility.'}
@@ -1067,6 +1070,11 @@ class RobotService:
             contact_speed_m_s=contact_speed_m_s,stroke_length_m=stroke_length_m,budget_seconds=budget_seconds,
             stroke_plan_seconds=stroke_plan_seconds,max_ineffective_strokes=max_ineffective_strokes,continuation=True)
 
+    def push_stroke(self,direction_world,distance_m,contact_speed_m_s=None,
+                    stroke_length_m=None,budget_seconds=120.,stroke_plan_seconds=None,max_ineffective_strokes=2):
+        return self.continue_push(direction_world,distance_m,contact_speed_m_s,stroke_length_m,
+            budget_seconds,stroke_plan_seconds,max_ineffective_strokes)
+
     def execute_plan(self, plan_id, gripper=1, speed=.35, hold=6):
         plan = self.plans[plan_id]
         if plan['kind']=='sequence':
@@ -1100,7 +1108,7 @@ class RobotService:
         result['joint_limit_recovery']=recovery
         return result
 
-    def issue(self, refs, gripper, label, *, articulated=False,camera_names=None,track_scene=True):
+    def issue(self, refs, gripper, label, *, articulated=False,camera_names=None,track_scene=True,push_feedback=None):
         if len(refs)>control_limit(self.state)-self.state['control_steps']:
             raise ValueError('Complete requested trajectory exceeds remaining physical-step budget')
         if len(refs):
@@ -1128,7 +1136,8 @@ class RobotService:
         timing['tracker_initialization_seconds']=time.perf_counter()-stage;stage=time.perf_counter()
         np.save(self.episode/f'{self.calls:03d}-requested-{label}.npy',refs)
         self.state, result = execute_batch(self.sim,self.state,refs,gripper=gripper,event_sink=self.events.append,
-                                          stop_on_success=self.stop_on_success,maximum_control_steps=getattr(self,'maximum_control_steps',control_limit(self.state)))
+                                          stop_on_success=self.stop_on_success,maximum_control_steps=getattr(self,'maximum_control_steps',control_limit(self.state)),
+                                          **({'push_feedback':push_feedback} if push_feedback is not None else {}))
         if result['issued_commands'] and gripper!=0:self.last_gripper_command=gripper
         np.save(self.episode/f'{self.calls:03d}-issued-{label}.npy',refs[:result['issued_commands']])
         compact = {k:v for k,v in result.items() if k!='events'}
@@ -1286,6 +1295,10 @@ class RobotService:
         summary.update(stop_on_simulator_success=self.stop_on_success,
             success_terminated_trajectories=sum(bool(x.get('terminated_on_simulator_success')) for x in self.executions),
             all_trajectories_completed_or_success_terminated=all(x.get('all_commands_issued',False) or x.get('terminated_on_simulator_success',False) for x in self.executions))
+        feedback_stops=[bool(x.get('termination_reason')=='measured_push_stall' and x.get('push_feedback',{}).get('stalled')) for x in self.executions]
+        summary.update(feedback_terminated_trajectories=sum(feedback_stops),
+            all_trajectories_completed_or_feedback_terminated=all(x.get('all_commands_issued',False)
+                or x.get('terminated_on_simulator_success',False) or stopped for x,stopped in zip(self.executions,feedback_stops)))
         successful_indices=[i for i,a in enumerate(actions) if a['evaluation_task_success']]
         first_success=next((int(a.get('step',i+1)) for i,a in enumerate(actions) if a['evaluation_task_success']),None)
         summary.update(maximum_control_steps=getattr(self,'maximum_control_steps',control_limit(self.state)),
@@ -1353,7 +1366,7 @@ class RobotService:
             operations['apply_part_motion']=self.apply_part_motion
         if getattr(self,'surface_contact_tools',False):
             operations.update(select_surface_contact=self.select_surface_contact,plan_pose=self.plan_pose,
-                push=self.push,continue_push=self.continue_push,hook_pull=self.hook_pull)
+                push=self.push,continue_push=self.continue_push,push_stroke=self.push_stroke,hook_pull=self.hook_pull)
         if self.completion_checks:
             operations.update(declare_completion=self.declare_completion,measure_surface=self.measure_surface,
                 compare_surfaces=self.compare_surfaces,compare_surface_geometry=self.compare_surface_geometry,

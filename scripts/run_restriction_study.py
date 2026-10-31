@@ -33,7 +33,8 @@ def validate_terminal(returncode, agent, evaluation, interrupted=False):
         raise RuntimeError('Evaluation lacks one uninterrupted normal terminal episode')
     attempt = attempts[0]
     reason = attempt.get('reason')
-    if attempt.get('premature_end') or not attempt.get('all_trajectories_completed_or_success_terminated'):
+    if attempt.get('premature_end') or not attempt.get('all_trajectories_completed_or_feedback_terminated',
+            attempt.get('all_trajectories_completed_or_success_terminated')):
         raise RuntimeError('Physical episode did not complete normally')
     controls = attempt.get('control_steps')
     limit = attempt.get('maximum_control_steps')

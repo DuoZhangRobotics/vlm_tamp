@@ -43,17 +43,24 @@ against the whole observed workspace before IK; then check the arm and path.
 Closure is measured physically.
 Grasped motion permits finger/selected-handle contact; arm/palm stay checked.
 The planner's returned path is used without an extra dense validation pass.
-Contact skills when enabled: push, continue_push, hook_pull.
+Contact skills when enabled: push_stroke, push, continue_push, hook_pull.
+push_stroke(direction_world, distance_m) moves the current hand directly in
+simulation, holding its aperture. No object model, prior contact or search is
+required. Use it to attempt a push from the current pose, including after a
+target-acquisition failure. It does not claim the hand is touching an object.
 push/hook_pull execute by default; preview=true has no motion. An unchanged
 preview is reused by execution. After push returns continue_push_available=true,
 continue_push(direction_world, distance_m) reuses the contact and scene directly.
 No new region, hinge model or preview is needed. Distance is the commanded hand
 stroke, executed as one stroke by default; measured object motion is separate.
-Other arm/gripper motion clears contact.
-push modes: controlled; push_and_release. Scene collisions block plans
-(collision_policy="veto"). Only intended pad/target contact is exempt by default;
-the arm, palm and proximal fingers remain checked. No extra dense validation.
-Before planning, points inside the measured current robot geometry are removed
+Other arm/gripper motion clears target association; push_stroke remains available.
+push modes: controlled; push_and_release. Controlled push insertion and strokes
+use physical execution feedback: observed scene collisions and uncertain object
+tracking do not veto them. World distance requests command hand travel as one
+stroke by default. A measured physical stall returns control and retains the
+contact reference. Free approaches, hooks and grasped planning retain their scene
+collision policy. Wrist RGB-D is included in push feedback. No extra dense validation.
+For observed-scene planners, points inside the measured current robot geometry are removed
 from the collision map with zero padding. Future candidate poses cannot clear points.
 Other enabled operations are listed below. help is local and makes no robot call.
 
@@ -180,8 +187,11 @@ def compact_response(response):
         result.update(pick(value,('skill','mode','preview','status','stop_reason','diagnostic',
             'input_mode','contact_reused','scene_reused','preview_reused','source_preview',
             'observation_cloud_reused','full_scene_builds','contact_searches','continuation',
+            'tracking_reference_reused','tracking_reference_camera_count',
+            'contact_motion_policy','stroke_scene_collision_veto','object_progress_is_execution_gate',
+            'object_motion_status','object_progress_reference_control_step','planning_limit',
             'continue_push_available','next_operation','grasp_scene_refresh_required','scene_refresh_scope',
-            'commanded_contact_distance_m','measured_contact_progress_m','contact_progress_error_m','stroke_distance_tolerance_m',
+            'commanded_contact_distance_m','measured_contact_progress_m','contact_progress_error_m','stroke_distance_tolerance_m','hand_travel_shortfall_m',
             'robot_motion_executed','requested_contact_speed_m_s','requested_distance_m','requested_joint_degrees',
             'observed_progress','progress_units','contact','momentum','report','images','timing_seconds',
             'observed_joint_change_degrees','observed_joint_change_source','progress_measured_at_control_step',
@@ -195,7 +205,7 @@ def compact_response(response):
         result['stages']=[pick(s,('stage','artifact_id','control_steps','measured_contact_speed',
             'robot_reference_tracking',
             'requested_motion_m','requested_contact_speed_m_s','observed_contact_progress_m','engagement','object_motion',
-            'planning_timing_seconds','scene_update','material_point_offset_m')) for s in value.get('stages',[])[-3:]]
+            'planning_timing_seconds','scene_update','material_point_offset_m','physical_motion','control_budget_truncated')) for s in value.get('stages',[])[-3:]]
         diagnostic=value.get('diagnostic',{})
         if 'attempts' in diagnostic:
             from collections import Counter

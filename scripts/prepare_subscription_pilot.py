@@ -410,8 +410,9 @@ A supported quantitative check is optional. An accepted claim does not establish
 native task success: the independent evaluator scores that separately. Preserve
 measurement uncertainty instead of inventing a verified value. This ends the
 attempt, not the practice session; reset for another while budget remains.
-Every issued trajectory executes fully. Measurements do not veto execution or
-require you to end practice. Write your evidence and limitations in findings.txt.
+Visual measurements do not require you to end practice. Native success can end
+a trajectory early; a measured push stall can return control after actual motion
+has been attempted. Write your evidence and limitations in findings.txt.
 '''
 
 
@@ -627,6 +628,8 @@ plan, execute with gripper=0 to keep that aperture command; changing the gripper
 during the motion changes the geometry for which the path was checked. After a
 physical motion, refresh select_surface_contact from current observations before
 planning again in this mode. This prevents reusing a pre-motion static snapshot.
+This refresh applies to observed-scene plan_pose/plan_joint. push_stroke and
+continue_push do not require it or a contact-search preview.
 An articulated arc requires a new ground call; a surface patch is not a hinge
 estimate. Planned finger contact does not certify physical contact or task
 progress. The simulator's success signal remains the stopping criterion.\n'''

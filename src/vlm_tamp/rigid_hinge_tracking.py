@@ -124,10 +124,11 @@ class RGBDHingeTracker:
                 for key,value in view.items():data[name+'_'+key]=value
             np.savez_compressed(output,**data)
 
-    def observe(self,cameras,*,control_step,output=None,include_displacement_evidence=False):
+    def observe(self,cameras,*,control_step,output=None,include_displacement_evidence=False,estimate_joint=True):
         first=[];second=[];views=[]
         for name,reference in self.references.items():
             if name not in cameras:continue
+            count={'camera':name,'tracked_pairs':0};views.append(count)
             view=cameras[name];gray=cv2.cvtColor(view['rgb'],cv2.COLOR_RGB2GRAY)
             original=reference['pixels']
             tracked,status,_=cv2.calcOpticalFlowPyrLK(reference['gray'],gray,original,None,winSize=(25,25),maxLevel=3,
@@ -143,12 +144,14 @@ class RGBDHingeTracker:
                 if mask[jy,jx]:continue
                 old=reference['points'][iy,ix];new=view['world_points'][jy,jx]
                 if np.isfinite(old).all() and np.isfinite(new).all():p0.append(old);p1.append(new)
-            first.extend(p0);second.extend(p1);views.append({'camera':name,'tracked_pairs':len(p0)})
+            first.extend(p0);second.extend(p1);count['tracked_pairs']=len(p0)
         a=np.asarray(first,float).reshape(-1,3);b=np.asarray(second,float).reshape(-1,3)
         self.last_pairs=(a,b)
-        result=estimate_rigid_hinge(a,b,prior=self.prior)
-        stationary=stationary_pose_evidence(a,b)
-        if stationary is not None:result=stationary
+        if estimate_joint:
+            result=estimate_rigid_hinge(a,b,prior=self.prior)
+            stationary=stationary_pose_evidence(a,b)
+            if stationary is not None:result=stationary
+        else:result={'correspondences':len(a),'joint_estimation_requested':False}
         result.update(camera_counts=views,reference_control_step=self.reference_step,control_step=int(control_step))
         self.last_displacement_evidence_seconds = 0.
         if include_displacement_evidence:
