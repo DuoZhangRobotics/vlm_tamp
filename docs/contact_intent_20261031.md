@@ -176,3 +176,13 @@ or successful coordinates were supplied to the actor. See
 This is one smoke-test success, not an established success rate. The actor used
 contact-motion tools in that run; the separate free-grasp-travel branch is
 covered by the focused tests rather than this episode's outcome.
+
+The two requested fresh closing checks then ran with unchanged numerical source
+hashes in `results/luna-current-closing-checks-20261031`: state17 succeeded at
+595/600 controls; the state49 repeat failed at 600, ending 62.25° open. Their
+actor/tool/outside-tool wall times were respectively 715.04/168.66/546.38 seconds
+and 310.37/106.27/204.10 seconds. Outside-tool time includes transport and local
+analysis. Both actors exited normally and passed resource qualification; peak
+job memory was 8.06 GiB. Together with the prior smoke test, current-code state49
+is 1/2, not consistently solved. Its failed repeat initially opened the door
+farther, then stopped producing door rotation over the final 109 controls.
