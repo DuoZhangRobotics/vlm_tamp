@@ -18,6 +18,9 @@ configuration is required for push, continue_push or hook_pull.
   Robot/gripper movement through another operation clears the retained contact;
   observations alone do not. Acquire a fresh contact only when the tool reports
   continuation unavailable or you intend to push a different target.
+  Two ineffective strokes return control to you, but retain a successfully
+  tracked contact scene. You can explicitly change direction, distance or speed
+  with continue_push; low object progress is not by itself proof of lost contact.
 
 An unchanged push preview is reused by execution; its geometry and approach are
 not recomputed. During a push, static geometry is retained and the selected rigid

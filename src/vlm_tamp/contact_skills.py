@@ -101,6 +101,24 @@ def hook_feature(points,direction,cameras=None):
     return point,{**shape,'retaining_axis_world':basis[0].tolist(),'contact_world_m':point.tolist()}
 
 
+def projected_surface_membership(points,view,region,origin,normal):
+    """Associate observed views with the caller's selected local surface.
+
+    A nearest-neighbor match to one camera's samples leaves holes at view/voxel
+    seams. Project the whole observed cloud into the same selected image region,
+    retaining the existing local-plane and extent bounds. No points are erased
+    and no proposed robot pose participates in assigning these roles.
+    """
+    optical=transform_points(points,np.linalg.inv(pose_matrix(view['camera_to_world'])))
+    projected=optical@np.asarray(view['intrinsic']).T
+    forward=optical[:,2]>0
+    uv=np.full((len(points),2),np.inf)
+    uv[forward]=projected[forward,:2]/projected[forward,2,None]
+    x1,y1,x2,y2=region
+    return (forward&(uv[:,0]>=x1)&(uv[:,0]<=x2)&(uv[:,1]>=y1)&(uv[:,1]<=y2)
+        &(np.abs((points-origin)@normal)<.015)&(np.linalg.norm(points-origin,axis=1)<.45))
+
+
 def build_contact_scene(cameras,metadata,chain,camera,region,target_region,contact_surface,
                         direction=None,joint_degrees=None,joint_scene=None,*,skill_kind='push',observed=None):
     base,patch=contact_snapshot(cameras,metadata,camera,region,chain,radius_m=.035,observed=observed)
@@ -134,7 +152,10 @@ def build_contact_scene(cameras,metadata,chain,camera,region,target_region,conta
         # inflate robot geometry or clear any unrelated observed obstacles.
         selected=selected[np.abs((selected-origin)@normal)<.015]
         if len(selected)<12:raise SkillStop('insufficient_selected_surface_support')
-        contact_points=occupied[cKDTree(selected).query(occupied,distance_upper_bound=.0035)[0]<.0035]
+        contact_owned=cKDTree(selected).query(occupied,distance_upper_bound=.0035)[0]<.0035
+        if joint_degrees is None:
+            contact_owned|=projected_surface_membership(occupied,cameras[camera],region,origin,normal)
+        contact_points=occupied[contact_owned]
         multiview_selected=contact_points
         patch.update(selected_observed_points=len(contact_points),
             contact_permission='distal fingertips/pads and explicitly chosen palm against measured selected-region samples',
@@ -177,6 +198,8 @@ def build_contact_scene(cameras,metadata,chain,camera,region,target_region,conta
     # Only target-associated measured endpoints move. Other observed surfaces
     # remain stationary obstacles even when inside a loose image selection.
     owned=(cKDTree(target).query(occupied,distance_upper_bound=np.nextafter(.004,np.inf))[0]<=.004)|(cKDTree(contact_points).query(occupied,distance_upper_bound=np.nextafter(.0035,np.inf))[0]<=.0035)
+    if skill_kind=='push' and not associated:
+        owned|=projected_surface_membership(occupied,cameras[camera],target_region or region,origin,normal)
     target=occupied[owned]
     if len(target)<12:raise SkillStop('insufficient_target_depth')
     scene=Scene.from_points(occupied[~owned],target,contact_points,spec,
@@ -190,7 +213,8 @@ def build_contact_scene(cameras,metadata,chain,camera,region,target_region,conta
     return scene,{**patch,'direction_world':d.tolist(),'joint_associated':associated,
         'contact_surface':contact_surface,'target_observed_points':len(target),'feature_source':feature_source,
         'permitted_contact':'distal fingertips/pads'+(' and selected palm' if contact_surface=='palm' else ''),
-        'target_association':'selected region, within 15 mm of the observed local contact plane and 45 cm of its centre',
+        'target_association':('projected selected region across observed views, within the existing 15 mm local-plane band and 45 cm extent'
+            if skill_kind=='push' and not associated else 'selected region, within 15 mm of the observed local contact plane and 45 cm of its centre'),
         'proximal_fingers_and_arm_checked':True,'target_region_xyxy':target_region or region},multiview_selected
 
 

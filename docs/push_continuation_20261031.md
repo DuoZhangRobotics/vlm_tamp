@@ -16,7 +16,9 @@ padding or dense post-planner validation was added. Actual current-robot overlap
 filtering remains enabled; hypothetical future poses never clear obstacle points.
 
 Another motion operation invalidates the contact; observation alone does not.
-Unresolved tracking or two ineffective strokes also invalidate continuation. A
+Unresolved tracking invalidates continuation. Two ineffective strokes return
+control but retain the measured scene for an explicit change of direction,
+distance or speed; low progress alone does not prove contact loss. A
 bad hinge fit can stop joint-linked motion while preserving independently measured
 part pose for direction-only continuation. Grasp/joint-model planning still needs
 its own current grounding. These changes assume the retained background is static;

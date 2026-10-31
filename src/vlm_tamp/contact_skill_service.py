@@ -611,8 +611,10 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
         result.update(stop_reason=error.reason,diagnostic=error.evidence)
         if error.reason!='native_task_success':result['status']='returned_without_task_success'
         if error.reason in {'object_motion_unresolved','motion_inconsistent_with_fixed_joint','no_progress_after_stroke_budget','hook_engagement_not_established'}:
-            if error.reason!='motion_inconsistent_with_fixed_joint':can_continue=False
+            if error.reason in {'object_motion_unresolved','hook_engagement_not_established'}:can_continue=False
             result['recovery_options']=['select an opaque currently observed region','use a current surface push without a hinge assumption','apply an independently measured part/joint update']
+            if error.reason=='no_progress_after_stroke_budget' and kind=='push':
+                result['recovery_options'].insert(0,'change direction, distance or speed with continue_push; the tracked scene is retained, while effective engagement remains unverified')
             result['physical_infeasibility_proved']=False
     finally:
         # A contact skill does not silently install its hypothetical target

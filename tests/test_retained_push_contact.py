@@ -172,7 +172,12 @@ def test_ineffective_strokes_accumulate_across_continuation_calls(contact_servic
     assert first['continue_push_available'] and first['continuation']['ineffective_strokes']==1
     second=call(service,continued=True)
     assert second['stop_reason']=='no_progress_after_stroke_budget'
-    assert not second['continue_push_available'] and service.active_push_contact is None
+    assert second['continue_push_available'] and second['continuation']['ineffective_strokes']==2
+    assert 'continue_push' in second['recovery_options'][0]
+    service.object_fraction=1.
+    recovered=call(service,continued=True,direction_world=[0.,1.,0.])
+    assert recovered['stop_reason']=='requested_stroke_complete'
+    assert recovered['continuation']['ineffective_strokes']==0
 
 
 def test_bad_hinge_does_not_discard_measured_pose_for_direction_only_continuation(contact_service):
