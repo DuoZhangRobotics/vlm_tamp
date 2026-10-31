@@ -88,7 +88,7 @@ def test_advisory_release_flow_and_native_success_termination(tmp_path,monkeypat
         def capture(self):raise AssertionError('Advisory scene warnings must not force a perception recovery gate')
     service=Service()
     result=module.run_skill(service,'push',observation_id=1,camera='test',region_xyxy=[1,1,6,6],
-        mode='push_and_release',contact_speed_m_s=.12,collision_policy='advisory',budget_seconds=20.)
+        direction_world=[1.,0,0],mode='push_and_release',contact_speed_m_s=.12,collision_policy='advisory',budget_seconds=20.)
     assert result['motion_settings']['subsequent_plan_seconds']==5.
     assert result['motion_settings']['initial_search_seconds']==30.
     assert result['planning_stages'][0]['effective_seconds']<=20.

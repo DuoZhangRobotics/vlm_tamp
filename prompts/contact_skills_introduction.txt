@@ -24,8 +24,9 @@ configuration is required for push, continue_push or hook_pull.
   direction_world and distance_m specify the commanded contact/hand stroke.
   Actual hand and object motion are reported separately. Speed defaults to the
   retained setting. A continuation is one complete requested stroke by default;
-  stroke_length_m can explicitly split a larger request. The returned suggested direction
-  follows the observed part rotation and can be used for a subsequent stroke.
+  stroke_length_m can explicitly split a larger request. The returned
+  reference_direction_world transports the previous request with observed part
+  rotation. It is a geometric reference, not a goal-directed recommendation.
   Robot/gripper movement through another operation clears the retained contact;
   observations alone do not. Without a retained contact, continue_push behaves
   like push_stroke from the current hand pose. Acquire a fresh targeted contact
@@ -48,10 +49,17 @@ you must repeat for each small continuation.
   search_seconds=null, stroke_plan_seconds=null, max_ineffective_strokes=2):
   Select the CURRENT contact region and, preferably, a larger region on the SAME
   moving part for visual feedback. Boxes use original pixels. A world direction
-  specifies desired object motion; null uses the measured inward surface normal.
+  specifies the intended hand motion. Supply either direction_world or
+  joint_degrees, including for previews; the tool never silently substitutes a
+  surface normal for your task intent. select_surface_contact returns a measured
+  point/normal when you want geometry without issuing a push.
   For a current, explicitly associated joint model, instead supply a signed
   joint_degrees increment and its geometry_epoch as joint_model_epoch. A joint
   sign is not synonymous with open or close. Check that it serves the task.
+  Motion along the requested vector is not necessarily progress toward the goal.
+  An open-hand push applies compression; reversing the same hand motion can
+  withdraw from the object instead of moving it back. Choose contact placement
+  and motion from observed state changes and the task goal.
   A positive increment follows the installed joint_axis_world. Grounding tries
   to orient that axis toward its modeled task motion; this remains a hypothesis.
   Controlled world-direction pushing defaults to the complete requested hand
@@ -116,8 +124,10 @@ you must repeat for each small continuation.
   searches observed geometry for a retaining posture across candidates,
   using scene collision checks throughout the same contact-search budget.
   It requires observed thickness and a rear contact surface; unseen openings and
-  arbitrary flat surfaces are not assumed hookable. no_hookable_feature means
-  this tool has no supported catch, not that grasping is impossible. Change the
+  arbitrary flat surfaces are not assumed hookable. Feature failures report the
+  measured dimensions and failed detector conditions. Aspect ratio alone does
+  not reject a retaining feature. no_hookable_feature means this detector lacks
+  a supported catch; physical hookability has not been disproved. Change the
   aperture before calling when a wider opening is needed. A hook is distinct
   from the existing closed-gripper handle grasp and arc manipulation.
 

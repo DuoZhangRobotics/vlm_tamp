@@ -28,14 +28,15 @@ def contact_snapshot(cameras,metadata,camera,region_xyxy,chain,*,radius_m=.02,ob
     view=cameras[camera];world=np.asarray(view['world_points']);h,w=world.shape[:2]
     box=np.asarray(region_xyxy,float)
     if box.shape!=(4,) or not np.isfinite(box).all() or not (
-            0<=box[0]<box[2]<w and 0<=box[1]<box[3]<h):
-        raise ValueError('Select a bounded pixel region in the current image')
+            0<=box[0]<box[2]<=w and 0<=box[1]<box[3]<=h):
+        raise ValueError(f'Selected region {box.tolist()} is outside {camera} ({w}×{h}); use original camera pixels')
     yy,xx=np.indices((h,w));selected=(xx>=box[0])&(xx<=box[2])&(yy>=box[1])&(yy<=box[3])
     candidate=world[selected&np.isfinite(world).all(2)]
     occupied,filter_record=(observed_points(cameras,metadata,spacing=.003) if observed is None else observed)
     if len(occupied)==0 or len(candidate)<8:raise ValueError('Insufficient observed surface points')
+    finite_candidates=len(candidate)
     candidate=candidate[cKDTree(occupied).query(candidate,distance_upper_bound=np.nextafter(.0035,np.inf))[0]<=.0035]
-    if len(candidate)<8:raise ValueError('Selected pixels lack non-robot depth support')
+    if len(candidate)<8:raise ValueError(f'Selected region has {len(candidate)} eligible non-robot surface points after filtering ({finite_candidates} finite samples; need 8). Inspect the selected object region.')
     median=np.median(candidate,axis=0)
     center=candidate[np.argmin(np.linalg.norm(candidate-median,axis=1))]
     patch=candidate[np.linalg.norm(candidate-center,axis=1)<=radius_m]

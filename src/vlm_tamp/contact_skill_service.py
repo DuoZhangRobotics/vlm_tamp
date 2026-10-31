@@ -23,6 +23,7 @@ from .coupled_storage import write_json,read_json
 from .rekep_libero.geometry import pose_matrix,matrix_pose,transform_points
 from .timed_execution import schedule_contact
 from .execution_limits import control_limit
+from .robot_contracts import require_motion_intent
 
 ROOT=Path(__file__).resolve().parents[2]
 
@@ -135,6 +136,7 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
     physical_push=kind=='push' and mode=='controlled'
     hand_distance_request=physical_push and joint_degrees is None
     if service.sim is None:raise ValueError('Reset before using contact skills')
+    require_motion_intent(kind,{'direction_world':direction_world,'joint_degrees':joint_degrees})
     context=None
     if continuation:
         try:context=active_contact(service)
@@ -187,6 +189,9 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
         'task_success':False,'robot_motion_executed':False,'stages':stages,
         'momentum':momentum_status(),'physical_contact_verified':False,
         'feedback_source':'selected RGB-D views and robot proprioception',
+        'direction_source':'explicit_world_direction' if joint_degrees is None else 'signed_associated_joint_increment',
+        'task_direction_verified':False,
+        'motion_measurement_scope':'Movement along the requested direction or joint sign; not progress toward the task goal.',
         'simulator_object_geometry_used':False,'fixed_joint_preserved':True}
     result.update(input_mode='continue_contact' if continuation else 'acquire_contact',
         contact_reused=bool(continuation),scene_reused=bool(continuation),preview_reused=False,
@@ -221,7 +226,7 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
         else:
             cache_key=preview_key(service,{'kind':kind,'camera':camera,'region':list(region_xyxy),
                 'target_region':list(target_region_xyxy) if target_region_xyxy is not None else None,
-                'direction':np.asarray(direction_world).tolist() if direction_world is not None else None,
+                'direction':np.round(unit(direction_world),12).tolist() if direction_world is not None else None,
                 'distance_m':distance_m,'joint_degrees':joint_degrees,'mode':mode,'contact_surface':contact_surface,
                 'contact_speed_m_s':contact_speed_m_s,'approach_speed_rad_s':approach_speed_rad_s,
                 'stroke_length_m':stroke_length_m,'withdrawal_distance_m':withdrawal_distance_m})
@@ -240,9 +245,8 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
                 result['full_scene_builds']=1
                 timing['perception_seconds']+=time.perf_counter()-phase
         geometry_current=bool(context.get('object_pose_current',True)) if context else True
-        if kind=='hook_pull' and direction_world is None and joint_degrees is None:
-            evidence['direction_world']=list(evidence['normal_toward_camera_world'])
         scene.skill_collision_policy=collision_policy
+        scene.skill_physical_contact_execution=physical_push
         scene.skill_approach_speed_rad_s=approach_speed_rad_s
         scene.skill_approach_hold_steps=0
         scene.skill_contact_collision_log=result['environment_collision_predictions']
@@ -717,6 +721,8 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
             result['observed_joint_change_degrees']=float(np.degrees(result['observed_progress'])*np.sign(joint_degrees))
             result['observed_joint_change_source']='RGB-D part pose projected onto the installed signed axis; not native joint state'
         result['feedback_count']=sum('object_motion' in s for s in stages)
+        if result.get('observed_progress') is not None:
+            result['measured_object_motion_along_request']=result['observed_progress']
         result['timing_seconds']={'total':time.perf_counter()-started,**dict(timing)}
         result['timing_seconds']['other_seconds']=max(0.,result['timing_seconds']['total']-sum(timing.values()))
         result['report']=str((root/'result.json').relative_to(service.workspace))

@@ -120,7 +120,7 @@ def test_timeout_and_wrong_direction_explanations_name_the_failed_stage():
         'elapsed_seconds':1.9,'effective_seconds':1.8,'remaining_skill_seconds':20.}})
     assert 'contact insertion' in text and '20.00s left' in text
     text=dashboard.issue_explanation({'point_attempts':[{'reason':'wrong_side_contact'}]*4})
-    assert 'all 4' in text and 'requested push direction' in text
+    assert 'all 4' in text and 'before IK/path search' in text
 
 
 def test_physical_stall_explanation_distinguishes_motion_from_prediction():

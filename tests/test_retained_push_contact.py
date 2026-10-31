@@ -128,6 +128,13 @@ def test_preview_execution_does_not_repeat_scene_build_or_contact_search(contact
     assert counts['builds']==counts['searches']==1
 
 
+def test_equivalent_explicit_direction_reuses_preview(contact_service):
+    service,counts,_=contact_service
+    call(service,preview=True,direction_world=[2.,0,0])
+    result=call(service,direction_world=[1.,0,0])
+    assert result['preview_reused'] and counts['builds']==counts['searches']==1
+
+
 def test_continuation_is_one_requested_stroke_by_default(contact_service):
     service,counts,_=contact_service;call(service);before=counts['strokes']
     service.tracking_lag_m=.0025

@@ -61,17 +61,38 @@ def issue_explanation(diagnostic):
         depth=start.get('overlap_evidence',{}).get('overlap_depth_mm_range')
         if depth:text+=f' Observed-model overlap {depth[0]:.3f}–{depth[1]:.3f} mm.'
         return text+' No goal search was attempted.'
+    attempts=diagnostic.get('point_attempts',[])
+    if attempts:
+        counts=Counter(a.get('reason','unknown') for a in attempts)
+        if set(counts)=={'wrong_side_contact'}:
+            return f'Legacy direction precheck rejected all {len(attempts)} points before IK/path search. This is not an exhausted numerical search or demonstrated physical infeasibility.'
+    feature=diagnostic.get('feature',{})
+    if feature.get('failed_checks'):
+        return 'Hook detector support: '+', '.join(
+            f"{c['quantity']}={c['actual']:.4g} ({c['comparison']} {c['limit']:.4g})" for c in feature['failed_checks'])+'. Physical hooking was not tested.'
+    if feature.get('extent_m') and feature.get('aspect_ratio_is_admission_gate') is not False:
+        extents=feature['extent_m']
+        if len(extents)==3 and extents[1]>0 and extents[0]/extents[1]<1.8:
+            return f'Legacy hook-shape check: long/width ratio {extents[0]/extents[1]:.2f}, required 1.8. This heuristic did not test physical hookability.'
     stage=diagnostic.get('planning_stage')
+    records=diagnostic.get('attempts',[]) or [r for point in attempts for r in point.get('attempts',[])]
+    if records and not (stage or {}).get('stop_reason','').endswith('budget_exhausted'):
+        reasons=Counter(r.get('reason','unknown') for r in records);parts=Counter()
+        for row in records:
+            checks=[*row.get('endpoint_checks',[]),*row.get('rejections',[]),row.get('diagnostic',{})]
+            for check in checks:
+                if check.get('blocking_robot_part'):
+                    parts[check['blocking_robot_part']+' / '+str(check.get('blocking_surface'))]+=1
+        explanation=f'{len(records)} candidate attempts: '+', '.join(f'{k}: {v}' for k,v in reasons.most_common(4))+'.'
+        if parts:explanation+=' Predicted overlaps: '+', '.join(f'{k} ({v} reports)' for k,v in parts.most_common(3))+'.'
+        return explanation+' These are planning predictions; physical feasibility is not disproved.'
     if stage:
         return (f"{stage['stage'].replace('_',' ')}: {stage.get('elapsed_seconds',0):.2f}s elapsed; "
             f"{stage.get('effective_seconds',0):.2f}s local allowance; "
             f"{stage.get('remaining_skill_seconds',0):.2f}s left in the whole skill. "
             'An incomplete search does not establish that the motion is impossible.')
-    attempts=diagnostic.get('point_attempts',[])
     if attempts:
         counts=Counter(a.get('reason','unknown') for a in attempts)
-        if set(counts)=={'wrong_side_contact'}:
-            return f'Contact selection: all {len(attempts)} sampled points have a surface normal incompatible with the requested push direction. No robot motion was issued.'
         return 'Contact candidates: '+', '.join(f'{key}: {value}' for key,value in counts.items())+'.'
     return None
 

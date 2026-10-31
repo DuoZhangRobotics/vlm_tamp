@@ -234,7 +234,7 @@ def operation_schemas(image_sizes=None):
     definitions = {
         'compare_surface_geometry': ('Compare two currently measured surfaces, including different parts. Returns relative plane angles and offsets; no motion or native goal threshold is supplied.',
             parameters({'first_id':text,'second_id':text},['first_id','second_id'])),
-        'push': ('Acquire contact and push in simulation. Controlled contact strokes execute using physical feedback; predicted scene contact and uncertain object tracking do not veto them. A world distance commands hand travel, as one stroke by default. Free approach planning retains the scene collision policy. preview=true issues no motion.',
+        'push': ('Acquire contact and push in simulation. Supply explicit direction_world or a signed associated joint_degrees increment, including for previews; no task direction is inferred from a surface normal. Controlled strokes use physical feedback; predicted scene contact and uncertain tracking do not veto them. Free approaches retain scene planning. preview=true issues no motion.',
             parameters({**contact_arguments,'mode':{'type':'string','enum':['controlled','push_and_release']},
                 'contact_surface':{'type':'string','enum':['fingertips','palm']},'withdrawal_distance_m':number(exclusiveMinimum=0)},['observation_id','camera','region_xyxy'])),
         'continue_push': ('Attempt a physical hand stroke in the supplied world direction. Reuse prior contact/target feedback when available; otherwise move from the current hand pose without acquiring a contact. Distance is commanded hand travel; uncertain object tracking does not veto motion. No hinge model, image region, contact search or preview is needed.',
@@ -244,7 +244,7 @@ def operation_schemas(image_sizes=None):
                 'stroke_plan_seconds':nullable(number(exclusiveMinimum=0)),
                 'budget_seconds':number(minimum=.001,maximum=1800),
                 'max_ineffective_strokes':{'type':'integer','minimum':1}},['direction_world','distance_m'])),
-        'hook_pull': ('Catch an observed retaining feature without pinching; test engagement and pull with feedback. A flat surface is not a hook.',
+        'hook_pull': ('Catch an observed retaining feature without pinching; supply an explicit world direction or signed associated joint increment. Test engagement and pull with feedback. A flat surface is not assumed to be a hook.',
             parameters(contact_arguments,['observation_id','camera','region_xyxy'])),
         'reset': ('Reset the supplied episode and return current sensor observations.', parameters()),
         'observe': ('Read current RGB-D and robot state without motion.', parameters()),
@@ -312,8 +312,26 @@ def operation_schemas(image_sizes=None):
         'finish': ('Finish only when the active episode policy permits; never fabricates success.', parameters({'claim': {'enum': ['completed', 'incomplete', 'uncertain']}, 'reason': {'type': 'string'}, 'check_id': nullable(text)})),
     }
     definitions['push_stroke']=('Move the current hand in a world direction for the requested distance, using physical execution feedback. Requires only reset, direction and distance: no prior push, target region, object model or contact search. Retains current gripper aperture. Reports measured hand motion, physical stalls and native task success; object motion is separate when a target was previously associated.',definitions['continue_push'][1])
+    for operation in ('push','hook_pull'):
+        definitions[operation][1]['anyOf']=[
+            {'required':['direction_world'],'properties':{'direction_world':array(3)}},
+            {'required':['joint_degrees'],'properties':{'joint_degrees':number()}}]
     return {name: {'type': 'function', 'function': {'name': name, 'description': description, 'parameters': schema}}
             for name, (description, schema) in definitions.items()}
+
+
+def require_motion_intent(operation,arguments):
+    if not isinstance(arguments,dict) or operation not in {'push','hook_pull'}:return
+    world=arguments.get('direction_world') is not None
+    joint=arguments.get('joint_degrees') is not None
+    if not world and not joint:
+        raise RequestValidationError(operation,'motion','motion_direction_required',
+            'Supply direction_world or a signed joint_degrees increment, including for previews. '
+            'A surface normal describes contact geometry; it does not identify the task direction. '
+            'select_surface_contact can measure a point/normal without motion.')
+    if world and joint:
+        raise RequestValidationError(operation,'motion','ambiguous_motion_direction',
+            'Choose direction_world or joint_degrees, not both.')
 
 
 def reject_nonfinite(value, operation, field='arguments'):
@@ -333,6 +351,7 @@ def validate_operation(operation, arguments, image_sizes=None):
     if not isinstance(operation, str) or operation not in schemas:
         raise RequestValidationError(str(operation), 'operation', 'unknown_operation', 'Use a documented operation name without parentheses; see tools.txt.')
     reject_nonfinite(arguments, operation)
+    require_motion_intent(operation,arguments)
     errors = list(jsonschema.Draft202012Validator(schemas[operation]['function']['parameters']).iter_errors(arguments))
     if errors:
         error = errors[0]
@@ -343,6 +362,19 @@ def validate_operation(operation, arguments, image_sizes=None):
         raise RequestValidationError(operation, field, 'schema_mismatch', message[:1000])
     if operation == 'ground':
         validate_ground_regions(arguments['regions'], image_sizes=image_sizes, schema_checked=True)
+    if operation in {'push','hook_pull','select_surface_contact'}:
+        if image_sizes and arguments['camera'] not in image_sizes:
+            raise RequestValidationError(operation,'camera','unknown_camera','Choose a camera in the current capture')
+        for key in ['region_xyxy','target_region_xyxy']:
+            if arguments.get(key) is None:continue
+            left,top,right,bottom=arguments[key]
+            if not(left<right and top<bottom):
+                raise RequestValidationError(operation,key,'inverted_or_empty_box','Use a positive-area box in original camera pixels')
+            if image_sizes:
+                size=image_sizes[arguments['camera']]
+                if not(0<=left<right<=size['width'] and 0<=top<bottom<=size['height']):
+                    raise RequestValidationError(operation,key,'pixel_out_of_bounds',
+                        f"Region {arguments[key]} is outside {arguments['camera']} ({size['width']}×{size['height']}). Use original camera pixels, not overview or resized-display coordinates.")
     if operation == 'refresh_contact':
         if image_sizes and arguments['camera'] not in image_sizes:
             raise RequestValidationError(operation,'camera','unknown_camera','Choose a camera in the current capture')

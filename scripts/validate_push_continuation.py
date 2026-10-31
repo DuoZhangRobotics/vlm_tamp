@@ -104,7 +104,7 @@ def run(source,output,repetitions=3):
             if not result.get('preview_reused'):raise ValueError('Identical preview was not reused')
             for _ in range(2):
                 if not result.get('continue_push_available'):raise ValueError('No retained contact after acquisition/continuation')
-                result=call('continue_push',{'direction_world':result['continuation']['suggested_direction_world'],
+                result=call('continue_push',{'direction_world':result['continuation']['reference_direction_world'],
                     'distance_m':.03,'budget_seconds':60.})
             continued=[r for r in row['steps'] if r['operation']=='continue_push']
             row['continuation_passed']=len(continued)==2 and all(r['full_scene_builds']==r['contact_searches']==0

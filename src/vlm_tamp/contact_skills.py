@@ -63,7 +63,7 @@ def region_points(cameras,metadata,camera,box,occupied=None):
 
 
 def hook_feature(points,direction,cameras=None):
-    """Require a resolved slender, non-planar feature and its rear surface.
+    """Require a resolved non-planar feature and its observed retaining surface.
 
     This v1 detects observed bars/lips; an arbitrary panel edge with an unseen
     reverse surface is unresolved, not an invented hookable opening.
@@ -72,8 +72,14 @@ def hook_feature(points,direction,cameras=None):
     _,_,basis=np.linalg.svd(points-center,full_matrices=False)
     extents=np.ptp(np.quantile((points-center)@basis.T,[.05,.95],axis=0),axis=0)
     shape={'extent_m':extents.tolist(),'observed_points':len(points),
-           'source':'selected non-robot RGB-D endpoints','catch_verified':False}
-    if len(points)<20 or extents[0]<.025 or extents[1]>.07 or extents[2]<.004 or extents[0]<1.8*extents[1]:
+           'source':'selected non-robot RGB-D endpoints','catch_verified':False,
+           'aspect_ratio':float(extents[0]/max(extents[1],1e-12)),
+           'aspect_ratio_is_admission_gate':False}
+    checks=[('observed_points',len(points),20,'minimum'),('long_extent_m',extents[0],.025,'minimum'),
+        ('width_m',extents[1],.07,'maximum'),('thickness_m',extents[2],.004,'minimum')]
+    shape['failed_checks']=[{'quantity':key,'actual':float(value),'limit':limit,'comparison':comparison}
+        for key,value,limit,comparison in checks if (value<limit if comparison=='minimum' else value>limit)]
+    if shape['failed_checks']:
         raise SkillStop('no_hookable_feature',feature=shape)
     d=unit(direction);projection=(points-center)@d
     rear=points[projection<=np.quantile(projection,.15)]
@@ -121,6 +127,8 @@ def projected_surface_membership(points,view,region,origin,normal):
 
 def build_contact_scene(cameras,metadata,chain,camera,region,target_region,contact_surface,
                         direction=None,joint_degrees=None,joint_scene=None,*,skill_kind='push',observed=None):
+    if direction is None and joint_degrees is None:
+        raise SkillStop('motion_direction_required',explanation='Contact geometry does not specify task intent; provide a world direction or signed associated joint increment.')
     base,patch=contact_snapshot(cameras,metadata,camera,region,chain,radius_m=.035,observed=observed)
     occupied=np.vstack([base.static_points,base.contact_reference])
     selected=region_points(cameras,metadata,camera,region,occupied)
@@ -191,7 +199,7 @@ def build_contact_scene(cameras,metadata,chain,camera,region,target_region,conta
         if distance>.015:raise SkillStop('target_joint_association_failed',distance_m=distance,maximum_m=.015)
         associated=True;target=np.asarray(joint_scene.moving_reference)
         direction=np.sign(joint_degrees)*np.cross(joint_scene.axis,origin-joint_scene.origin)
-    d=unit(direction if direction is not None else -normal)
+    d=unit(direction)
     spec=copy.deepcopy(joint_scene.spec) if associated else {
         'joint_origin_world_m':origin.tolist(),'joint_axis_world':[0,0,1],
         'front_plane':{'point_world_m':origin.tolist()},'panel_normal_world':normal.tolist()}
@@ -492,7 +500,7 @@ def current_contact_candidate(metadata,scene,direction,contact_surface,kind):
     tcp=pose_matrix(metadata['eef_pose_world_xyzw']);tree=cKDTree(scene.contact_reference)
     candidates=[]
     for contact in contact_landmarks(metadata,contact_surface,hook=kind=='hook_pull'):
-        if (tcp[:3,:3]@contact['normal'])@unit(direction)<.1:continue
+        if kind!='push' and (tcp[:3,:3]@contact['normal'])@unit(direction)<.1:continue
         point=tcp[:3,3]+tcp[:3,:3]@contact['point'];distance,index=tree.query(point)
         if distance<=.006:candidates.append((distance,contact,scene.contact_reference[index]))
     if not candidates:return None
@@ -620,20 +628,36 @@ def _plan_contact_at_point(ik,scene,record,metadata,evidence,selected,kind,budge
     started=time.perf_counter();timing=Counter();work=Counter();attempts=[];q=np.asarray(metadata['joint_positions'])
     approach_speed=float(getattr(scene,'skill_approach_speed_rad_s',.6))
     approach_hold=int(getattr(scene,'skill_approach_hold_steps',0))
+    physical_contact=kind=='push' and bool(getattr(scene,'skill_physical_contact_execution',False))
     budget.context={'attempts':attempts,'timing_seconds':timing,'search_work':work}
     point=np.asarray(evidence['point_world_m']);d=unit(evidence['direction_world']);normal=unit(evidence['normal_toward_camera_world'])
     if kind=='push' and d@(-normal)<.1:
         alignment={'force_alignment':float(d@(-normal)),'usual_compressive_alignment_minimum':.1,
-            'interpretation':'Requested motion points away from or nearly tangent to the estimated visible face.'}
-        if getattr(scene,'skill_collision_policy','veto')=='advisory':
-            evidence['surface_alignment_prediction']=alignment
-        else:raise SkillStop('wrong_side_contact',**alignment)
+            'execution_veto_applied':False,
+            'interpretation':'Requested motion points away from or nearly tangent to the estimated visible face. This is geometry evidence, not a task-direction judgment or a push veto.'}
+        evidence['surface_alignment_prediction']=alignment
     if kind=='hook_pull':
         point,feature=hook_feature(selected,d,cameras=getattr(scene,'skill_observed_cameras',None));evidence['hook_feature']=feature
         scene.contact_reference=scene.moving_reference[cKDTree(np.asarray([point])).query(scene.moving_reference)[0]<.035]
         if len(scene.contact_reference)<5:raise SkillStop('hook_back_surface_unobserved')
     if callable(maximum_approach_controls):maximum_approach_controls=maximum_approach_controls(point)
     current=pose_matrix(metadata['eef_pose_world_xyzw'])[:3,:3]
+    # A supported current push posture is an existing physical state, not a
+    # new approach proposal needing another scene-admission pass.
+    existing=current_contact_candidate(metadata,scene,d,evidence['contact_surface'],kind) if kind=='push' else None
+    if existing is not None:
+        empty=np.empty((0,7));contact=existing['contact']
+        evidence['point_world_m']=existing['point'].tolist()
+        if evidence['joint_associated']:
+            d=unit(scene.skill_joint_sign*np.cross(scene.axis,existing['point']-scene.origin))
+            evidence['direction_world']=d.tolist()
+        return {'path':np.vstack([q,q]),'references':empty,'free_references':empty,'insertion_references':empty,
+            'contact_local':contact['point'],'contact_world':existing['point'],'rotation':current,
+            'insertion_direction':d,'contact_name':contact['name'],'attempts':attempts,'candidate_index':None,
+            'timing_seconds':dict(timing),'total_seconds':time.perf_counter()-started,
+            'predicted_contact_only':True,'reuse_existing_contact':True,'measured_surface_distance_m':existing['distance_m'],
+            'native_contact_policy':{'planning_scope':'measured current hand posture; no new approach',
+                'scene_admission_performed':False,'physical_contact_verified':False}}
     setup_started=time.perf_counter()
     advisory=getattr(scene,'skill_collision_policy','veto')=='advisory'
     planning_scene=robot_only_planning_scene(scene) if advisory else scene
@@ -645,7 +669,7 @@ def _plan_contact_at_point(ik,scene,record,metadata,evidence,selected,kind,budge
         timing['scene_context_setup_seconds']+=time.perf_counter()-setup_started
         initial=context.validate(q)
         if not initial['accepted']:raise SkillStop('start_configuration_blocked',diagnostic=initial)
-        existing=current_contact_candidate(metadata,scene,d,evidence['contact_surface'],kind)
+        existing=current_contact_candidate(metadata,scene,d,evidence['contact_surface'],kind) if kind=='hook_pull' else None
         if existing is not None:
             empty=np.empty((0,7));contact=existing['contact']
             evidence['point_world_m']=existing['point'].tolist()
@@ -671,7 +695,9 @@ def _plan_contact_at_point(ik,scene,record,metadata,evidence,selected,kind,budge
             else:
                 began=time.perf_counter();endpoints=ik.solve_many(matrix_pose(target),q,maximum=8)
                 timing['ik_seconds']+=time.perf_counter()-began;work['target_ik_queries']+=1;budget.check()
-                check_started=time.perf_counter();endpoint_checks=[context.validate(s['joints']) for s in endpoints]
+                check_started=time.perf_counter()
+                endpoint_checks=([{'accepted':True,'scope':'robot-valid IK; contact resolved during physical insertion'} for _ in endpoints]
+                    if physical_contact else [context.validate(s['joints']) for s in endpoints])
                 timing['goal_collision_checks_seconds']+=time.perf_counter()-check_started
                 first=index;target_cache[key]=(endpoints,endpoint_checks,first)
             if not any(e['accepted'] for e in endpoint_checks):
@@ -697,7 +723,10 @@ def _plan_contact_at_point(ik,scene,record,metadata,evidence,selected,kind,budge
                 if not result.get('exact_solution'):
                     attempts.append({'candidate':index,'reason':'approach_search_incomplete','diagnostic':result});continue
                 try:
-                    insert=cartesian_path(ik,scene,record,metadata,goal,matrix_pose(target),budget,timing=timing)
+                    insertion_scene=copy.copy(scene) if physical_contact else scene
+                    if physical_contact:insertion_scene.skill_collision_policy='advisory'
+                    insert=cartesian_path(ik,insertion_scene,record,metadata,goal,matrix_pose(target),budget,
+                        timing=timing,allow_partial=physical_contact)
                 except SkillStop as error:
                     if error.reason=='budget_exhausted':raise
                     attempts.append({'candidate':index,'reason':error.reason,**error.evidence});continue
@@ -715,6 +744,7 @@ def _plan_contact_at_point(ik,scene,record,metadata,evidence,selected,kind,budge
                     'standoff_tcp_pose_world_xyzw':matrix_pose(standoff),
                     'contact_world':point,'rotation':target[:3,:3],'insertion_direction':approach,
                     'approach_selection':approach_selection,
+                    'contact_insertion_policy':'physical_execution_feedback' if physical_contact else 'planned_contact',
                     'contact_name':contact['name'],'attempts':attempts,'candidate_index':index,
                     'timing_seconds':dict(timing),'search_work':dict(work),'total_seconds':time.perf_counter()-started,
                     'predicted_contact_only':True,'native_contact_policy':context.record}

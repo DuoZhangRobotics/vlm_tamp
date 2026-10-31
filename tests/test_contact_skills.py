@@ -87,7 +87,7 @@ def test_world_push_keeps_thin_selected_surface_in_contact_role_and_background_s
     monkeypatch.setattr(module,'RobotVolumes',lambda *a,**k:None)
     camera={'camera_to_world':np.eye(4),'intrinsic':np.array([[100.,0,50],[0,100,50],[0,0,1]])}
     metadata={'joint_positions':[0.]*7,'robot_collision_volumes_world':[]}
-    scene,_,_=module.build_contact_scene({'test':camera},metadata,None,'test',[45,45,55,55],None,'fingertips')
+    scene,_,_=module.build_contact_scene({'test':camera},metadata,None,'test',[45,45,55,55],None,'fingertips',[0.,0,1.])
     assert np.any(np.all(scene.contact_reference==rear,axis=1))
     assert np.any(np.all(scene.moving_reference==rear,axis=1))
     assert np.array_equal(scene.static_points,background[None])
@@ -188,7 +188,7 @@ def test_expired_budget_and_stale_observation_do_not_issue_motion():
     with pytest.raises(SkillStop,match='budget_exhausted'):Budget(0).check()
     service=SimpleNamespace(sim=object(),latest_observation={'observation_id':2,'control_steps':20},state={'control_steps':20})
     with pytest.raises(ValueError,match='latest observation_id'):
-        run_skill(service,'push',observation_id=1,camera='agentview',region_xyxy=[1,1,10,10])
+        run_skill(service,'push',observation_id=1,camera='agentview',region_xyxy=[1,1,10,10],direction_world=[1.,0,0])
 
 
 @pytest.mark.parametrize('total',[20.,30.,45.,120.])
@@ -230,7 +230,7 @@ def test_failed_planning_keeps_its_stage_timing_and_distinguishes_parent_deadlin
 
 
 def test_public_schemas_accept_contact_skills_and_reject_poses():
-    args={'observation_id':1,'camera':'agentview','region_xyxy':[1,1,10,10],'preview':True}
+    args={'observation_id':1,'camera':'agentview','region_xyxy':[1,1,10,10],'direction_world':[1.,0,0],'preview':True}
     validate_operation('push',args)
     validate_operation('hook_pull',{**args,'direction_world':[1,0,0]})
     with pytest.raises(ValueError):validate_operation('push',{**args,'pose_world_xyzw':[0]*7})

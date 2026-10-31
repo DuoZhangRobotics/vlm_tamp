@@ -68,7 +68,9 @@ def contact_summary(context):
     if context is None:return {'available':False}
     return {'available':True,'contact_id':context['contact_id'],'control_step':context['control_step'],
         'robot_contact_surface':context['contact_name'],'contact_surface':context['contact_surface'],
-        'suggested_direction_world':context['direction_world'].tolist(),
+        'reference_direction_world':context['direction_world'].tolist(),
+        'direction_semantics':'Previous requested direction transported by measured part rotation when available; not a task-goal recommendation.',
+        'task_direction_verified':False,
         'contact_speed_m_s':context['contact_speed_m_s'],'last_stroke_length_m':context['stroke_length_m'],
         'default_continuation':'one requested stroke','ineffective_strokes':context.get('ineffective_strokes',0),
         'object_pose_current':context.get('object_pose_current',True),

@@ -1,5 +1,8 @@
 # Physical push execution
 
+The later explicit-direction contract and acquisition corrections are documented
+in [contact_intent_20261031.md](contact_intent_20261031.md).
+
 The user explicitly authorized simulation pushes to be attempted rather than
 rejected by uncertain scene/contact predictions, including 10 cm requests. This
 supersedes the previous controlled-push collision/visual-admission behavior.

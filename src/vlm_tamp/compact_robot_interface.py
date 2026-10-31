@@ -51,6 +51,10 @@ target-acquisition failure. It does not claim the hand is touching an object.
 push/hook_pull execute by default; preview=true has no motion. An unchanged
 preview is reused by execution. After push returns continue_push_available=true,
 continue_push(direction_world, distance_m) reuses the contact and scene directly.
+Targeted push/hook_pull require an explicit world direction or signed associated
+joint increment, including previews. Surface normals do not specify task intent.
+reference_direction_world is a geometric reference, not a recommendation about
+the task. Measured motion along a request can still move away from the goal.
 No new region, hinge model or preview is needed. Distance is the commanded hand
 stroke, executed as one stroke by default; measured object motion is separate.
 Other arm/gripper motion clears target association; push_stroke remains available.
@@ -193,7 +197,8 @@ def compact_response(response):
             'continue_push_available','next_operation','grasp_scene_refresh_required','scene_refresh_scope',
             'commanded_contact_distance_m','measured_contact_progress_m','contact_progress_error_m','stroke_distance_tolerance_m','hand_travel_shortfall_m',
             'robot_motion_executed','requested_contact_speed_m_s','requested_distance_m','requested_joint_degrees',
-            'observed_progress','progress_units','contact','momentum','report','images','timing_seconds',
+            'measured_object_motion_along_request','progress_units','motion_measurement_scope','direction_source','task_direction_verified',
+            'contact','momentum','report','images','timing_seconds',
             'observed_joint_change_degrees','observed_joint_change_source','progress_measured_at_control_step',
             'estimated_approach_control_steps','estimated_approach_simulation_seconds','remaining_skill_seconds',
             'scene_refresh_required','next_geometry_interfaces','retained_scene_reference_control_step','feedback_cameras',
