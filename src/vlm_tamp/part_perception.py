@@ -10,6 +10,7 @@ import time
 import numpy as np
 
 from .rigid_hinge_tracking import robot_mask
+from .rekep_libero.geometry import transform_points
 from .rekep_libero.target_region_v3 import visible_projected_points
 
 
@@ -21,6 +22,46 @@ def usable_pixels(view):
 def box_of(mask):
     y,x=np.where(mask)
     return [int(x.min()),int(y.min()),int(x.max()),int(y.max())] if len(x) else None
+
+
+def region_mask(view, region, selected_mask=None):
+    """One original-pixel selection convention for surface and skill tools."""
+    height,width=np.asarray(view['world_points']).shape[:2]
+    if region is None:
+        region=box_of(selected_mask) if selected_mask is not None else None
+    box=np.asarray(region,float)
+    if box.shape!=(4,) or not np.isfinite(box).all() or not (
+            0<=box[0]<box[2]<=width and 0<=box[1]<box[3]<=height):
+        raise ValueError(f'Select a bounded region in the original {width}x{height} image, or a current part mask')
+    y,x=np.indices((height,width))
+    selected=(x>=box[0])&(x<=box[2])&(y>=box[1])&(y<=box[3])
+    if selected_mask is not None:
+        mask=np.asarray(selected_mask,bool)
+        if mask.shape!=selected.shape:raise ValueError('Part mask must match the selected camera image')
+        selected &= mask
+    return selected,box.tolist()
+
+
+def projected_selection(points, camera, rectangle, selected_mask=None, *, padding_pixels=3):
+    """Associate observed endpoints with a selected image region, without filling it."""
+    optical = transform_points(points, np.linalg.inv(np.asarray(camera['camera_to_world'])))
+    valid = optical[:, 2] > 0
+    pixels = np.full((len(points), 2), -1., float)
+    image = optical[valid]@np.asarray(camera['intrinsic']).T
+    pixels[valid] = image[:, :2]/image[:, 2:3]
+    x0, y0, x1, y1 = rectangle
+    valid &= ((pixels[:, 0]>=x0-padding_pixels)&(pixels[:, 0]<=x1+padding_pixels)
+              &(pixels[:, 1]>=y0-padding_pixels)&(pixels[:, 1]<=y1+padding_pixels))
+    if selected_mask is not None:
+        mask = np.asarray(selected_mask, bool)
+        if mask.shape != np.asarray(camera['world_points']).shape[:2]:
+            raise ValueError('Selected contact mask must match its current camera image')
+        xy = np.rint(pixels).astype(int)
+        valid &= ((xy[:, 0]>=0)&(xy[:, 0]<mask.shape[1])
+                  &(xy[:, 1]>=0)&(xy[:, 1]<mask.shape[0]))
+        indices = np.flatnonzero(valid)
+        valid[indices] &= mask[xy[indices, 1], xy[indices, 0]]
+    return valid
 
 
 def association(points,view):

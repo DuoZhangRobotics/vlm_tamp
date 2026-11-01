@@ -45,14 +45,20 @@ part is updated from RGB-D motion feedback. This does not certify unseen changes
 elsewhere in the scene. Initial region selection is for acquisition, not something
 you must repeat for each small continuation.
 
-- push(observation_id, camera, region_xyxy, target_region_xyxy=null,
+- push(observation_id, camera, region_xyxy=null, target_region_xyxy=null,
   direction_world=null, distance_m=0.03, joint_degrees=null,
   joint_model_epoch=null, mode="controlled", contact_speed_m_s=0.03,
   contact_surface="fingertips", preview=false, budget_seconds=120,
   collision_policy="veto", approach_speed_rad_s=0.6, stroke_length_m=null,
-  search_seconds=null, stroke_plan_seconds=null, max_ineffective_strokes=2):
+  search_seconds=null, stroke_plan_seconds=null, max_ineffective_strokes=2,
+  moving_part_id=null, contact_part_id=null):
   Select the CURRENT contact region and, preferably, a larger region on the SAME
-  moving part for visual feedback. Boxes use original pixels. A world direction
+  moving part for visual feedback. Boxes use original pixels. Alternatively,
+  use current segment_parts masks: moving_part_id
+  identifies the moving part and contact_part_id selects a contact feature.
+  Reuse the same IDs used for grounding, in the same camera/current state.
+  With an ID, its box is supplied automatically when omitted; its mask remains
+  the selection throughout contact/target scene assembly. A world direction
   specifies the intended hand motion. Supply either direction_world or
   joint_degrees, including for previews; the tool never silently substitutes a
   surface normal for your task intent. select_surface_contact returns a measured
@@ -130,14 +136,16 @@ you must repeat for each small continuation.
   subsequent stroke plans, capped by the remaining skill/episode allowance.
   They do not shrink proportionally when you request a shorter whole-skill
   budget. You can override them explicitly.
-- hook_pull(observation_id, camera, region_xyxy, target_region_xyxy=null,
+- hook_pull(observation_id, camera, region_xyxy=null, target_region_xyxy=null,
   direction_world=null, distance_m=0.03, joint_degrees=null,
   joint_model_epoch=null, contact_speed_m_s=0.03, preview=false,
   budget_seconds=120, collision_policy="veto", approach_speed_rad_s=0.6, stroke_length_m=null,
-  search_seconds=null, stroke_plan_seconds=null, max_ineffective_strokes=2): catch a visibly resolved retaining bar/lip without
+  search_seconds=null, stroke_plan_seconds=null, max_ineffective_strokes=2,
+  moving_part_id=null, contact_part_id=null): catch a visibly resolved retaining bar/lip without
   pinching, test engagement with a small movement, then pull in bounded strokes.
   Select a retaining feature and desired pulling direction. Hook planning
-  searches observed geometry for a retaining posture across candidates,
+  accepts the same current part IDs and masks as push and ground.
+  It searches observed geometry for a retaining posture across candidates,
   using scene collision checks throughout the same contact-search budget.
   It requires observed thickness and a rear contact surface; unseen openings and
   arbitrary flat surfaces are not assumed hookable. Feature failures report the

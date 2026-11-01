@@ -245,3 +245,47 @@ assertions. Some NVML/proc driver queries stalled as well. This is an unresolved
 GPU/driver environment problem, not a new measured manipulation failure. No GPU
 reset, device permission change, or interruption of other users' jobs was made.
 Do not infer fresh-policy improvement from the recorded-input fitting repair.
+
+## Simplified selected-part pipeline
+
+The active path now reuses a selected current part through `ground`, `push`,
+`hook_pull` and `select_surface_contact`. Push/hook accept the same
+`moving_part_id`/`contact_part_id`; surface selection accepts `contact_part_id`.
+An ID can supply its box, so the actor does not have to select the same part
+again. A shared pixel-region extractor and projection function preserve the mask
+through contact points, target points, scene ownership and preview caching.
+Nearest-neighbor association previously could fill an explicitly excluded mask
+hole; its pixel selection now survives that association too. Continued strokes
+still reuse the measured contact/scene and do not resegment between strokes.
+
+Removed the wider-scene replacement-bar scan. It previously proposed other bars
+but never installed them, then failed anyway. There is now one handle fitter;
+it validates/refines the selected bar before using its anchor to compute a joint
+direction. A bad handle fit therefore remains a handle error and can preserve
+the separately usable door model. No alternate feature, grasp menu, retry policy,
+collision margin or extra trajectory validation was added.
+
+Surface selection now uses the existing articulation-retention helper, retaining
+both the model and its observed scene for later explicit pose updates. Simulator
+reset failure now reports a terminal infrastructure failure and records an
+interruption, with no native task outcome. Previously it left an uninitialized
+simulator labeled as an active episode and told Luna to keep trying.
+
+Validation: 231 core tests and 23 execution/report checks passed; five unavailable
+archived fixtures were skipped, and the
+unrelated OS-isolation integration test deselected. Recorded-input geometry and
+contact-scene checks for both closing states pass in
+`results/pipeline-selection-integration-20261031/index.html`. State17's original
+anchor/hinge/axis remain unchanged; state49's unchanged rectangle still fits at
+0.491 mm residual. The report includes mask-preserving contact scene counts.
+These checks execute no robot controls and make no task-success claim.
+
+The authorized fresh trials are queued by
+`tools/luna-simplified-closing-checks.service`. The launcher checks CUDA and a
+tiny EGL context every five minutes before starting an actor or episode clock.
+It then runs exactly closing17 and closing49, sequentially, with the existing
+600-control/1800-second limits and 16 GiB/no-swap resource monitoring. The unit
+can resume waiting after a user-service/server restart; a completed study exits
+without running again. Runtime source changes stop a queued study instead of
+silently testing different code. Interrupted physical trials are preserved.
+Page: `results/luna-simplified-pipeline-20261031/watch.html`.

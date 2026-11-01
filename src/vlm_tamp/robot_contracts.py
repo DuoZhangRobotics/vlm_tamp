@@ -8,7 +8,7 @@ import json
 import math
 from numbers import Real
 
-VERSION = 'robot-request-contract-v14'
+VERSION = 'robot-request-contract-v15'
 GROUND_FIELDS = ('camera', 'contact_box_xyxy', 'moving_panel_box_xyxy',
                  'hinge_pixels_xy', 'initial_image_direction_xy')
 GROUND_HELP = '''- ground(regions, moving_part_id=null, contact_part_id=null): fit a current upright door/joint hypothesis and optional vertical handle.
@@ -229,7 +229,8 @@ def operation_schemas(image_sizes=None):
     box = array(4, number(minimum=0))
     point = array(2, number(minimum=0))
     coordinates = {'type': 'array', 'items': point, 'minItems': 1}
-    contact_arguments={'observation_id':integer(0,2**31-1),'camera':text,'region_xyxy':box,
+    contact_arguments={'observation_id':integer(0,2**31-1),'camera':text,'region_xyxy':nullable(box),
+        'moving_part_id':nullable(text),'contact_part_id':nullable(text),
         'target_region_xyxy':nullable(box),'direction_world':nullable(array(3)),
         'distance_m':number(exclusiveMinimum=0),
         'joint_degrees':nullable(angle),
@@ -249,7 +250,7 @@ def operation_schemas(image_sizes=None):
             parameters({'first_id':text,'second_id':text},['first_id','second_id'])),
         'push': ('Acquire contact and push in simulation. Supply explicit direction_world or a signed associated joint_degrees increment, including for previews; no task direction is inferred from a surface normal. Controlled strokes use physical feedback; predicted scene contact and uncertain tracking do not veto them. Free approaches retain scene planning. preview=true issues no motion.',
             parameters({**contact_arguments,'mode':{'type':'string','enum':['controlled','push_and_release']},
-                'contact_surface':{'type':'string','enum':['fingertips','palm']},'withdrawal_distance_m':number(exclusiveMinimum=0)},['observation_id','camera','region_xyxy'])),
+                'contact_surface':{'type':'string','enum':['fingertips','palm']},'withdrawal_distance_m':number(exclusiveMinimum=0)},['observation_id','camera'])),
         'continue_push': ('Attempt a physical hand stroke in the supplied world direction. Reuse prior contact/target feedback when available; otherwise move from the current hand pose without acquiring a contact. Distance is commanded hand travel; uncertain object tracking does not veto motion. No hinge model, image region, contact search or preview is needed.',
             parameters({'direction_world':array(3),'distance_m':number(exclusiveMinimum=0),
                 'contact_speed_m_s':nullable(number(exclusiveMinimum=0)),
@@ -258,7 +259,7 @@ def operation_schemas(image_sizes=None):
                 'budget_seconds':number(minimum=.001,maximum=1800),
                 'max_ineffective_strokes':{'type':'integer','minimum':1}},['direction_world','distance_m'])),
         'hook_pull': ('Catch an observed retaining feature without pinching; supply an explicit world direction or signed associated joint increment. Test engagement and pull with feedback. A flat surface is not assumed to be a hook.',
-            parameters(contact_arguments,['observation_id','camera','region_xyxy'])),
+            parameters(contact_arguments,['observation_id','camera'])),
         'reset': ('Reset the supplied episode and return current sensor observations.', parameters()),
         'observe': ('Read current RGB-D and robot state without motion.', parameters()),
         'motion_settings': ('Read effective motion, collision, numerical and control-budget settings without motion.',parameters()),
@@ -317,7 +318,7 @@ def operation_schemas(image_sizes=None):
         'plan_sequence': ('Plan a small GraspGen-only approach; retain the signed manipulation request for fresh planning after measured closure.', parameters({'degrees': angle, 'max_candidates': candidates, 'seed': seed, 'grasp_constraint': grasp,
             'speed':speed,'approach_speed':speed,'hold':{'type':'integer','minimum':0},'close_steps':{'type':'integer','minimum':1},'budget_seconds':number(exclusiveMinimum=0,maximum=1800),'collision_policy':policy}, ['degrees'])),
         'execute_sequence': ('Execute a prepared sequence with the documented gripper stages.', parameters({'plan_id': text, 'close_steps': {'type':'integer','minimum':1}, 'speed': speed, 'approach_speed':speed, 'hold': {'type':'integer','minimum':0}, 'manipulation_gripper': {'type': 'integer', 'enum': [0, 1]},'feedback_degrees':number(exclusiveMinimum=0),'calibrate_joint':{'type':'boolean'},'open_steps':{'type':'integer','minimum':1}}, ['plan_id'])),
-        'select_surface_contact': ('Select a current observed surface patch; no grasp or hinge assumption.', parameters({'camera': text, 'region_xyxy': box, 'radius_m': number(minimum=.005, maximum=.04)}, ['camera', 'region_xyxy'])),
+        'select_surface_contact': ('Select a current observed surface patch using a region or contact_part_id; no grasp or hinge assumption.', parameters({'camera': text, 'region_xyxy': nullable(box), 'contact_part_id':nullable(text), 'radius_m': number(minimum=.005, maximum=.04)}, ['camera'])),
         'practice_status': ('Read the granted practice budget and learning phase.', parameters()),
         'request_attempts': ('Request more practice within the existing hard cap with your findings and next tests.', parameters({'learned': text, 'next_experiments': {'type': 'array', 'items': text, 'minItems': 1, 'maxItems': 5}}, ['learned', 'next_experiments'])),
         'dino_landmarks': ('Find optional image-feature candidates; no semantic or motion guarantee.', parameters({'camera': text, 'region_xyxy': nullable(box), 'count': integer(1, 32)})),
@@ -380,6 +381,8 @@ def validate_operation(operation, arguments, image_sizes=None):
     if operation == 'ground':
         validate_ground_regions(arguments['regions'], image_sizes=image_sizes, schema_checked=True)
     if operation in {'push','hook_pull','select_surface_contact'}:
+        if arguments.get('region_xyxy') is None and not any(arguments.get(k) for k in ['contact_part_id','moving_part_id']):
+            raise RequestValidationError(operation,'region_xyxy','selection_required','Supply an original-pixel region or a current selected part ID')
         if image_sizes and arguments['camera'] not in image_sizes:
             raise RequestValidationError(operation,'camera','unknown_camera','Choose a camera in the current capture')
         for key in ['region_xyxy','target_region_xyxy']:

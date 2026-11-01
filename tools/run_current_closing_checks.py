@@ -16,6 +16,24 @@ from run_restriction_study import source_hashes
 _last_publish=0.
 
 
+def gpu_ready():
+    """Test startup before paying for an actor or consuming an episode budget."""
+    probes=[('CUDA',sys.executable,
+        'import ctypes,sys; c=ctypes.CDLL("libcuda.so.1").cuInit(0); print("CUDA initialization",c,flush=True); sys.exit(0 if c==0 else 1)'),
+        ('EGL',os.environ['VLM_TAMP_SIM_PYTHON'],
+        'import mujoco; c=mujoco.GLContext(16,16); c.make_current(); print("EGL context ready",flush=True); c.free()')]
+    for stage,python,code in probes:
+        try:
+            result=subprocess.run([python,'-u','-c',code],env=os.environ.copy(),
+                stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=30)
+        except subprocess.TimeoutExpired:
+            return {'ready':False,'stage':stage,'reason':'Initialization timed out; probe stopped','checked_at':time.time()}
+        if result.returncode:
+            return {'ready':False,'stage':stage,'reason':result.stdout[-1500:],
+                'returncode':result.returncode,'checked_at':time.time()}
+    return {'ready':True,'checked_at':time.time()}
+
+
 def render(study,force=False):
     """Read child reports without two publishers writing the same detail file."""
     global _last_publish
@@ -44,6 +62,10 @@ def render(study,force=False):
 <h1>Current-code closing checks</h1><p>Fresh Luna/high, no inherited memory, 600 controls per episode. Two trials only.</p>
 <p><button onclick="location.reload()">Refresh overview</button> No automatic page reload.</p>'''
     text+=f'<p>{len(done)} / 2 completed; {sum(bool(r.get("official_task_success")) for r in done.values())} native successes.</p>'
+    if manifest.get('phase')=='waiting_for_gpu':
+        readiness=read_json(study/'gpu-readiness.json') if (study/'gpu-readiness.json').exists() else {}
+        text+='<p>Waiting for GPU initialization. No Luna episode is running. Checks every five minutes; the two trials start automatically after CUDA and EGL initialize.</p>'
+        if readiness.get('reason'):text+='<p>Last result: '+html.escape(readiness['reason'])+'</p>'
     if manifest.get('problem'):text+='<p>Stopped: '+html.escape(manifest['problem']['reason'])+'</p>'
     text+='<div class="scroll"><table><tr><th>Case</th><th>Outcome</th><th>Controls</th><th>Total seconds</th><th>Robot tools</th><th>Luna/transport/analysis</th><th>Inspect</th></tr>'+''.join(rows)+'</table></div>'
     text+=''.join(health)+''.join(videos)
@@ -53,7 +75,8 @@ def render(study,force=False):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--study',type=Path,default=ROOT/'results/luna-current-closing-checks-20261031')
-    study=parser.parse_args().study.resolve()
+    parser.add_argument('--wait-for-gpu',action='store_true')
+    args=parser.parse_args();study=args.study.resolve()
     existing=study.exists()
     study.mkdir(exist_ok=True);(study/'trials').mkdir(exist_ok=True)
     cases=[(17,1),(49,2)]
@@ -65,15 +88,26 @@ def main():
         'plan':{'baseline':entries,'transfer':[],'model':'gpt-6-luna','reasoning':'high',
             'control_steps':600,'episode_seconds':1800,'clean_start':True,'prior_notebooks_supplied':False}}
     if existing:
-        if manifest['source_sha256']!=frozen:raise RuntimeError('Runtime changed before continuation')
-        if not manifest['completed_runs']:raise RuntimeError('Preserve an unfinished trial; do not restart it automatically')
         if manifest.get('completed'):return
+        if manifest['source_sha256']!=frozen:raise RuntimeError('Runtime changed before continuation')
+        if not manifest['completed_runs'] and manifest.get('phase')!='waiting_for_gpu':raise RuntimeError('Preserve an unfinished trial; do not restart it automatically')
     manifest.pop('problem',None)
     write_json(study/'study-manifest.json',manifest);write_json(study/'plan.json',manifest['plan'])
     supervisor={'pid':os.getpid(),'status':'running','started_at':time.time()}
     write_json(study/'supervisor-state.json',supervisor)
     child=None
     try:
+        if args.wait_for_gpu:
+            manifest.update(phase='waiting_for_gpu',active_run=None)
+            write_json(study/'study-manifest.json',manifest);render(study,force=True)
+            while True:
+                if source_hashes()!=frozen:raise RuntimeError('Runtime changed while queued; preserve this study instead of mixing versions')
+                readiness=gpu_ready();write_json(study/'gpu-readiness.json',readiness);render(study,force=True)
+                if readiness['ready']:break
+                # Background launcher only; there is no actor, robot motion or
+                # episode deadline while the shared GPU is unavailable.
+                for _ in range(30):time.sleep(10)
+            manifest['phase']='baseline';write_json(study/'study-manifest.json',manifest)
         for entry in entries:
             if entry['run'] in {r['run'] for r in manifest['completed_runs']}:continue
             if source_hashes()!=frozen:raise RuntimeError('Current runtime changed; stop without mixing versions')

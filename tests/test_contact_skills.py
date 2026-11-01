@@ -108,7 +108,7 @@ def test_world_push_keeps_thin_selected_surface_in_contact_role_and_background_s
     monkeypatch.setattr(module,'RobotVolumes',lambda *a,**k:None)
     camera={'camera_to_world':np.eye(4),'intrinsic':np.array([[100.,0,50],[0,100,50],[0,0,1]])}
     metadata={'joint_positions':[0.]*7,'robot_collision_volumes_world':[]}
-    scene,_,_=module.build_contact_scene({'test':camera},metadata,None,'test',[45,45,55,55],None,'fingertips',[0.,0,1.])
+    scene,_,_=module.build_contact_scene({'test':camera},metadata,None,'test',[45,45,55,55],None,'fingertips',[0.,0,1.],observed=(occupied,{}))
     assert np.any(np.all(scene.contact_reference==rear,axis=1))
     assert np.any(np.all(scene.moving_reference==rear,axis=1))
     assert np.array_equal(scene.static_points,background[None])

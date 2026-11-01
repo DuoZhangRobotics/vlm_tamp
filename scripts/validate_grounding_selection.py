@@ -61,6 +61,18 @@ def run(output):
                 draw.text((w+8,h+6),f'Observed handle fit: {evidence["cylinder_robust_residual_m"]*1000:.3f} mm residual',fill='black')
                 picture.save(output/f'state{state:03d}.png')
         previous=old['response'].get('result',{}).get('fit_diagnostics',old['response'].get('planning_diagnostic',{}))
+        from vlm_tamp.contact_skills import build_contact_scene
+        from vlm_tamp.part_perception import box_of,projected_selection
+        from vlm_tamp.rekep_libero.robot_chain_v4 import RobotChain
+        chain=RobotChain(json.loads((root/'attempt01/robot-chain.json').read_text()))
+        box=box_of(mask);camera=cameras[choices['camera']]
+        scene,contact,_=build_contact_scene(cameras,metadata,chain,choices['camera'],box,box,
+            'fingertips',[1.,0.,0.],contact_mask=mask,target_mask=mask)
+        inside=projected_selection(scene.moving_reference,camera,box,mask,padding_pixels=0)
+        assert inside.all(), 'Contact scene must preserve the selected mask, including holes'
+        row['contact_scene']={'moving_points':len(scene.moving_reference),'static_points':len(scene.static_points),
+            'contact_points':len(scene.contact_reference),'all_moving_points_project_into_selected_mask':bool(inside.all()),
+            'evidence':contact,'planning_or_motion_performed':False}
         row.update(previous_ok=old['response']['ok'],previous_error=old['response'].get('error'),
             previous_residual_m=previous.get('cylinder_robust_residual_m',previous.get('radial_residual_m')))
         if state==17:

@@ -165,16 +165,16 @@ def test_contact_part_can_supply_its_box_without_new_pixel_selection(tmp_path,mo
 
 def test_selected_door_mask_is_preserved_in_the_planning_scene():
     from vlm_tamp.coupled_scene import moving_mask
-    x,z=np.meshgrid(np.linspace(-.04,.04,9),np.linspace(1.04,.96,9))
+    x,z=np.meshgrid(np.linspace(-.012,.012,9),np.linspace(1.012,.988,9))
     world=np.stack([x,np.zeros_like(x),z],axis=-1)
     transform=np.eye(4);transform[:3,:3]=np.array([[1,0,0],[0,0,1],[0,-1,0]])
     transform[:3,3]=[0,-1,1]
     camera={'world_points':world,'camera_to_world':transform,
-        'intrinsic':np.array([[100,0,4],[0,100,4],[0,0,1]])}
+        'intrinsic':np.array([[1/.003,0,4],[0,1/.003,4],[0,0,1]])}
     mask=np.ones((9,9),bool);mask[4,4]=False
     spec={'front_plane':{'point_world_m':[0,0,1]},'panel_normal_world':[0,-1,0],
         'joint_origin_world_m':[-.04,0,1],'joint_axis_world':[0,0,1],
         'generic_part_joint_model':True,'source_anchor_world_m':[0,0,1]}
     choices={'moving_panel_box_xyxy':[0,0,8,8],'panel_mask_selected':True}
-    points=np.array([[0,0,1],[.01,0,1],[0,-.2,1]])
+    points=np.array([[0,0,1],[.003,0,1],[0,-.2,1]])
     assert moving_mask(points,camera,spec,world[mask],mask,choices).tolist()==[False,True,False]

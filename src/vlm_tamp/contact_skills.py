@@ -18,9 +18,10 @@ from .coupled_scene import Scene,RobotVolumes
 from .mcvamp_contact_numerical import NativeScene
 from .rekep_libero.geometry import pose_matrix,matrix_pose,transform_points
 from .rekep_libero.scene_state_v7 import observed_points
-from .surface_contact_tools import contact_snapshot
+from .surface_contact_tools import contact_snapshot,selected_region_points
 from .timed_execution import schedule,schedule_contact
 from .contact_collision_evidence import current_collision_witness
+from .part_perception import projected_selection
 
 
 class SkillStop(Exception):
@@ -47,17 +48,10 @@ def unit(vector):
     return value/np.linalg.norm(value)
 
 
-def region_points(cameras,metadata,camera,box,occupied=None):
+def region_points(cameras,metadata,camera,box,occupied=None,selected_mask=None):
     if camera not in cameras:raise ValueError('Choose a current observed camera')
-    xyz=np.asarray(cameras[camera]['world_points']);h,w=xyz.shape[:2]
-    box=np.asarray(box,float)
-    if box.shape!=(4,) or not np.isfinite(box).all() or not 0<=box[0]<box[2]<w or not 0<=box[1]<box[3]<h:
-        raise ValueError('Region must use original image pixels inside the current image')
-    y,x=np.indices((h,w));mask=(x>=box[0])&(x<=box[2])&(y>=box[1])&(y<=box[3])&np.isfinite(xyz).all(2)
-    points=xyz[mask]
     if occupied is None:occupied,_=observed_points(cameras,metadata,spacing=.003)
-    if not len(points) or not len(occupied):raise SkillStop('insufficient_target_depth')
-    points=points[cKDTree(occupied).query(points,distance_upper_bound=np.nextafter(.0035,np.inf))[0]<=.0035]
+    points,_=selected_region_points(cameras[camera],box,occupied,selected_mask)
     if len(points)<12:raise SkillStop('insufficient_target_depth',supported_points=len(points))
     return points
 
@@ -107,7 +101,7 @@ def hook_feature(points,direction,cameras=None):
     return point,{**shape,'retaining_axis_world':basis[0].tolist(),'contact_world_m':point.tolist()}
 
 
-def projected_surface_membership(points,view,region,origin,normal):
+def projected_surface_membership(points,view,region,origin,normal,selected_mask=None):
     """Associate observed views with the caller's selected local surface.
 
     A nearest-neighbor match to one camera's samples leaves holes at view/voxel
@@ -115,30 +109,29 @@ def projected_surface_membership(points,view,region,origin,normal):
     retaining the existing local-plane and extent bounds. No points are erased
     and no proposed robot pose participates in assigning these roles.
     """
-    optical=transform_points(points,np.linalg.inv(pose_matrix(view['camera_to_world'])))
-    projected=optical@np.asarray(view['intrinsic']).T
-    forward=optical[:,2]>0
-    uv=np.full((len(points),2),np.inf)
-    uv[forward]=projected[forward,:2]/projected[forward,2,None]
-    x1,y1,x2,y2=region
-    return (forward&(uv[:,0]>=x1)&(uv[:,0]<=x2)&(uv[:,1]>=y1)&(uv[:,1]<=y2)
+    return (projected_selection(points,view,region,selected_mask,padding_pixels=0)
         &(np.abs((points-origin)@normal)<.015)&(np.linalg.norm(points-origin,axis=1)<.45))
 
 
 def build_contact_scene(cameras,metadata,chain,camera,region,target_region,contact_surface,
-                        direction=None,joint_degrees=None,joint_scene=None,*,skill_kind='push',observed=None):
+                        direction=None,joint_degrees=None,joint_scene=None,*,skill_kind='push',observed=None,
+                        contact_mask=None,target_mask=None):
     if direction is None and joint_degrees is None:
         raise SkillStop('motion_direction_required',explanation='Contact geometry does not specify task intent; provide a world direction or signed associated joint increment.')
-    base,patch=contact_snapshot(cameras,metadata,camera,region,chain,radius_m=.035,observed=observed)
-    occupied=np.vstack([base.static_points,base.contact_reference])
-    selected=region_points(cameras,metadata,camera,region,occupied)
-    target=region_points(cameras,metadata,camera,target_region or region,occupied)
+    if observed is None:observed=observed_points(cameras,metadata,spacing=.003)
+    occupied=observed[0]
+    if target_mask is None and target_region is None:target_mask=contact_mask
+    selected=region_points(cameras,metadata,camera,region,occupied,selected_mask=contact_mask)
+    base,patch=contact_snapshot(cameras,metadata,camera,region,chain,radius_m=.035,observed=observed,
+        selected_points=selected,selected_mask=contact_mask)
+    target=(selected if target_region is None and target_mask is None else
+        region_points(cameras,metadata,camera,target_region or region,occupied,selected_mask=target_mask))
     origin=np.asarray(patch['point_world_m']);normal=np.asarray(patch['normal_toward_camera_world'])
     # A broad image rectangle can include the table/background through a handle
     # opening. Keep the observed surface near the selected contact plane. This
     # is a disclosed local surface association, never an object-label oracle.
     nearby=(np.abs((target-origin)@normal)<.015)&(np.linalg.norm(target-origin,axis=1)<.45)
-    if nearby.sum()>=12:target=target[nearby]
+    if target_mask is None and nearby.sum()>=12:target=target[nearby]
     associated=False
     feature_source='selected RGB-D region'
     contact_points=base.contact_reference
@@ -161,8 +154,9 @@ def build_contact_scene(cameras,metadata,chain,camera,region,target_region,conta
         selected=selected[np.abs((selected-origin)@normal)<.015]
         if len(selected)<12:raise SkillStop('insufficient_selected_surface_support')
         contact_owned=cKDTree(selected).query(occupied,distance_upper_bound=.0035)[0]<.0035
+        if contact_mask is not None:contact_owned &= projected_selection(occupied,cameras[camera],region,contact_mask,padding_pixels=0)
         if joint_degrees is None:
-            contact_owned|=projected_surface_membership(occupied,cameras[camera],region,origin,normal)
+            contact_owned|=projected_surface_membership(occupied,cameras[camera],region,origin,normal,contact_mask)
         contact_points=occupied[contact_owned]
         multiview_selected=contact_points
         patch.update(selected_observed_points=len(contact_points),
@@ -187,6 +181,8 @@ def build_contact_scene(cameras,metadata,chain,camera,region,target_region,conta
             feature_source='nearest supported 25 mm depth band in the selected feature region; inspect preview for identity'
         if len(selected)<20:raise SkillStop('insufficient_hook_depth',feature_source=feature_source,observed_points=len(selected))
         multiview_selected=occupied[cKDTree(selected).query(occupied,distance_upper_bound=.012)[0]<.012]
+        if contact_mask is not None:
+            multiview_selected=multiview_selected[projected_selection(multiview_selected,cameras[camera],region,contact_mask,padding_pixels=0)]
         # When a grounded handle is available its spatial association also
         # rejects nearby panel/background points from other views.
         if joint_scene is not None and joint_degrees is not None:
@@ -205,9 +201,13 @@ def build_contact_scene(cameras,metadata,chain,camera,region,target_region,conta
         'front_plane':{'point_world_m':origin.tolist()},'panel_normal_world':normal.tolist()}
     # Only target-associated measured endpoints move. Other observed surfaces
     # remain stationary obstacles even when inside a loose image selection.
-    owned=(cKDTree(target).query(occupied,distance_upper_bound=np.nextafter(.004,np.inf))[0]<=.004)|(cKDTree(contact_points).query(occupied,distance_upper_bound=np.nextafter(.0035,np.inf))[0]<=.0035)
+    owned=cKDTree(target).query(occupied,distance_upper_bound=np.nextafter(.004,np.inf))[0]<=.004
+    if target_mask is not None:owned &= projected_selection(occupied,cameras[camera],target_region or region,target_mask,padding_pixels=0)
     if skill_kind=='push' and not associated:
-        owned|=projected_surface_membership(occupied,cameras[camera],target_region or region,origin,normal)
+        owned|=projected_surface_membership(occupied,cameras[camera],target_region or region,origin,normal,target_mask if target_region is not None or target_mask is not None else contact_mask)
+    contact_owned=cKDTree(contact_points).query(occupied,distance_upper_bound=np.nextafter(.0035,np.inf))[0]<=.0035
+    if contact_mask is not None:contact_owned &= projected_selection(occupied,cameras[camera],region,contact_mask,padding_pixels=0)
+    owned |= contact_owned
     target=occupied[owned]
     if len(target)<12:raise SkillStop('insufficient_target_depth')
     scene=Scene.from_points(occupied[~owned],target,contact_points,spec,
@@ -220,10 +220,12 @@ def build_contact_scene(cameras,metadata,chain,camera,region,target_region,conta
     scene.skill_observed_cameras=cameras
     scene.skill_joint_sign=float(np.sign(joint_degrees)) if associated else None
     return scene,{**patch,'direction_world':d.tolist(),'joint_associated':associated,
+        'contact_mask_used':contact_mask is not None,'target_mask_used':target_mask is not None,
         'contact_surface':contact_surface,'target_observed_points':len(target),'feature_source':feature_source,
         'contact_permission_scope':'selected moving part; sliding allowed' if skill_kind=='push' else 'selected retaining feature',
         'permitted_contact':'distal fingertips/pads'+(' and selected palm' if contact_surface=='palm' else ''),
-        'target_association':('projected selected region across observed views, within the existing 15 mm local-plane band and 45 cm extent'
+        'target_association':('caller-selected current part masks and observed depth' if contact_mask is not None or target_mask is not None else
+            'projected selected region across observed views, within the existing 15 mm local-plane band and 45 cm extent'
             if skill_kind=='push' and not associated else 'selected region, within 15 mm of the observed local contact plane and 45 cm of its centre'),
         'proximal_fingers_and_arm_checked':True,'target_region_xyxy':target_region or region},multiview_selected
 

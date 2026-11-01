@@ -609,13 +609,16 @@ Past successful recipes are hypotheses, not restrictions to one contact mode.
 No specific object surface, direction, trajectory or recovery sequence is supplied.
 
 Additional generic contact interfaces:
-- select_surface_contact(camera, region_xyxy, radius_m=0.02): select a bounded
+- select_surface_contact(camera, region_xyxy=null, radius_m=0.02,
+  contact_part_id=null): select a bounded
   patch of the CURRENT observed surface. Radius is 0.005..0.04 metres. Returns a
   measured point, approximate surface normal toward the camera, point clouds,
   and configured finger-pad centres in the TCP frame. It builds a fresh
   observed scene and permits configured-finger contact with only that patch.
   Arm, palm and other observed surfaces remain checked. No grasp, closure,
   cylinder fit or hinge model is required. No object motion is predicted.
+  A current contact_part_id reuses a segment_parts mask in this camera; its
+  box is used when region_xyxy is omitted. The mask is retained in the scene.
   This switches to a free-motion surface scene. It does not move the robot.
 - plan_contact_pose(point_world_m, quaternion_xyzw=null, contact_name=null,
   collision_policy=null, budget_seconds=30): place a calibrated fingertip/pad

@@ -131,7 +131,7 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
               mode='controlled',contact_speed_m_s=.03,contact_surface='fingertips',
               preview=False,budget_seconds=120.,collision_policy='veto',approach_speed_rad_s=.6,
               stroke_length_m=None,search_seconds=None,stroke_plan_seconds=None,max_ineffective_strokes=2,withdrawal_distance_m=.015,
-              continuation=False):
+              continuation=False,moving_part_id=None,contact_part_id=None):
     started=time.perf_counter();timing=Counter();stages=[];executed=False
     physical_push=kind=='push' and mode=='controlled'
     hand_distance_request=physical_push and joint_degrees is None
@@ -155,6 +155,13 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
         raise ValueError('Use the latest observation_id; contact requests cannot reuse stale pixels')
     if not continuation and service.latest_observation['control_steps']!=service.state['control_steps']:
         raise ValueError('Capture the current physical state before selecting contact')
+    target_mask=contact_mask=None
+    if not continuation:
+        from .part_perception import box_of
+        target_mask=service._part_mask(moving_part_id,camera) if moving_part_id is not None else None
+        contact_mask=service._part_mask(contact_part_id,camera) if contact_part_id is not None else target_mask
+        if region_xyxy is None and contact_mask is not None:region_xyxy=box_of(contact_mask)
+        if target_region_xyxy is None and target_mask is not None:target_region_xyxy=box_of(target_mask)
     initial_control_step=int(service.state['control_steps'])
     control_steps_limit=control_limit(service.state,getattr(service,'config',None))
     if mode not in {'controlled','push_and_release'} or kind not in {'push','hook_pull'}:raise ValueError('Unknown contact skill/mode')
@@ -228,6 +235,7 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
             timing['contact_context_reuse_seconds']+=time.perf_counter()-phase
         else:
             cache_key=preview_key(service,{'kind':kind,'camera':camera,'region':list(region_xyxy),
+                'moving_part_id':moving_part_id,'contact_part_id':contact_part_id,
                 'target_region':list(target_region_xyxy) if target_region_xyxy is not None else None,
                 'direction':np.round(unit(direction_world),12).tolist() if direction_world is not None else None,
                 'distance_m':distance_m,'joint_degrees':joint_degrees,'mode':mode,'contact_surface':contact_surface,
@@ -244,7 +252,8 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
                 result['observation_cloud_reused']=reused
                 scene,evidence,selected=build_contact_scene(service.cameras,service.state['metadata'],service.ik.chain,
                     camera,region_xyxy,target_region_xyxy,contact_surface,direction_world,joint_degrees,service.scene,
-                    skill_kind=kind,observed=observed)
+                    skill_kind=kind,observed=observed,contact_mask=contact_mask,target_mask=target_mask)
+                evidence['selected_parts']={'moving_part_id':moving_part_id,'contact_part_id':contact_part_id}
                 result['full_scene_builds']=1
                 timing['perception_seconds']+=time.perf_counter()-phase
         geometry_current=bool(context.get('object_pose_current',True)) if context else True

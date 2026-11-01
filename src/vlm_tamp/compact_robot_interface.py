@@ -30,6 +30,8 @@ results rather than whole histories, point arrays or every camera diagnostic.
 Observe: reset, observe, episode_status
 Geometry: ground, refresh_contact, set_model, inspect_scene
 ground accepts moving_part_id/contact_part_id from current segment_parts masks.
+push and hook_pull accept those same IDs. select_surface_contact accepts
+contact_part_id. Reuse the selected part; region_xyxy is optional with a part ID.
 Omit regions.contact_box_xyxy for door-only grounding. A failed handle fit can
 preserve a usable door/joint model; read grounding_status and handle_fit.
 Door-only geometry supports tracking and joint-linked push/hook, not a pinch.
@@ -108,6 +110,7 @@ def pick(value, keys):
 STATE_KEYS = ('instruction', 'attempt', 'control_steps', 'remaining_control_steps',
               'remaining_wall_seconds', 'task_success', 'episode_done',
               'termination_reason', 'needs_initial_reset', 'observation_id',
+              'infrastructure_failure','valid_task_attempt',
               'eef_pose_world_xyzw', 'gripper_qpos', 'sensor_arrays', 'camera_calibration',
               'in_flight_requests', 'control_state_is_last_completed_request',
               'image_coordinate_system')

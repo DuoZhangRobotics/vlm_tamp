@@ -11,6 +11,7 @@ from .coupled_storage import write_json,preserve_scene
 from .hinged_contact_tools import NativeScene
 from .rekep_libero.geometry import pose_matrix,matrix_pose,transform_points
 from .rekep_libero.scene_state_v7 import observed_points
+from .part_perception import region_mask,projected_selection
 
 
 class ObservedContactPatchScene(Scene):
@@ -23,22 +24,25 @@ class ObservedContactPatchScene(Scene):
             'allow_finger_handle_contact':True}
 
 
-def contact_snapshot(cameras,metadata,camera,region_xyxy,chain,*,radius_m=.02,observed=None):
+def selected_region_points(view,region,occupied,selected_mask=None):
+    mask,box=region_mask(view,region,selected_mask)
+    world=np.asarray(view['world_points']);candidate=world[mask&np.isfinite(world).all(2)]
+    if len(candidate) and len(occupied):
+        candidate=candidate[cKDTree(occupied).query(candidate,distance_upper_bound=np.nextafter(.0035,np.inf))[0]<=.0035]
+    else:candidate=np.empty((0,3))
+    return candidate,box
+
+
+def contact_snapshot(cameras,metadata,camera,region_xyxy,chain,*,radius_m=.02,observed=None,
+                     selected_mask=None,selected_points=None):
     if camera not in cameras:raise ValueError('Choose an observed camera')
     if not np.isfinite(radius_m) or not .005<=radius_m<=.04:
         raise ValueError('Contact-patch radius must be 0.005..0.04 metres')
-    view=cameras[camera];world=np.asarray(view['world_points']);h,w=world.shape[:2]
-    box=np.asarray(region_xyxy,float)
-    if box.shape!=(4,) or not np.isfinite(box).all() or not (
-            0<=box[0]<box[2]<=w and 0<=box[1]<box[3]<=h):
-        raise ValueError(f'Selected region {box.tolist()} is outside {camera} ({w}×{h}); use original camera pixels')
-    yy,xx=np.indices((h,w));selected=(xx>=box[0])&(xx<=box[2])&(yy>=box[1])&(yy<=box[3])
-    candidate=world[selected&np.isfinite(world).all(2)]
+    view=cameras[camera]
     occupied,filter_record=(observed_points(cameras,metadata,spacing=.003) if observed is None else observed)
-    if len(occupied)==0 or len(candidate)<8:raise ValueError('Insufficient observed surface points')
-    finite_candidates=len(candidate)
-    candidate=candidate[cKDTree(occupied).query(candidate,distance_upper_bound=np.nextafter(.0035,np.inf))[0]<=.0035]
-    if len(candidate)<8:raise ValueError(f'Selected region has {len(candidate)} eligible non-robot surface points after filtering ({finite_candidates} finite samples; need 8). Inspect the selected object region.')
+    if selected_points is None:candidate,box=selected_region_points(view,region_xyxy,occupied,selected_mask)
+    else:candidate,box=np.asarray(selected_points),list(region_xyxy)
+    if len(candidate)<8:raise ValueError(f'Selected region has {len(candidate)} eligible non-robot surface points; need 8.')
     median=np.median(candidate,axis=0)
     center=candidate[np.argmin(np.linalg.norm(candidate-median,axis=1))]
     patch=candidate[np.linalg.norm(candidate-center,axis=1)<=radius_m]
@@ -48,6 +52,7 @@ def contact_snapshot(cameras,metadata,camera,region_xyxy,chain,*,radius_m=.02,ob
     origin=pose_matrix(view['camera_to_world'])[:3,3]
     if normal@(origin-center)<0:normal=-normal
     in_patch=cKDTree(patch).query(occupied,distance_upper_bound=np.nextafter(.0035,np.inf))[0]<=.0035
+    if selected_mask is not None:in_patch &= projected_selection(occupied,view,box,selected_mask,padding_pixels=0)
     contact=occupied[in_patch];static=occupied[~in_patch]
     if len(contact)<3:raise ValueError('Contact patch disappeared during scene assembly')
     # These reference-frame fields are required by Scene/NativeScene. No
@@ -63,7 +68,7 @@ def contact_snapshot(cameras,metadata,camera,region_xyxy,chain,*,radius_m=.02,ob
     inverse=np.linalg.inv(pose_matrix(metadata['eef_pose_world_xyzw']))
     pads={v['robot_geom_name']:transform_points(v['vertices_world'],inverse).mean(0).tolist()
           for v in metadata['robot_collision_volumes_world'] if v['robot_geom_name'].endswith('_pad_collision')}
-    record={'camera':camera,'region_xyxy':box.tolist(),'point_world_m':center.tolist(),
+    record={'camera':camera,'region_xyxy':box,'point_world_m':center.tolist(),
         'normal_toward_camera_world':normal.tolist(),'radius_m':radius_m,
         'selected_observed_points':len(contact),'other_observed_points':len(static),
         'surface_fit_residual_m':float(np.median(np.abs((patch-center)@normal))),

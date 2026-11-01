@@ -15,6 +15,7 @@ from .rekep_libero.object_motion_v3 import observed_object_cloud
 from .rekep_libero.robot_chain_v4 import fixed_orientation_residual
 from .robot_contracts import GROUND_FIELDS, RequestValidationError, observed_image_sizes, validate_ground_regions
 from .rigid_hinge_tracking import robot_mask
+from .part_perception import projected_selection
 
 
 class HandleFitError(ValueError):
@@ -130,28 +131,6 @@ def selected_panel(camera, choices, panel_mask=None):
     return face, mask, excluded
 
 
-def projected_selection(points, camera, rectangle, selected_mask=None):
-    """Associate observed endpoints with a selected image region, without filling it."""
-    optical = transform_points(points, np.linalg.inv(np.asarray(camera['camera_to_world'])))
-    valid = optical[:, 2] > 0
-    pixels = np.full((len(points), 2), -1., float)
-    image = optical[valid]@np.asarray(camera['intrinsic']).T
-    pixels[valid] = image[:, :2]/image[:, 2:3]
-    x0, y0, x1, y1 = rectangle
-    valid &= ((pixels[:, 0]>=x0-3)&(pixels[:, 0]<=x1+3)
-              &(pixels[:, 1]>=y0-3)&(pixels[:, 1]<=y1+3))
-    if selected_mask is not None:
-        mask = np.asarray(selected_mask, bool)
-        if mask.shape != np.asarray(camera['world_points']).shape[:2]:
-            raise ValueError('Selected contact mask must match its current camera image')
-        xy = np.rint(pixels).astype(int)
-        valid &= ((xy[:, 0]>=0)&(xy[:, 0]<mask.shape[1])
-                  &(xy[:, 1]>=0)&(xy[:, 1]<mask.shape[0]))
-        indices = np.flatnonzero(valid)
-        valid[indices] &= mask[xy[indices, 1], xy[indices, 0]]
-    return valid
-
-
 def ground_handle(cameras, choices, previous_spec, metadata=None,*,fixed_joint=None,
                   panel_mask=None, contact_mask=None):
     if fixed_joint is None:
@@ -230,6 +209,26 @@ def ground_handle(cameras, choices, previous_spec, metadata=None,*,fixed_joint=N
         if selected.sum()>=75 and np.ptp(cylinder[selected, 2])>.035:
             cylinder = cylinder[selected]
     anchors = [np.r_[fit.x[:2], np.quantile(cylinder[:, 2], fraction)] for fraction in [.85, .70, .93]]
+    residual = float(np.median(distances))
+    if np.ptp(cylinder[:, 2])<=.065 or residual>=.0035:
+        error=HandleFitError('Selected contact does not support the vertical-handle model')
+        error.planning_diagnostic={'status':'contact_region_unresolved','module':'handle_contact.fit',
+            'selected_region':choices['contact_box_xyxy'],'height_m':float(np.ptp(cylinder[:,2])),
+            'radial_residual_m':residual,'allowed_radial_residual_m':.0035,'minimum_height_m':.065,
+            'physical_motion_issued':False,'model_changed':False}
+        raise error
+    # Finish the selected bar fit before computing a joint direction from it.
+    # An invalid contact must not become a misleading direction failure.
+    zlo,zhi=np.quantile(cylinder[:,2],[.2,.8])
+    central=cylinder[(cylinder[:,2]>=zlo)&(cylinder[:,2]<=zhi)]
+    if len(central)<3:raise HandleFitError('Central handle surface has insufficient cylinder samples')
+    old=fit.x[:2].copy()
+    refined=least_squares(lambda x:np.linalg.norm(central[:,:2]-x[:2],axis=1)-x[2],
+        np.r_[old,radius],bounds=(np.r_[old-.02,.005],np.r_[old+.02,.018]),
+        loss='soft_l1',f_scale=.0005,max_nfev=150)
+    central_error=float(np.median(np.abs(refined.fun)))
+    if central_error>.0025:raise HandleFitError('Central handle surface is inconsistent with a cylinder')
+    radius=float(refined.x[2]);anchors=[np.r_[refined.x[:2],a[2]] for a in anchors]
     mechanism, direction_record, panel_band, panel_band_measured = door_model(
         cameras, choices, previous_spec, metadata, camera, face, normal, mask,
         cylinder, anchors, fixed_joint=fixed_joint, occupied=occupied)
@@ -248,7 +247,9 @@ def ground_handle(cameras, choices, previous_spec, metadata=None,*,fixed_joint=N
         'initial_rgb_box_cylinder_points':initial_cylinder_points,
         'metric_cylinder_extended_from_observed_depth':metadata is not None,
         'continuous_cylinder_z_bounds_m':[float(cylinder[:,2].min()),float(cylinder[:,2].max())],
-        'cylinder_robust_residual_m': float(np.median(distances)),
+        'cylinder_robust_residual_m': residual,
+        'central_bar_refinement':{'old_axis_xy':old.tolist(),'new_axis_xy':refined.x[:2].tolist(),
+            'radial_residual_m':central_error,'excluded_height_quantiles':[.2,.8],'simulator_geometry_used':False},
         'handle_z_bounds_m': [float(low), float(high)], 'anchors_world_m': [a.tolist() for a in anchors],
         'handle_on_opposite_observed_face': opposite_side,
         'motion_direction_check': direction_record,

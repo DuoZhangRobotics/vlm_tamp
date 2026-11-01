@@ -86,6 +86,7 @@ class RobotService:
         if self.persistent_episode and (not self.stop_on_success or (attempts!=1 and not learning_practice)):
             raise ValueError('Persistence requires native-success termination and declared attempt limits')
         self.episode_success=False
+        self.initialization_error=None
         self.practice_budget=None
         if initial_attempts is not None:
             if not self.learning_practice:raise ValueError('Adaptive budgets require learning practice')
@@ -131,9 +132,9 @@ class RobotService:
             'source_code_visible_to_agent': False,
             'separately_billed_model_calls_allowed': False,
             'geometry_priors': ['upright panel and vertical handle cylinder',
-                'observed adjacent bulk determines opening direction',
+                'observed adjacent depth supplies an unverified task-direction hypothesis',
                 'bounded observed-point association and functional-finger contact'],
-            'grasp_priors': ['GraspGen Panda plus existing analytic candidates and anchor menu'],
+            'grasp_priors': ['small native GraspGen Panda batch; closest valid IK and one approach query per pose'],
             'planner': tool_contract(self.config)['planner'],
             'controller': 'existing joint-position servo; complete issued trajectories',
             'agent_owns': ['RGB regions', 'probe angle', 'model revisions',
@@ -271,9 +272,18 @@ class RobotService:
         self.episode = self.output/f'attempt{self.attempt:02d}'
         self.episode.mkdir()
         self.sim = ProfiledClient(self.episode/'simulator.log')
-        self.state = self.sim.request('reset',task_name=self.task_spec['task_name'],state_index=self.state_index,
-                                    output_dir=str(self.episode/'initial'),seed=0,suite_name=self.task_spec['suite'],scene_variant=self.scene_variant,
-                                    stop_on_success=self.stop_on_success,maximum_control_steps=getattr(self,'maximum_control_steps',control_limit(self.state)))
+        self.initialization_error=None
+        try:
+            self.state = self.sim.request('reset',task_name=self.task_spec['task_name'],state_index=self.state_index,
+                                        output_dir=str(self.episode/'initial'),seed=0,suite_name=self.task_spec['suite'],scene_variant=self.scene_variant,
+                                        stop_on_success=self.stop_on_success,maximum_control_steps=getattr(self,'maximum_control_steps',control_limit(self.state)))
+        except Exception as error:
+            self.initialization_error={'stage':'simulator_reset','error_type':type(error).__name__,'reason':str(error)}
+            write_json(self.output/'operator-interruption.json',{
+                'reason':'Simulator initialization failed: '+str(error),
+                'excluded_from_completed_task_outcomes':True,'initialization_error':self.initialization_error})
+            self.sim.close();self.sim=None
+            raise
         self.events, self.executions, self.plans = [], [], {}
         self.motion_feedback=[]
         self.active_grasp_contact_offset_m=0.
@@ -366,7 +376,7 @@ class RobotService:
             note='Current contact/panel geometry was refitted. The previous fixed-world hinge and signed direction remain hypotheses; no new hinge annotation or estimate was substituted.')
         return result
 
-    def _grounding_mask(self,part_id,camera):
+    def _part_mask(self,part_id,camera):
         if part_id is None:return None
         engine=getattr(self,'_perception_tools',None)
         if engine is None or part_id not in engine.parts:
@@ -375,7 +385,7 @@ class RobotService:
         if record['control_steps']!=self.state['control_steps']:
             raise ValueError('Selected part mask is stale; use a mask from the current physical state')
         if part['camera']!=camera:
-            raise ValueError('Selected part mask and grounding regions must use the same camera')
+            raise ValueError('Selected part mask and region must use the same camera')
         mask=np.asarray(part['mask'],bool)
         if mask.shape!=self.cameras[camera]['world_points'].shape[:2] or not mask.any():
             raise ValueError('Selected part mask has no usable pixels in this camera')
@@ -386,8 +396,8 @@ class RobotService:
             raise ValueError('Call reset first')
         if fixed_joint is None:validate_ground_regions(regions,image_sizes=observed_image_sizes(self.cameras))
         choices = copy.deepcopy(regions)
-        panel_mask=self._grounding_mask(moving_part_id,choices['camera'])
-        contact_mask=self._grounding_mask(contact_part_id,choices['camera'])
+        panel_mask=self._part_mask(moving_part_id,choices['camera'])
+        contact_mask=self._part_mask(contact_part_id,choices['camera'])
         if contact_mask is not None and choices.get('contact_box_xyxy') is None:
             from vlm_tamp.part_perception import box_of
             choices['contact_box_xyxy']=box_of(contact_mask)
@@ -1036,14 +1046,16 @@ class RobotService:
                 and self.surface_reference_step!=self.state['control_steps']):
             raise ValueError('Surface-contact geometry is from before the last motion. Select a contact region from current observations before planning again.')
 
-    def select_surface_contact(self,camera,region_xyxy,radius_m=.02):
+    def select_surface_contact(self,camera,region_xyxy=None,radius_m=.02,contact_part_id=None):
         if not self.sim:raise ValueError('Reset before selecting contact')
         from vlm_tamp.surface_contact_tools import contact_snapshot
         from vlm_tamp.contact_skills import contact_landmarks
         scene,evidence=contact_snapshot(self.cameras,self.state['metadata'],camera,region_xyxy,
-            self.ik.chain,radius_m=float(radius_m))
+            self.ik.chain,radius_m=float(radius_m),selected_mask=self._part_mask(contact_part_id,camera))
+        evidence['selected_parts']={'contact_part_id':contact_part_id}
+        from vlm_tamp.observed_joint_scene import retain_observed_articulation
+        retain_observed_articulation(self)
         self.scene=scene;self.contact_scene_kind='surface'
-        if self.spec is not None:self.retained_articulated_model=copy.deepcopy(self.spec)
         self.choices={'camera':camera}
         self.spec=None;self.cloud=scene.contact_reference;self.mask=None;self.anchors=[]
         self.surface_reference_step=self.state['control_steps']
@@ -1100,18 +1112,20 @@ class RobotService:
         return {'solutions': self.ik.solve_many(vector(pose_world_xyzw,7),
                     self.state['metadata']['joint_positions'],maximum=8)}
 
-    def push(self,observation_id,camera,region_xyxy,target_region_xyxy=None,direction_world=None,
+    def push(self,observation_id,camera,region_xyxy=None,target_region_xyxy=None,direction_world=None,
              distance_m=.03,joint_degrees=None,joint_model_epoch=None,mode='controlled',
              contact_speed_m_s=.03,contact_surface='fingertips',preview=False,budget_seconds=120.,collision_policy='veto',
-             approach_speed_rad_s=.6,stroke_length_m=None,search_seconds=None,stroke_plan_seconds=None,max_ineffective_strokes=2,withdrawal_distance_m=.015):
+             approach_speed_rad_s=.6,stroke_length_m=None,search_seconds=None,stroke_plan_seconds=None,max_ineffective_strokes=2,withdrawal_distance_m=.015,
+             moving_part_id=None,contact_part_id=None):
         from vlm_tamp.contact_skill_service import run_skill
         arguments={key:value for key,value in locals().items() if key not in {'self','run_skill'}}
         return run_skill(self,'push',**arguments)
 
-    def hook_pull(self,observation_id,camera,region_xyxy,target_region_xyxy=None,direction_world=None,
+    def hook_pull(self,observation_id,camera,region_xyxy=None,target_region_xyxy=None,direction_world=None,
                   distance_m=.03,joint_degrees=None,joint_model_epoch=None,
                   contact_speed_m_s=.03,preview=False,budget_seconds=120.,collision_policy='veto',
-                  approach_speed_rad_s=.6,stroke_length_m=None,search_seconds=None,stroke_plan_seconds=None,max_ineffective_strokes=2):
+                  approach_speed_rad_s=.6,stroke_length_m=None,search_seconds=None,stroke_plan_seconds=None,max_ineffective_strokes=2,
+                  moving_part_id=None,contact_part_id=None):
         from vlm_tamp.contact_skill_service import run_skill
         arguments={key:value for key,value in locals().items() if key not in {'self','run_skill'}}
         return run_skill(self,'hook_pull',**arguments)
@@ -1312,11 +1326,13 @@ class RobotService:
         deadline=read_json(deadline_path)['deadline_monotonic'] if deadline_path.exists() else None
         seconds=max(0.,deadline-time.monotonic()) if deadline is not None else None
         success=bool(getattr(self,'episode_success',False))
-        reason=('simulator_success' if success else 'control_budget_exhausted' if steps>=getattr(self,'maximum_control_steps',control_limit(state))
+        failed_initialization=getattr(self,'initialization_error',None)
+        reason=('simulator_initialization_failed' if failed_initialization else 'simulator_success' if success else 'control_budget_exhausted' if steps>=getattr(self,'maximum_control_steps',control_limit(state))
                 else 'wall_budget_exhausted' if seconds is not None and seconds<=0 else None)
         return {'task_success':success,'episode_done':reason is not None,
             'termination_reason':reason,'control_steps':steps,'maximum_control_steps':getattr(self,'maximum_control_steps',control_limit(state)),'remaining_control_steps':max(0,getattr(self,'maximum_control_steps',control_limit(state))-steps),
             'remaining_wall_seconds':seconds,'needs_initial_reset':getattr(self,'attempt',0)==0,
+            'infrastructure_failure':failed_initialization,'valid_task_attempt':getattr(self,'attempt',0)>0 and not bool(failed_initialization),
             'voluntary_early_finish_allowed':not getattr(self,'persistent_episode',False)}
 
     def finish_attempt(self, reason):
@@ -1400,7 +1416,7 @@ class RobotService:
             practice_operation=getattr(self,'learning_practice',False) and operation in {
                 'reset','practice_status','request_attempts'}
             if status['episode_done'] and not practice_operation:
-                if operation=='observe':return {**self.latest_observation,**status}
+                if operation=='observe':return {**getattr(self,'latest_observation',{}),**status}
                 raise ValueError('The episode ended on simulator success or an actual budget limit')
         if getattr(self,'episode_success',False) and getattr(self,'stop_on_success',False):
             if operation=='observe':return self.latest_observation
