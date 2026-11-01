@@ -18,7 +18,8 @@ def test_horizon_and_refinement_flag_do_not_impose_a_hidden_wrist_cap():
     with pytest.raises(ValueError):short_wrist_limit(context,.1)
 
 
-def test_failed_gpu_seed_outside_final_tolerance_gets_refined(tmp_path,monkeypatch):
+@pytest.mark.parametrize('gpu_success', [False, True])
+def test_gpu_seed_outside_accuracy_is_reported_without_cpu_repair(tmp_path,monkeypatch,gpu_success):
     import vlm_tamp.curobo_v2_arc as module
     q=np.zeros(7);projected=[]
     def project(seed,angle,**kwargs):
@@ -28,16 +29,19 @@ def test_failed_gpu_seed_outside_final_tolerance_gets_refined(tmp_path,monkeypat
         project=lambda q:(q,{'accepted':True}),validate=lambda q:{'accepted':True},progress=lambda q:.1)
     proposer=object.__new__(CuroboV2ArcProposer)
     proposer.closed=False;proposer.context=context;proposer.goal=.1;proposer.arc_id=1
+    proposer.ik_position_tolerance_m=.001
     proposer.folder=tmp_path;proposer.queries=[]
     proposer.model=SimpleNamespace(reference_rotation=np.eye(3),grasp_constraint='point',position_tolerance_m=.003,
         point=lambda a:np.zeros(3),residual=lambda q,a:np.array([.0038,0.,0.,0.]),project=project)
     proposer.ik=SimpleNamespace(client=SimpleNamespace(request=lambda *a,**k:{'solutions':[q.tolist()],
-        'success':[False],'elapsed_seconds':.1,'solver_seconds':.1}))
+        'success':[gpu_success],'elapsed_seconds':.1,'solver_seconds':.1}))
     monkeypatch.setattr(module,'wrist_excursion',lambda *a:np.radians(29.6))
     goals,checks=proposer.candidates(q,.1)
-    assert len(projected)==1 and len(goals)==1
+    assert len(projected)==0 and len(goals)==0
     assert checks[0]['gpu_input_position_error_m']>.003
-    assert checks[0]['accepted'] and checks[0]['wrist_limit_deg']==180
+    assert not checks[0]['accepted']
+    assert checks[0]['reason']==('ik_position_error' if gpu_success else 'curobo_ik_failed')
+    assert checks[0]['candidate_modified'] is False
     assert proposer.queries[0]['unexamined_seeds']==0
 
 

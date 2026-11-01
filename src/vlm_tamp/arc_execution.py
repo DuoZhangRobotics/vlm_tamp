@@ -15,8 +15,8 @@ from .rekep_libero.geometry import pose_matrix
 
 def contact_arc(scene,record,metadata,start,goal,folder,config,*,ik=None):
     started=time.perf_counter()
-    # Query tolerance must reach both the GPU-seed projection and native path
-    # constraint. Do not mutate the shared observed scene or collision geometry.
+    # Path tolerances are separate from cuRobo's endpoint accuracy. Do not mutate
+    # the shared observed scene or collision geometry.
     scene=copy.copy(scene)
     scene.config={**scene.config,**{key:config[key] for key in
         ['arc_position_tolerance_m','arc_orientation_tolerance_rad','environment_collision_policy','native_joint_reserve_rad'] if key in config}}
@@ -35,6 +35,7 @@ def contact_arc(scene,record,metadata,start,goal,folder,config,*,ik=None):
             'hinge_refinement_accepted':bool(config.get('hinge_refinement_accepted',False)),
             'arc_search_seconds':float(config.get('arc_search_seconds',60.)),
             'arc_position_tolerance_m':float(config.get('arc_position_tolerance_m',.003)),
+            'curobo_v2_arc_ik_position_tolerance_m':float(config.get('curobo_v2_arc_ik_position_tolerance_m',.001)),
             'arc_orientation_tolerance_rad':float(config.get('arc_orientation_tolerance_rad',0.)),
             'max_wrist_reorientation_deg':config.get('max_wrist_reorientation_deg'),
             'maximum_local_joint_step_rad':config.get('maximum_local_joint_step_rad'),
@@ -73,6 +74,9 @@ def contact_arc(scene,record,metadata,start,goal,folder,config,*,ik=None):
                 'native_connection_seconds':result.get('native_connection_seconds',0.),
                 'fallback_setup_seconds':result.get('global_fallback',{}).get('setup',{}).get('total_setup_seconds',0.),
                 'solver_mode':proposer.solver_mode,'arc_id':proposer.arc_id,
+                'ik_position_tolerance_m':proposer.ik_position_tolerance_m,
+                'cpu_endpoint_resolve_used':False,
+                'gpu_endpoint_joints_preserved':True,
                 'constraint_and_path_backend':'native MC-VAMP; unchanged contact permissions'}
         result['exact_solution']=bool(len(path)>1 and result['status']=='solved')
         write_json(folder/'result.json',result);write_json(folder/'native-scene.json',context.record)

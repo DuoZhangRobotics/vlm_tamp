@@ -1,4 +1,4 @@
-"""cuRobo v2 contact-point goals followed by exact native admission.
+"""Unmodified cuRobo v2 contact-point goals followed by native admission.
 
 The GPU sees only observed scene surfaces and calibrated robot geometry. Its
 arm/palm proxy guides optimization; it never replaces the finger contact rules,
@@ -39,6 +39,9 @@ class CuroboV2ArcProposer:
             context.reference_q, context.pad_local, grasp_constraint=context.grasp_constraint,
             position_tolerance_m=context.scene.config.get('arc_position_tolerance_m', .003),
             orientation_tolerance_rad=context.scene.config.get('arc_orientation_tolerance_rad',0.))
+        # IK accuracy and the path's geometric tolerance have different roles.
+        # Ask the GPU for the desired accuracy; never re-solve its output on CPU.
+        self.ik_position_tolerance_m = float(options.get('curobo_v2_arc_ik_position_tolerance_m', .001))
         self.queries = []
         before = time.perf_counter()
         aperture=tuple(np.asarray(getattr(context,'metadata',{}).get('gripper_qpos',[]),float).round(6))
@@ -48,7 +51,7 @@ class CuroboV2ArcProposer:
         spheres, provenance = ik._v2_arc_spheres
         reference = read_json(self.folder/'scene-reference.json')
         self.configure_request = dict(collision_spheres=spheres,
-            position_tolerance=self.model.position_tolerance_m,
+            position_tolerance=self.ik_position_tolerance_m,
             pad_local=context.pad_local.tolist(), scene_arrays_path=reference['arrays_path'],
             scene_arrays_sha256=reference['arrays_sha256'], origin=context.origin.tolist(),
             axis=context.axis.tolist(), mesh_pitch=float(context.scene.config.get('curobo_v2_mesh_pitch_m', .005)),
@@ -115,8 +118,8 @@ class CuroboV2ArcProposer:
                  'reused_gpu_batch':reused,'previously_examined_seeds':len(excluded_seeds),
                  'gpu_accepted_seeds': sum(gpu['success']), 'checks': [], 'gpu_result': gpu,
                  'input': request}
-        # Failed GPU flags may reflect proxy or convergence error. They are
-        # proposals only; every candidate still requires independent admission.
+        # Preserve the GPU result, including failure. There is no CPU rescue,
+        # joint clipping or endpoint projection in this handoff.
         order = sorted((i for i in range(len(gpu['solutions'])) if i not in excluded_seeds), key=lambda i:
             (not gpu['success'][i], np.linalg.norm(np.asarray(gpu['solutions'][i])-seed)))
         valid, records = [], []
@@ -128,23 +131,26 @@ class CuroboV2ArcProposer:
                 records.append({'seed': index, 'accepted': False, 'reason': 'invalid_joint_proposal',
                                 'equality_polish_seconds': 0.})
                 continue
-            position_error = float(np.linalg.norm(self.model.residual(initial, angle)[:3]))
-            # An optimizer's failed flag or initial residual is not an endpoint
-            # validity test. Refine every finite proposal that the budget permits.
-            t0 = time.perf_counter()
-            q, projection = self.model.project(initial, float(angle), evaluations=50)
+            q = initial.copy()
+            residual = self.model.residual(q, angle)
+            position_error = float(np.linalg.norm(residual[:3]))
             row = {'seed': index, 'source': 'curobo_v2', 'gpu_accepted': bool(gpu['success'][index]),
                    'gpu_input_position_error_m': position_error,
-                   'projection': projection, 'equality_polish_seconds': time.perf_counter()-t0,
+                   'joints': q.tolist(), 'candidate_modified': False,
+                   'equality_polish_seconds': 0.,
+                   'ik_position_tolerance_m': self.ik_position_tolerance_m,
                    'accepted': False}
             records.append(row)
-            if not projection['accepted']:
-                row['reason'] = 'endpoint_constraint_projection_failed'
+            if not row['gpu_accepted']:
+                row['reason'] = 'curobo_ik_failed'
                 continue
-            q, native = self.context.project(q)
-            row['native_projection'] = native
-            if not native['accepted']:
-                row['reason'] = 'native_arc_constraint_failed'
+            # Read-only evaluation of the existing point/jaw constraints. The
+            # native path planner retains its own manifold projection internally.
+            if position_error > self.ik_position_tolerance_m:
+                row['reason'] = 'ik_position_error'
+                continue
+            if np.linalg.norm(residual[3:]) > self.model.angular_weighted_tolerance:
+                row['reason'] = 'grasp_constraint_error'
                 continue
             check = self.context.validate(q)
             excursion = wrist_excursion(self.context, q)
@@ -152,12 +158,10 @@ class CuroboV2ArcProposer:
             row.update(scene=check, joints=q.tolist(), progress_error_rad=error,
                        wrist_excursion_deg=float(np.degrees(excursion)),
                        wrist_limit_deg=float(np.degrees(short_wrist_limit(self.context,self.goal))),
-                       progress_tolerance_rad=.002,
                        position_tolerance_m=self.model.position_tolerance_m)
-            row['accepted'] = bool(check['accepted'] and abs(error) < .002 and
+            row['accepted'] = bool(check['accepted'] and
                 excursion <= short_wrist_limit(self.context, self.goal))
             row['rejection_reasons'] = (["joint_bounds" if check.get('joint_bound_violations') else "scene_collision"] if not check['accepted'] else []) + (
-                ["goal_progress_error"] if abs(error) >= .002 else []) + (
                 ["wrist_excursion_limit"] if excursion > short_wrist_limit(self.context, self.goal) else [])
             if row['accepted'] and not any(np.max(np.abs(q-other)) < .12 for other in [*previous_goals,*valid]):
                 valid.append(q)

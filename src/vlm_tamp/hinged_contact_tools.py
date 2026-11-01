@@ -34,6 +34,7 @@ COMMON_TOOL_DEFAULTS={
     'maximum_contact_plan_seconds':8.,'planning_backend':'partial_pose_arc',
     'arc_search_seconds':20.,'arc_goal_proposals':32,
     'arc_position_tolerance_m':.006,
+    'curobo_v2_arc_ik_position_tolerance_m':.001,
     'arc_orientation_tolerance_rad':float(np.radians(3.)),
     'max_wrist_reorientation_deg':None,'maximum_local_joint_step_rad':None,
     'maximum_grasp_ik_solutions':32,

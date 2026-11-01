@@ -108,6 +108,7 @@ def test_constructor_closes_configured_arc_if_frame_query_fails(tmp_path):
     def request(operation, **kwargs):
         calls.append(operation)
         if operation == 'configure_arc':
+            assert kwargs['position_tolerance'] == .001
             return {'arc_id': 4}
         if operation == 'arc_forward':
             raise RuntimeError('frame query failed')
@@ -151,3 +152,37 @@ def test_fallback_replans_whole_arc_and_requires_native_admission(tmp_path, monk
     else:
         assert result['exact_solution'] and result['global_fallback']['solved']
         np.testing.assert_allclose(path[:, 0], [0., goal])
+
+
+def test_gpu_endpoint_is_not_resolved_clipped_or_rescued(tmp_path):
+    """A valid GPU endpoint reaches admission verbatim; failure stays failure."""
+    examined = []
+    def forbidden(*args, **kwargs):
+        raise AssertionError('The cuRobo handoff must not run a second IK/projection')
+    def validate(q):
+        examined.append(q.copy())
+        return {'accepted': True}
+    chain = SimpleNamespace(forward=lambda q: [0., 0., 0., 0., 0., 0., 1.])
+    proposer = object.__new__(CuroboV2ArcProposer)
+    proposer.context = SimpleNamespace(axis=np.array([0., 0., 1.]), chain=chain,
+        reference_tcp=np.eye(4), scene=SimpleNamespace(config={}),
+        project=forbidden, validate=validate, progress=lambda q: .105)
+    proposer.model = SimpleNamespace(reference_rotation=np.eye(3), grasp_constraint='point',
+        point=lambda a: np.zeros(3), project=forbidden,
+        residual=lambda q, a: np.array([.0008, 0., 0., 0.]),
+        position_tolerance_m=.006, angular_weighted_tolerance=1e-6)
+    proposer.folder, proposer.closed, proposer.arc_id = tmp_path, False, 1
+    proposer.goal, proposer.queries, proposer.ik_position_tolerance_m = .1, [], .001
+    q = np.array([.1, -.2, .3, -.4, .5, -.6, .7])
+    gpu = {'solutions': [q.tolist(), (q+.2).tolist()], 'success': [True, False],
+        'elapsed_seconds': .1, 'solver_seconds': .1}
+    goals, checks = proposer.candidates(np.zeros(7), .1, gpu_result=gpu)
+    np.testing.assert_array_equal(goals[0], q)
+    np.testing.assert_array_equal(examined, [q])
+    assert len(goals) == 1
+    assert checks[0]['candidate_modified'] is False
+    # Point accuracy owns the goal tolerance; the old independent .002-rad
+    # progress veto would have rejected this otherwise valid endpoint.
+    assert checks[0]['progress_error_rad'] == pytest.approx(.005)
+    assert checks[1]['reason'] == 'curobo_ik_failed'
+    assert all(row['equality_polish_seconds'] == 0. for row in checks)
