@@ -4,8 +4,8 @@ Description=Run the two Luna closing checks after GPU recovery
 [Service]
 Type=simple
 WorkingDirectory=/common/users/dz323/vlm_tamp
-Environment=CUDA_VISIBLE_DEVICES=0 CUDA_DEVICE_ORDER=PCI_BUS_ID MUJOCO_EGL_DEVICE_ID=4 __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json LIBGL_ALWAYS_SOFTWARE=1 LP_NUM_THREADS=2
-ExecStart=/bin/bash --noprofile --norc -c 'source scripts/server_runtime_env.sh; export PATH="/common/home/dz323/.local/bin:$$PATH"; exec python tools/run_current_closing_checks.py --study /common/users/dz323/vlm_tamp/results/luna-simplified-pipeline-gpu0-20261031 --wait-for-gpu'
+Environment=CUDA_VISIBLE_DEVICES=3 MUJOCO_EGL_DEVICE_ID=3
+ExecStart=/bin/bash --noprofile --norc -c 'source scripts/server_runtime_env.sh; export PATH="/common/home/dz323/.local/bin:$$PATH"; exec python tools/run_current_closing_checks.py --study /common/users/dz323/vlm_tamp/results/luna-simplified-pipeline-20261031 --wait-for-gpu'
 MemoryMax=16G
 MemorySwapMax=0
 OOMPolicy=kill

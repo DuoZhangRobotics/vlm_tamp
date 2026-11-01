@@ -101,7 +101,7 @@ def main():
     phases.add_argument('--practice-only',action='store_true',help='Freeze practice notes and stop for scope review before fresh evaluation')
     phases.add_argument('--evaluate-only',action='store_true',help='Continue an already completed practice manifest without retraining')
     a=p.parse_args();study=Path(a.study).resolve();study.mkdir(parents=True,exist_ok=True);(study/'trials').mkdir(exist_ok=True)
-    if not os.environ.get('CUDA_VISIBLE_DEVICES'):raise ValueError('Select the CUDA device for this run')
+    if os.environ.get('CUDA_VISIBLE_DEVICES')!='3':raise ValueError('GPU 3 only')
     plan=read_json(Path(a.plan) if a.plan else study/'varied-practice-plan.json')
     controls=checked_control_steps(plan['control_steps']);seconds=int(plan['episode_wall_seconds'])
     if seconds<=0:raise ValueError('Use a positive episode wall budget')

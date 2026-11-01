@@ -296,8 +296,7 @@ def main():
     a=p.parse_args();study=a.study.resolve()
     if not study.is_relative_to(ROOT/'results'):raise ValueError('Use a study under results/')
     study.mkdir(parents=True,exist_ok=True)
-    if not os.environ.get('CUDA_VISIBLE_DEVICES') or not os.environ.get('MUJOCO_EGL_DEVICE_ID'):
-        raise ValueError('Select the CUDA and EGL devices for this run')
+    if os.environ.get('CUDA_VISIBLE_DEVICES')!='3' or os.environ.get('MUJOCO_EGL_DEVICE_ID')!='3':raise ValueError('GPU 3 only')
     stages={'first':[('baseline',1)],'remaining':[('baseline',None),('practice',None)],
             'baseline-rerun':[('baseline',1),('baseline',None)],
             'transfer':[('transfer',None)],'qualify-and-continue':[('baseline',1),('baseline',None),('practice',None)]}[a.stage]
