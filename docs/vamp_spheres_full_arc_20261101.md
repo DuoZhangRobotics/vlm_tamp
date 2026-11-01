@@ -1,5 +1,7 @@
 # VAMP spheres and full-arc planning — 2026-11-01
 
+This records the earlier sphere/full-arc cleanup. The subsequent [heuristic removal and audit](/common/users/dz323/vlm_tamp/docs/heuristic_audit_20261101.md) removes the depth-direction rule and point-mode jaw restriction and records fresh trials.
+
 Implemented from the user's correction: use the existing fast planner, permit finger contact with every environment surface, and attempt the whole requested arc before discretized continuation.
 
 ## Current design

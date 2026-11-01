@@ -219,6 +219,7 @@ def _run_data(study,run,entry,active):
             ('Learner notes','agent-workspace/guidelines.json'),('Timing JSON','timing-breakdown.json')]
            if (run/path).exists()}
     if (study/'failure-summary.html').exists():links['Task failure explanations']='failure-summary.html'
+    if (study/'heuristic-audit.html').exists():links['Geometry and heuristic audit']='heuristic-audit.html'
     if (run/'evaluator-diagnostics.json').exists():links['Evaluator diagnosis']=_relative(run/'evaluator-diagnostics.json',study)
     timing=cached_profile_run(run,events,agent.get('wall_seconds'))
     timing={k:v for k,v in timing.items() if not k.startswith('_')}
@@ -290,6 +291,7 @@ def publish(study,*,force=False,now=None):
     if active.get('status')=='running' and not running and not stopped:message='The saved process is no longer alive; its last result is recorded below.'
     links={'Study protocol':'study-manifest.json','Declared cases':'plan.json'}
     if (study/'failure-summary.html').exists():links['Task failure explanations']='failure-summary.html'
+    if (study/'heuristic-audit.html').exists():links['Geometry and heuristic audit']='heuristic-audit.html'
     if manifest.get('repair_report'):links['Contact repair tests']=manifest['repair_report']
     if manifest.get('superseded_by'):links['Open the new rerun']=manifest['superseded_by']
     monitor=read(study/'resource-monitor.json',{})

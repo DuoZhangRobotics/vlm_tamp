@@ -203,6 +203,9 @@ def test_global_mode_keeps_query_reset_and_uses_only_current_collision_clouds(wo
     assert setup['current_moving_surface_only']
     assert meshes==[] and not setup['gpu_environment_collision_checked']
     assert setup['seed_velocity_weight']==0.
+    assert setup['velocity_regularization_weight'] is None
+    assert setup['velocity_regularization_source']=='upstream_optimizer_default'
+    assert solvers[0].options['velocity_regularization_weight'] is None
     first, second = solve(worker), solve(worker)
     assert len(solvers) == 2 and solvers[0].destroy_count == 1
     assert first['optimizer_generation'] == 1 and second['optimizer_generation'] == 2

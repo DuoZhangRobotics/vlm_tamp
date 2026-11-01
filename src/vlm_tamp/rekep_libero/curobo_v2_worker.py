@@ -235,7 +235,10 @@ class Worker:
                 'local_optimization_dt_seconds': self.arc_local_dt if solver_mode == 'local_continuation' else None,
                 'local_seed_std_rad': self.arc_local_seed_std if solver_mode == 'local_continuation' else None,
                 'velocity_regularization_weight': (self.arc_local_velocity_weight if solver_mode == 'local_continuation'
-                    else float(self.config.get('curobo_v2_arc_velocity_weight', 1.0))),
+                    else self.config.get('curobo_v2_arc_velocity_weight')),
+                'velocity_regularization_source': ('local_continuation_setting' if solver_mode=='local_continuation'
+                    else 'explicit_configuration' if self.config.get('curobo_v2_arc_velocity_weight') is not None
+                    else 'upstream_optimizer_default'),
                 'seed_velocity_weight': 0.,
                 'seed_penalty_reference': 'disabled; no zero-joint posture prior',
                 'all_seeds_local': solver_mode == 'local_continuation',
@@ -252,7 +255,7 @@ class Worker:
             position_tolerance=float(getattr(self,'arc_position_tolerance',self.config.get('arc_position_tolerance_m', .006))),
             collision_cache={'mesh': 2}, orientation_tolerance=3.2,
             velocity_regularization_weight=(self.arc_local_velocity_weight if local
-                else float(self.config.get('curobo_v2_arc_velocity_weight', 1.0))),
+                else self.config.get('curobo_v2_arc_velocity_weight')),
             seed_velocity_weight=0., optimizer_collision_activation_distance=.002,
             **({'optimization_dt': self.arc_local_dt} if local else {}))
         if local:

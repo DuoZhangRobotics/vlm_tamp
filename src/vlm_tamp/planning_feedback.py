@@ -39,8 +39,8 @@ def summarize_arc_failure(result,native_scene=None):
     goals=result.get('goal_proposals',[])
     projected=[g for g in goals if g.get('projection',{}).get('accepted')]
     checked=[g for g in projected if g.get('scene') is not None]
-    positions=[g['projection']['position_error_m'] for g in goals
-               if math.isfinite(g.get('projection',{}).get('position_error_m',float('inf')))]
+    positions=[error for g in goals if math.isfinite(error:=g.get('projection',{}).get(
+        'position_error_m',g.get('gpu_input_position_error_m',float('inf'))))]
     orientations=[g['projection']['jaw_inequality_error']/.15 for g in goals
                   if math.isfinite(g.get('projection',{}).get('jaw_inequality_error',float('inf')))]
     reasons=Counter(reason for g in goals for reason in
@@ -51,6 +51,7 @@ def summarize_arc_failure(result,native_scene=None):
         g=min(matching,key=lambda g:g.get('projection',{}).get('position_error_m',
             g.get('gpu_input_position_error_m',float('inf'))))
         p=g.get('projection',{})
+        position_tolerance=g.get('ik_position_tolerance_m',p.get('position_tolerance_m',g.get('position_tolerance_m')))
         examples.append({'module':('partial_pose_arc.wrist_policy' if reason=='wrist_excursion_limit'
             else 'partial_pose_arc.endpoint_projection' if reason=='endpoint_constraint_projection_failed'
             else 'native_scene.joint_bounds' if reason=='joint_bounds'
@@ -60,8 +61,7 @@ def summarize_arc_failure(result,native_scene=None):
             'joint_bound_violations':g.get('scene',{}).get('joint_bound_violations',[]),
             'input_position_error_mm':1000*g['gpu_input_position_error_m'] if 'gpu_input_position_error_m' in g else None,
             'final_position_error_mm':1000*p['position_error_m'] if 'position_error_m' in p else None,
-            'allowed_position_error_mm':1000*p.get('position_tolerance_m',g.get('position_tolerance_m'))
-                if p.get('position_tolerance_m',g.get('position_tolerance_m')) is not None else None,
+            'allowed_position_error_mm':1000*position_tolerance if position_tolerance is not None else None,
             'wrist_reorientation_deg':g.get('wrist_excursion_deg'),
             'allowed_wrist_reorientation_deg':g.get('wrist_limit_deg',result.get('planning_wrist_limit_deg')),
             'weighted_angular_error':p.get('jaw_inequality_error'),

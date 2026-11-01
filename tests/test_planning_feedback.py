@@ -30,6 +30,15 @@ def test_feedback_separates_ik_projection_from_collision_and_unknown_values():
     assert not empty['start_collision_free']
 
 
+def test_gpu_ik_failure_reports_actual_error_against_ik_accuracy_not_path_band():
+    result=summarize_arc_failure({'goal_proposals':[{'accepted':False,'reason':'curobo_ik_failed',
+        'gpu_input_position_error_m':.046,'ik_position_tolerance_m':.001,'position_tolerance_m':.006}]})
+    assert result['minimum_endpoint_position_error_m']==.046
+    example=result['blocking_constraint_examples'][0]
+    assert example['input_position_error_mm']==46.
+    assert example['allowed_position_error_mm']==1.
+
+
 def test_failed_arc_exposes_current_diagnostics_without_private_path(tmp_path,monkeypatch):
     import importlib.util
     import json
