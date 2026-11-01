@@ -301,7 +301,9 @@ def main():
     a=p.parse_args();study=a.study.resolve()
     if not study.is_relative_to(ROOT/'results'):raise ValueError('Use a study under results/')
     study.mkdir(parents=True,exist_ok=True)
-    if os.environ.get('CUDA_VISIBLE_DEVICES')!='3' or os.environ.get('MUJOCO_EGL_DEVICE_ID')!='3':raise ValueError('GPU 3 only')
+    gpu=os.environ.get('VLM_TAMP_GPU','3')
+    if os.environ.get('CUDA_VISIBLE_DEVICES')!=gpu or os.environ.get('MUJOCO_EGL_DEVICE_ID')!=gpu:
+        raise ValueError('CUDA and EGL must use the configured VLM_TAMP_GPU')
     stages={'first':[('baseline',1)],'remaining':[('baseline',None),('practice',None)],
             'baseline-rerun':[('baseline',1),('baseline',None)],
             'transfer':[('transfer',None)],'qualify-and-continue':[('baseline',1),('baseline',None),('practice',None)]}[a.stage]

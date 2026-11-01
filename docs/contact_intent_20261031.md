@@ -289,3 +289,39 @@ can resume waiting after a user-service/server restart; a completed study exits
 without running again. Runtime source changes stop a queued study instead of
 silently testing different code. Interrupted physical trials are preserved.
 Page: `results/luna-simplified-pipeline-20261031/watch.html`.
+
+## Subsequent hardware decision and current stop state
+
+The user stopped arcla execution and rejected the GPU/software-renderer
+workaround. Commit `08da2ec` reverted that workaround; its automatic service
+was disabled. The user later authorized trying Arrakis in this same conversation,
+without delegating to another Codex agent.
+
+Arrakis passed CUDA and normal NVIDIA EGL checks, but the restored environment
+was hardware-specific. The observer needed to support kernels without
+`memory.peak`; it now labels sampled peaks while retaining the hard memory and
+swap limits. Its user manager has `Linger=no`, so remote jobs need an attached
+SSH session. The actor's numerical bundle also needed Python 3.10 wheels rather
+than arcla's Python 3.12 wheels. The same NumPy 1.26.4, SciPy 1.14.1 and Pillow
+10.2.0 passed the real isolated-runtime probe on Arrakis.
+
+VAMP's arcla-native binary raised an illegal instruction on Arrakis's EPYC 7313.
+The PointNet binary had no Ada CUDA kernel. Both were rebuilt from unchanged
+sources: CPU target x86-64-v3 and CUDA targets 8.9 plus 12.0. Originals and hashes
+are preserved in `.runtime/arrakis-portability-20261031/receipt.json` and its
+backup files. Native FK, PointNet and eight GraspGen proposals then executed on
+Arrakis. These are environment checks, with zero robot controls/model-agent calls.
+
+cuRobo v2 remained blocked: the installed Warp 1.18.0 binary reports CUDA Toolkit
+13.4 and requires a CUDA 13-capable driver, while Arrakis driver 570.195.03
+reports CUDA 12.8. No Warp downgrade or alternative planning backend was applied.
+See `results/arrakis-runtime-readiness-20261031/result.json` and `ik/curobo.log`.
+
+The user then directed the work back toward a fixed RTX 4090 platform because
+hardware/runtime changes can affect timings and individual trajectories. All
+Arrakis trial/check units were stopped; no valid Luna trial ran there. The 4090
+host/address or a workspace reconnection is pending. Verify that machine's
+driver supports the pinned numerical runtime before trials. The experiment
+launcher now accepts `VLM_TAMP_GPU` (default 3); set it, `CUDA_VISIBLE_DEVICES`,
+and `MUJOCO_EGL_DEVICE_ID` consistently on a single-GPU host. This is deployment
+selection, not a robot policy or planner change.
