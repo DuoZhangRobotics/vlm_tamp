@@ -55,7 +55,10 @@ def render(study,force=False):
             f'<td>{fmt(timing.get("actor_wall_seconds"))}</td><td>{fmt(timing.get("service_wall_seconds"))}</td>'
             f'<td>{fmt(timing.get("outside_service_seconds"))}</td><td><a href="{prefix}/watch.html">Live details and full profiling</a></td></tr>')
         movie=run/'attempt01/initial/rollout.mp4'
-        if movie.exists():videos.append(f'<h2>Closing {index}</h2><video controls preload="none" src="{movie.relative_to(study)}"></video>')
+        if movie.exists():
+            poster=movie.parent/'frames/step0000.jpg'
+            poster_attribute=f' poster="{poster.relative_to(study)}"' if poster.exists() else ''
+            videos.append(f'<h2>Closing {index}</h2><video controls preload="none"{poster_attribute} src="{movie.relative_to(study)}"></video>')
         if state.get('health_text'):health.append(f'<p>State {index}: {html.escape(state["health_text"])}</p>')
     text='''<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Current closing checks</title>
 <style>body{font:16px system-ui;max-width:1100px;margin:28px auto;padding:0 16px;color:#203249}table{border-collapse:collapse;width:100%}td,th{padding:10px;border-bottom:1px solid #ddd;text-align:left}video{max-width:100%;width:512px}.scroll{overflow:auto}button{font:inherit;padding:8px}</style>

@@ -138,6 +138,7 @@ async function refreshOverview(){
   for(const row of state.runs||[])if(!Array.isArray(row.videos)){const data=await fetchDetail(row);for(const video of data.videos||[])addVideo(row,video)}
   text('videoCount','('+cards.size+')');if(cards.size)text('videoEmpty','');
   // Never replace an inspection or a player during a status refresh.
+  if(!chosen&&state.runs?.length===1)chosen=state.runs[0].id;
   if(chosen&&selectedVersion===null)await inspectRun(chosen,false);
   if(anchor&&document.contains(anchor))scrollBy(0,anchor.getBoundingClientRect().top-anchorTop);else scrollTo(0,y);
  }catch(error){text('status','Open this file with VS Code Live Preview. '+error.message)}
