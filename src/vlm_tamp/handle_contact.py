@@ -61,15 +61,6 @@ def upright_plane(points, camera_position, seed=0):
             'rms': float(np.sqrt(np.mean(((points[keep]-centre)@normal)**2)))}
 
 
-def axis_from_bulk(anchor, pivot, bulk, motion):
-    tangent = unit(np.cross([0., 0., 1.], np.asarray(anchor)-pivot))
-    score = float(tangent@(np.asarray(bulk)-anchor))
-    if abs(score)<.03:
-        raise ValueError('Observed cabinet bulk does not resolve opening/closing direction')
-    sign = np.sign(score)*(1. if motion=='close' else -1.)
-    return np.array([0., 0., sign]), score
-
-
 def image_motion_axis(anchor, pivot, camera, hint):
     """Resolve an upright axis sign only when the projected hint distinguishes it."""
     if hint is None:
@@ -91,19 +82,18 @@ def image_motion_axis(anchor, pivot, camera, hint):
     return np.array([0.,0.,1. if scores[0]>scores[1] else -1.]),scores
 
 
-def require_direction_agreement(evidence):
-    direction=evidence.get('motion_direction_check',{})
-    if not direction.get('direction_conflict'):return
-    error=ValueError('Image-motion intent and adjacent-depth direction disagree. '
-        'No direction was installed. Inspect the attachment/contact geometry in another view; '
-        'use an explicit unknown image hint only when you intend to delegate direction to the depth prior.')
-    error.planning_diagnostic={'status':'direction_evidence_conflict','module':'handle_contact.direction',
-        'caller_hint_axis':direction.get('vlm_image_axis'),
-        'depth_prior_axis':direction.get('depth_prior_axis'),
-        'positive_axis_toward_bulk_score_m':direction.get('positive_axis_toward_bulk_score_m'),
-        'model_changed':False,'physical_motion_issued':False,
-        'interpretation':'A depth heuristic is not allowed to silently override image intent. Neither source alone verifies task direction.'}
-    raise error
+def direction_from_image_hint(anchor, pivot, camera, hint):
+    """Use caller intent; an unsigned vertical axis is only a coordinate convention."""
+    axis,scores=image_motion_axis(anchor,pivot,camera,hint)
+    resolved=axis is not None
+    if not resolved:axis=np.array([0.,0.,1.])
+    return axis,{'source':'caller image-motion hint' if resolved else 'unsigned vertical-axis coordinate convention',
+        'image_direction_xy':hint,'image_hint_status':'resolved' if resolved else 'unresolved',
+        'image_projection_scores':scores,'vlm_image_axis':axis.tolist() if resolved else None,
+        'selected_axis':axis.tolist(),'task_direction_status':'caller_specified' if resolved else 'unknown',
+        'coordinate_convention_only':not resolved,'task_direction_verified':False,
+        'positive_rotation_meaning':'caller image-motion direction' if resolved else
+            'right-hand rotation about +Z; opening/closing is unknown'}
 
 
 def selected_panel(camera, choices, panel_mask=None):
@@ -289,20 +279,19 @@ def door_model(cameras, choices, previous_spec, metadata, camera, face, normal, 
     hint = choices.get('initial_image_direction_xy')
     pivot=(np.asarray(fixed_joint['joint_origin_world_m'],float) if fixed_joint is not None else
         np.asarray([ray_plane(p,camera,centre,normal) for p in choices['hinge_pixels_xy']]).mean(0))
-    axis=np.asarray(fixed_joint['joint_axis_world'],float) if fixed_joint is not None else None
-    direction_record = {'vlm_image_axis': None, 'image_hint_status': 'unresolved',
-                        'image_direction_xy': hint}
     if fixed_joint is not None:
+        axis=np.asarray(fixed_joint['joint_axis_world'],float)
+        previous=fixed_joint.get('direction_source',{})
+        previous=previous if isinstance(previous,dict) else {}
+        direction_record={key:copy.deepcopy(previous[key]) for key in
+            ['task_direction_status','coordinate_convention_only','positive_rotation_meaning'] if key in previous}
+        direction_record.setdefault('task_direction_status','unknown')
+        direction_record.setdefault('coordinate_convention_only',direction_record['task_direction_status']=='unknown')
         direction_record.update(source='retained fixed-world joint hypothesis; current contact geometry refreshed',
+            selected_axis=axis.tolist(),image_direction_xy=hint,image_hint_status='not_reestimated',
             task_direction_verified=False,fixed_joint_preserved=True)
-    if hint is not None and fixed_joint is None:
-        axis,directions=image_motion_axis(anchors[0],pivot,camera,hint)
-        direction_record['image_projection_scores'] = directions
-        if axis is not None:
-            direction_record.update(vlm_image_axis=axis.tolist(),image_hint_status='resolved',
-                                    source='projected image-motion hint')
-        elif metadata is None:
-            raise ValueError('Image motion direction is unresolved in this camera; no axis sign was selected.')
+    else:
+        axis,direction_record=direction_from_image_hint(anchors[0],pivot,camera,hint)
     panel_band=.032
     panel_band_measured=False
     if metadata is not None:
@@ -316,28 +305,6 @@ def door_model(cameras, choices, previous_spec, metadata, camera, face, normal, 
         if near.sum()>100:
             panel_band=float(np.clip(np.quantile(np.abs(signed[near]),.98)+.006,.012,.040))
             panel_band_measured=True
-        if fixed_joint is None:
-            stationary = ((np.linalg.norm(occupied[:, :2]-pivot[:2], axis=1)<.40)
-                          & (occupied[:, 2]>height[0]) & (occupied[:, 2]<height[1])
-                          & (np.abs((occupied-centre)@normal)>.035))
-            if stationary.sum()<150:
-                raise ValueError('Insufficient adjacent stationary RGB-D geometry for direction check')
-            bulk = np.median(occupied[stationary], axis=0)
-            depth_axis, score = axis_from_bulk(anchors[0], pivot, bulk, choices['motion'])
-            # This is a geometry heuristic, not authority to change the caller's
-            # requested image direction. Keep disagreement visible to the caller.
-            if axis is None:axis=depth_axis
-            direction_record.update(observed_bulk_world_m=bulk.tolist(),
-                positive_axis_toward_bulk_score_m=score, depth_prior_axis=depth_axis.tolist(),selected_axis=axis.tolist(),
-                direction_conflict=bool(not np.allclose(axis,depth_axis)),
-                task_direction_verified=False,
-                source=('caller image-motion hint; adjacent-depth prior is a separate check' if hint is not None else
-                        'upright-door prior: close toward adjacent stationary depth geometry, open away'))
-    if axis is None:
-        raise ValueError('Current sensor geometry and image hint do not resolve the rotation direction')
-    direction_record['selected_axis'] = axis.tolist()
-    direction_record['image_hint_overridden_by_depth'] = bool(metadata is not None and
-        direction_record['vlm_image_axis'] is not None and direction_record['vlm_image_axis'] != axis.tolist())
     spec = copy.deepcopy(previous_spec)
     spec.update(joint_origin_world_m=pivot.tolist(), joint_axis_world=axis.tolist(),
                 panel_normal_world=normal.tolist(), pull_axis_world=normal.tolist(),

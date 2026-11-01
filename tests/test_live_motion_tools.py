@@ -103,6 +103,14 @@ def test_estimate_application_preserves_direction_and_invalidates_old_plans():
     assert compact['source_control_steps']==[10,20,30]
 
 
+@pytest.mark.parametrize('sign,preserved',[(1,False),(-1,True)])
+def test_explicit_axis_reversal_is_reported_without_claiming_direction_preserved(sign,preserved):
+    robot,_=model_service()
+    result=robot.apply_joint_estimate('joint1',motion_sign=sign)
+    assert robot.spec['joint_axis_world']==[0.,0.,float(sign)]
+    assert result['direction_preserved'] is preserved
+
+
 @pytest.mark.parametrize('status',['motion_estimate_unverified','verification_inconclusive'])
 def test_provisional_application_is_explicit(status):
     robot,value=model_service();value.update(status=status,motion_supported=False)

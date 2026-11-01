@@ -51,7 +51,10 @@ closest valid IK and one approach query per pose. No angle/height/depth sweeps.
 The network receives the selected target cloud. Check the proposed open hand
 against the whole observed workspace before IK; then check the arm and path.
 Closure is measured physically.
-Grasped motion permits finger/selected-handle contact; arm/palm stay checked.
+Fingers may contact any environment surface; arm/palm stay checked.
+For arcs, point mode constrains only the grip point and leaves wrist orientation
+free. It does not carry the whole hand rigidly with the door. Choose rigid to
+request that attachment relation, or jaw_axis to retain only the closing axis.
 The planner's returned path is used without an extra dense validation pass.
 Contact skills when enabled: push_stroke, push, continue_push, hook_pull.
 push_stroke(direction_world, distance_m) moves the current hand directly in
@@ -321,8 +324,9 @@ def compact_response(response):
              'geometry_source', 'source', 'reason','target_selection','handle_fit','selected_parts'))
         if isinstance(value['fit_diagnostics'].get('motion_direction_check'), dict):
             result['fit_diagnostics']['motion_direction_check'] = pick(value['fit_diagnostics']['motion_direction_check'],
-                ('source','image_hint_status','image_direction_xy','selected_axis','image_hint_overridden_by_depth',
-                 'direction_conflict','depth_prior_axis','task_direction_verified'))
+                ('source','image_hint_status','image_direction_xy','selected_axis',
+                 'task_direction_status','coordinate_convention_only','positive_rotation_meaning',
+                 'task_direction_verified','fixed_joint_preserved'))
     if 'execution' in value:
         result['execution'] = pick(value['execution'], ('planned_commands', 'issued_commands',
             'all_commands_issued', 'terminated_on_simulator_success', 'termination_reason',

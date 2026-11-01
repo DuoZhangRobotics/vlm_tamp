@@ -231,7 +231,7 @@ class NativeScene:
             'unknown_space_model':'unobserved space is unmodeled',
             'door_environment_collision_checked':False,'simulator_object_geometry_used':False,
             'constraint':{
-                'point':'grip point on perceived hinge circle; aligned or bounded-tilt jaws',
+                'point':'grip point on perceived hinge circle; wrist orientation unconstrained',
                 'rigid':'grip point on perceived hinge circle; orientation transported with the articulation',
                 'jaw_axis':'grip point on perceived hinge circle; closing-axis direction transported, axial roll free'
             }[grasp_constraint],
@@ -245,7 +245,8 @@ class NativeScene:
             'constraint_metric':'1e-6 * max(position ratio, orientation ratio, progress-bound ratio)',
             'constraint_metric_units':'scaled_dimensionless_acceptance_ratio',
             'position_tolerance_affects_collision_checks':False,
-            'native_simd_projection_fully_preserved':False,'aligned_jaws':bool(aligned)}
+            'native_simd_projection_fully_preserved':False,'aligned_jaws':False,
+            'jaw_tilt_limit_applied':False,'orientation_constraint_applied':grasp_constraint!='point'}
         self.record.update(grasp_constraint=grasp_constraint,
             shared_tool_stack='observed-hinged-contact-v1',
             grasp_orientation_reference='current measured TCP transported with the estimated articulation',

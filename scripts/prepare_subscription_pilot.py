@@ -187,13 +187,16 @@ Tool interfaces (all coordinate conventions are explicit):
   orientation_tolerance_deg=null, max_wrist_reorientation_deg=null): plan a relative
   signed nonzero angle around your current pivot/axis. Larger requests use
   multiple planning reference frames internally, without wrapping progress.
-  "point" keeps the contact midpoint on its arc with bounded jaw tilt.
+  "point" keeps only the contact midpoint on its arc; wrist orientation is free.
+  It does not carry the whole hand rigidly with the moving part. No jaw-tilt
+  restriction is imposed in point mode.
   "rigid" transports the measured hand orientation with the moving handle.
   "jaw_axis" transports the line between the fingers, allowing rotation about
   that line. These are different grasp assumptions, not guarantees of retention.
   Position tolerance defaults to 6 mm and is explicit in the reply. It bounds
-  contact-path error, not collision clearance. Wrist rotation is free unless you
-  explicitly request a limit; physical joint bounds and path checks still apply.
+  contact-path error, not collision clearance. Point mode has no hard wrist
+  orientation constraint. max_wrist_reorientation_deg currently filters goal
+  postures only; it is not a path-wide bound. Physical joint bounds still apply.
   Rigid/jaw-axis orientation error defaults to 3 degrees; this differs from total
   wrist reorientation. You can request another tolerance (0 uses legacy exact).
   The legacy refined argument is ignored; it estimates no hinge.

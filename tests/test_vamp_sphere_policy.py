@@ -92,3 +92,37 @@ def test_native_planner_owns_constraint_projection(robot,monkeypatch):
         assert result['exact_solution'],result
         assert not result['additional_dense_validation']
         np.testing.assert_allclose(path[[0,-1]],[q,goal],atol=1e-6)
+
+
+@pytest.mark.parametrize('aligned',[False,True])
+def test_native_point_mode_allows_jaw_parallel_to_hinge(robot,aligned):
+    record,metadata,values,chain,world=robot
+    q=np.asarray(metadata['joint_positions']);tcp=pose_matrix(chain.forward(q))
+    # This orientation violated the former jaw-tilt rule. The requested point
+    # is exactly on the circle, so point mode must accept it without rotation.
+    axis=tcp[:3,0];origin=tcp[:3,3]-.2*tcp[:3,1]
+    spec={'joint_origin_world_m':origin.tolist(),'joint_axis_world':axis.tolist(),
+        'front_plane':{'point_world_m':origin.tolist()},'panel_normal_world':tcp[:3,2].tolist()}
+    far=np.array([[5.,5.,5.]])
+    scene=Scene.from_points(far,far,far,spec)
+    with NativeScene(scene,record,metadata,q,.2,aligned=aligned,grasp_constraint='point') as context:
+        assert context.constraint_errors(q)['accepted']
+        assert not context.record['jaw_tilt_limit_applied']
+        assert not context.record['orientation_constraint_applied']
+
+
+@pytest.mark.parametrize('offset',[0.,.06])
+def test_common_rigid_hand_door_motion_preserves_collision_even_with_wrong_pivot(robot,offset):
+    from scipy.spatial.transform import Rotation
+    from vlm_tamp.rekep_libero.geometry import matrix_pose,transform_points
+    record,metadata,values,chain,world=robot;pose=pose_matrix(metadata['eef_pose_world_xyzw'])
+    pivot=pose[:3,3]+np.array([.2+offset,.1,0.])
+    rotation=Rotation.from_rotvec([0,0,.25]).as_matrix()
+    transform=np.eye(4);transform[:3,:3]=rotation;transform[:3,3]=pivot-rotation@pivot
+    for points in [values[40,:3][None],values[56,:3][None]]:
+        outcomes=[]
+        for cloud,hand in [(points,pose),(transform_points(points,transform),transform@pose)]:
+            scene=scene_for(cloud[0],'moving')
+            with NativeScene(scene,record,metadata,metadata['joint_positions'],.3,articulated=False) as context:
+                outcomes.append(context.validate_hand_pose(matrix_pose(hand))['accepted'])
+        assert outcomes[0]==outcomes[1]

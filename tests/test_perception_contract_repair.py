@@ -39,13 +39,14 @@ def test_stationary_motion_conflict_survives_compact_display():
     assert compact_response({'ok':True,'result':{'motion_effect':effect}})['result']['motion_effect']==effect
 
 
-@pytest.mark.parametrize('sign',[-1,1])
-def test_neither_direction_source_silently_overrides_a_conflict(sign):
-    from vlm_tamp.handle_contact import require_direction_agreement
-    direction={'direction_conflict':True,'vlm_image_axis':[0,0,sign],'depth_prior_axis':[0,0,-sign]}
-    with pytest.raises(ValueError) as exc:require_direction_agreement({'motion_direction_check':direction})
-    assert exc.value.planning_diagnostic['model_changed'] is False
-    assert exc.value.planning_diagnostic['caller_hint_axis']==[0,0,sign]
+def test_unknown_direction_is_explicit_in_compact_grounding_reply():
+    from vlm_tamp.handle_contact import direction_from_image_hint
+    axis,direction=direction_from_image_hint([0,-.24,1],[0,0,1],{},None)
+    result=compact_response({'ok':True,'result':{'fit_diagnostics':{'motion_direction_check':direction}}})
+    compact=result['result']['fit_diagnostics']['motion_direction_check']
+    assert compact['task_direction_status']=='unknown'
+    assert compact['coordinate_convention_only'] and compact['selected_axis']==[0,0,1]
+    assert 'opening/closing is unknown' in compact['positive_rotation_meaning']
 
 
 def test_gripper_gap_collapse_is_sensor_evidence_not_a_contact_certificate():

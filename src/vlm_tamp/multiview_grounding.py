@@ -17,7 +17,7 @@ def fit_multiview(cameras, metadata, task, arguments):
     """Return a candidate plus public checks; never mutate a planning service."""
     validate_operation('ground_multiview',arguments,observed_image_sizes(cameras))
     from .hinged_contact_tools import ground_handle
-    from .handle_contact import axis_from_bulk, image_motion_axis
+    from .handle_contact import direction_from_image_hint
     began=time.perf_counter();phases={};fits=[];candidate=None
     review={'accepted':False,'status':'unresolved','failed_checks':[],
         'measurements':{},'observation_id':arguments['observation_id'],
@@ -37,7 +37,7 @@ def fit_multiview(cameras, metadata, task, arguments):
                 'contact_policy':'selected functional finger contact',
                 'constraint':{'type':'point_on_circle_with_coupled_orientation'}}
             try:
-                mechanism,cloud,mask,anchors,evidence=ground_handle(cameras,choices,template,metadata,allow_direction_conflict=True)
+                mechanism,cloud,mask,anchors,evidence=ground_handle(cameras,choices,template,metadata)
             finally:phases[stage]=time.perf_counter()-started
             fits.append({'spec':mechanism.spec,'cloud':cloud,'mask':mask,'anchors':anchors,
                          'evidence':evidence,'choices':choices})
@@ -61,26 +61,10 @@ def fit_multiview(cameras, metadata, task, arguments):
         phases[stage]=time.perf_counter()-started
         review.update(measurements=measurements,checks=checks,triangulation=hinge,
                       failed_checks=[key for key,value in checks.items() if not value])
-        stage='motion_direction';direction=copy.deepcopy(candidate['evidence'].get('motion_direction_check',{}))
-        bulk=direction.get('observed_bulk_world_m')
-        axis,scores=image_motion_axis(spec['source_anchor_world_m'],np.asarray(hinge['origin_world_m']),
+        stage='motion_direction'
+        axis,direction=direction_from_image_hint(spec['source_anchor_world_m'],np.asarray(hinge['origin_world_m']),
             cameras[arguments['regions']['camera']],arguments['regions']['initial_image_direction_xy'])
-        if bulk is not None:
-            depth_axis,score=axis_from_bulk(spec['source_anchor_world_m'],np.asarray(hinge['origin_world_m']),bulk,task['motion'])
-            if axis is None:axis=depth_axis
-            direction.update(positive_axis_toward_bulk_score_m=score,
-                depth_prior_axis=depth_axis.tolist(),direction_conflict=bool(not np.allclose(axis,depth_axis)),
-                task_direction_verified=False,
-                source='caller image hint when supplied; adjacent-depth prior otherwise, using triangulated hinge')
-        else:
-            axis,scores=image_motion_axis(spec['source_anchor_world_m'],np.asarray(hinge['origin_world_m']),
-                                         cameras[arguments['regions']['camera']],arguments['regions']['initial_image_direction_xy'])
-            if axis is None:raise ValueError('Current sensor geometry and image hint do not resolve the rotation direction')
-            direction.update(source='caller image-motion hint using triangulated hinge',projection_scores=scores)
-        spec['joint_axis_world']=axis.tolist();direction['selected_axis']=axis.tolist()
-        direction['vlm_image_axis']=axis.tolist() if arguments['regions']['initial_image_direction_xy'] is not None else None
-        from .handle_contact import require_direction_agreement
-        require_direction_agreement({'motion_direction_check':direction})
+        spec['joint_axis_world']=axis.tolist()
         spec['direction_source']=direction
         spec['geometry_source']='caller-selected RGB regions; calibrated multiview hinge triangulation and independent depth fits'
         spec['geometry_review']={'source':'multiview sensor consistency','semantic_identity_verified':False,

@@ -132,7 +132,7 @@ class RobotService:
             'source_code_visible_to_agent': False,
             'separately_billed_model_calls_allowed': False,
             'geometry_priors': ['upright panel and vertical handle cylinder',
-                'observed adjacent depth supplies an unverified task-direction hypothesis',
+                'task direction is caller-selected; an unresolved hint leaves it unknown',
                 'bounded observed-point association and functional-finger contact'],
             'grasp_priors': ['small native GraspGen Panda batch; closest valid IK and one approach query per pose'],
             'planner': tool_contract(self.config)['planner'],
@@ -410,7 +410,7 @@ class RobotService:
             target_progress=float(np.pi/2), progress_units='radians',
             axis_prior='upright door', contact_policy='selected functional finger contact',
             constraint={'type':'point_on_circle_with_coupled_orientation'})
-        from vlm_tamp.handle_contact import HandleFitError,ground_panel,require_direction_agreement
+        from vlm_tamp.handle_contact import HandleFitError,ground_panel
         template=template if fixed_joint is None else {**template,**fixed_joint,'camera':choices['camera']}
         options={key:value for key,value in [('fixed_joint',fixed_joint),('panel_mask',panel_mask),('contact_mask',contact_mask)] if value is not None}
         handle_fit={'accepted':False,'status':'not_requested'}
@@ -425,7 +425,6 @@ class RobotService:
         if not handle_fit['accepted']:
             mechanism,cloud,mask,anchors,evidence=ground_panel(
                 self.cameras,choices,template,self.state['metadata'],fixed_joint=fixed_joint,panel_mask=panel_mask)
-            require_direction_agreement(evidence)
         evidence.update(handle_fit=handle_fit,
             selected_parts={'moving_part_id':moving_part_id,'contact_part_id':contact_part_id})
         names=['spec','cloud','mask','anchors','contact_scene_kind','choices','epoch','scene','tracker']
@@ -463,9 +462,14 @@ class RobotService:
         np.savez_compressed(dest/'points.npz', contact=self.cloud,
             moving=self.scene.moving_reference, static=self.scene.static_points)
         write_json(dest/'model.json', self.spec)
+        direction=self.spec.get('direction_source',{})
+        direction=direction if isinstance(direction,dict) else {}
+        caller_direction=direction.get('task_direction_status')=='caller_specified'
         return {'model': self.spec, 'geometry_epoch': self.epoch,
                 'direction_contract':{'positive_increment':'rotation along the installed signed joint_axis_world',
-                    'grounding_positive_direction_intent':self.spec.get('motion'),
+                    'grounding_positive_direction_intent':self.spec.get('motion') if caller_direction else None,
+                    'task_direction_status':direction.get('task_direction_status','unknown'),
+                    'positive_rotation_meaning':direction.get('positive_rotation_meaning','rotation along the reported axis; task direction unknown'),
                     'direction_is_a_model_hypothesis':True,
                     'task_success_false_means':'task incomplete; not a judgement that the last motion had the wrong direction'},
                 'hinge_evidence':copy.deepcopy(self.spec.get('hinge_evidence',{'status':'evidence_not_recorded'})),
@@ -512,6 +516,7 @@ class RobotService:
         if motion_sign is not None and motion_sign not in [-1,1]:raise ValueError('motion_sign must be -1 or +1')
         axis_sign=(1. if current_axis@unsigned>=0 else -1.) if motion_sign is None else motion_sign
         revised_axis=unsigned/np.linalg.norm(unsigned)*axis_sign
+        direction_preserved=bool(current_axis@revised_axis>0)
         origin=vector(fit['joint_origin_world_m'],3)
         shift=origin-vector(self.spec['joint_origin_world_m'],3)
         axis_unit=current_axis/np.linalg.norm(current_axis)
@@ -520,7 +525,7 @@ class RobotService:
             'observation_ids':used,'control_steps':controls,'motion_supported':supported,'provisional':not supported,
             'estimated_axis_world_unsigned':unsigned.tolist(),
             'task_direction_verified_by_motion_fit':False,
-            'scope':'Observed-motion hinge hypothesis; current contact geometry and signed task direction are retained.'}
+            'scope':'Observed-motion hinge hypothesis; contact geometry is retained and the sign follows the caller or previous axis.'}
         previous=(self.spec,self.scene,self.epoch)
         try:
             self.spec=copy.deepcopy(self.spec);self.spec['joint_estimation_evidence']=provenance
@@ -528,16 +533,24 @@ class RobotService:
                 'estimate_id':estimate_id,'calibrated_accuracy_guarantee':False}
             self.spec['joint_origin_world_m']=origin.tolist()
             self.spec['joint_axis_world']=revised_axis.tolist()
+            if motion_sign is not None:
+                self.spec['direction_source']={'source':'caller-selected sign of the measured axis',
+                    'selected_axis':revised_axis.tolist(),'task_direction_status':'unknown',
+                    'coordinate_convention_only':True,'task_direction_verified':False,
+                    'positive_rotation_meaning':'caller-selected axis sign; opening/closing is not verified'}
+            elif isinstance(self.spec.get('direction_source'),dict):
+                self.spec['direction_source']['selected_axis']=revised_axis.tolist()
             geometry=self.set_model()
         except Exception:
             self.spec,self.scene,self.epoch=previous
             raise
         return {**geometry,'applied_estimate_id':estimate_id,'hinge_update_applied':True,
             'planner_model_updated':True,'robot_motion_executed':False,'motion_supported':supported,
-            'provisional':not supported,'direction_preserved':True,'invalidated_old_plans':True,
+            'provisional':not supported,'direction_preserved':direction_preserved,'invalidated_old_plans':True,
             'axis_location_change_m':axis_location_change,
             'task_direction_verified_by_motion_fit':False,
-            'direction_note':'This fit estimates an unsigned axis. It preserves your previous sign; verify that positive motion moves the object toward the task goal.',
+            'direction_note':('This fit estimates an unsigned axis. The previous positive sign was retained; task direction is not verified.'
+                if direction_preserved else 'This fit estimates an unsigned axis. The caller-supplied motion_sign reversed the positive axis; task direction is not verified.'),
             'source_observation_ids':used,'source_control_steps':controls,
             'historical_fixed_joint_reused':max(controls)!=int(self.state['control_steps']),
             'semantic_identity_verified':False,'physical_contact_verified':False,
@@ -761,6 +774,10 @@ class RobotService:
             if np.linalg.norm(axis)<1e-9:
                 raise ValueError('Nonzero axis required')
             self.spec['joint_axis_world'] = (axis/np.linalg.norm(axis)).tolist()
+            self.spec['direction_source']={'source':'caller-specified axis coordinate',
+                'selected_axis':self.spec['joint_axis_world'],'task_direction_status':'unknown',
+                'coordinate_convention_only':True,'task_direction_verified':False,
+                'positive_rotation_meaning':'right-hand rotation about the caller-specified axis; task direction unknown'}
             evidence=self.spec.get('joint_estimation_evidence')
             if evidence:
                 measured=np.asarray(evidence['estimated_axis_world_unsigned'])

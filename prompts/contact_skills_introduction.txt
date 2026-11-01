@@ -78,8 +78,10 @@ you must repeat for each small continuation.
   Compare the same part before/after the action when deciding whether to reverse.
   A rectangle can contain background. Inspect the selected-point overlay and
   reselect the actual feature in a clearer view if the point lies off the target.
-  A positive increment follows the installed joint_axis_world. Grounding tries
-  to orient that axis toward its modeled task motion; this remains a hypothesis.
+  A positive increment follows the installed joint_axis_world. A supplied image
+  arrow selects its sign. Without a resolved arrow, +Z is only a coordinate
+  convention and opening/closing direction remains unknown. Depth does not
+  supply a task-direction guess. Choose signed motion from observed evidence.
   Controlled world-direction pushing defaults to the complete requested hand
   distance in one stroke at 0.03 m/s. A 0.10 m request is allowed. Joint-linked
   goals use incremental strokes while joint progress remains measurable.

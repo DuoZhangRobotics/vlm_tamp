@@ -164,10 +164,6 @@ public:
         const float height=now.dot(s.axis)-first.dot(s.axis);
         first-=s.axis*first.dot(s.axis);now-=s.axis*now.dot(s.axis);
         const float theta=std::atan2(s.axis.dot(first.cross(now)),first.dot(now));
-        const float jaw=(tcp.block<3,3>(0,0)*Eigen::Vector3f::UnitX()).dot(s.axis);
-        // Match CoupledHandlePoint: its cone concerns bar/up-axis alignment,
-        // with free axial twist, rather than distance from a rigid TCP pose.
-        const float cone=std::acos(std::clamp(std::abs(tcp.block<3,3>(0,0).col(1).dot(s.axis)),0.F,1.F));
         Residual result=Residual::Zero();
         result[0]=now.norm()-first.norm();result[1]=height;
         if(s.grasp_constraint) {
@@ -182,9 +178,8 @@ public:
             result[5]=.15F*(theta-std::clamp(theta,-.03F,s.goal_angle+.03F));
             return result;
         }
-        result[2]=.15F*(s.aligned_jaws ? jaw : std::copysign(std::max(0.F,std::abs(jaw)-.8660254F),jaw));
+        // Point mode constrains only the grip-point circle and requested arc extent.
         result[3]=.15F*(theta-std::clamp(theta,-.03F,s.goal_angle+.03F));
-        result[4]=.15F*std::max(0.F,cone-float(M_PI/2));
         return result;
     }
     float acceptanceMetric(const Residual& residual) const {

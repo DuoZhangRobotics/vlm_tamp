@@ -17,7 +17,7 @@ from .rekep_libero.robot_chain_v4 import fixed_orientation_residual
 
 
 class PartialPoseArc:
-    def __init__(self,chain,origin,axis,reference_q,pad_local,*,jaw_tilt=np.pi/3,margin=0.,
+    def __init__(self,chain,origin,axis,reference_q,pad_local,*,margin=0.,
                  grasp_constraint='point',position_tolerance_m=.003,orientation_tolerance_rad=0.):
         self.chain=chain;self.origin=np.asarray(origin,float)
         self.axis=np.asarray(axis,float);self.axis/=np.linalg.norm(self.axis)
@@ -28,7 +28,6 @@ class PartialPoseArc:
         self.anchor=tcp[:3,3]+tcp[:3,:3]@self.pad
         # Project within the actual robot bounds, without another joint inset.
         self.bounds=np.asarray(chain.limits,float)+[margin,-margin]
-        self.jaw_limit=float(np.sin(jaw_tilt))
         if grasp_constraint not in {'point','rigid','jaw_axis'}:
             raise ValueError('Unknown grasp constraint')
         self.grasp_constraint=grasp_constraint
@@ -61,12 +60,9 @@ class PartialPoseArc:
                 orientation_J=-R@skew([1.,0.,0.])@J[3:]
             residual=np.r_[point-self.point(angle),.15*orientation]
             return (residual,np.vstack([point_J,.15*orientation_J])) if jacobian else residual
-        value=float(self.axis@R[:,0])
-        excess=max(0.,abs(value)-self.jaw_limit)
-        residual=np.r_[point-self.point(angle),.15*excess]
-        if not jacobian:return residual
-        jaw_J=-self.axis@R@skew([1.,0.,0.])@J[3:]
-        return residual,np.vstack([point_J,.15*np.sign(value)*jaw_J if excess>0 else np.zeros(7)])
+        # A point constraint imposes no jaw or wrist orientation restriction.
+        residual=point-self.point(angle)
+        return (residual,point_J) if jacobian else residual
 
     def project(self,seed,angle,*,evaluations=80,avoidance=None):
         low,high=self.bounds.T;seed=np.clip(np.asarray(seed,float),low+1e-8,high-1e-8)

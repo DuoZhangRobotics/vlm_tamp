@@ -3,7 +3,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 from scipy.spatial.transform import Rotation
 
-from vlm_tamp.handle_contact import require_arrival, upright_plane, fit_upright_hinge, ObservedRobotScene, axis_from_bulk
+from vlm_tamp.handle_contact import require_arrival, upright_plane, fit_upright_hinge, ObservedRobotScene, direction_from_image_hint
 from vlm_tamp.handle_contact import contact_pose_variants
 from vlm_tamp.handle_contact import local_panel_band
 
@@ -87,12 +87,11 @@ class HandleContactTests(unittest.TestCase):
         self.assertAlmostEqual(band,.036,places=6)
         self.assertEqual(evidence['support_points'],len(panel))
 
-    def test_closing_moves_toward_observed_cabinet_and_opening_away(self):
-        anchor=np.array([0.,-.24,1.]);pivot=np.array([0.,0.,1.]);bulk=np.array([.20,0.,1.])
-        close,_=axis_from_bulk(anchor,pivot,bulk,'close')
-        opened,_=axis_from_bulk(anchor,pivot,bulk,'open')
-        np.testing.assert_allclose(close,[0,0,1])
-        np.testing.assert_allclose(opened,[0,0,-1])
+    def test_missing_hint_leaves_task_direction_unknown(self):
+        axis,evidence=direction_from_image_hint([0,-.24,1],[0,0,1],{},None)
+        np.testing.assert_allclose(axis,[0,0,1])
+        self.assertEqual(evidence['task_direction_status'],'unknown')
+        self.assertTrue(evidence['coordinate_convention_only'])
 
     def test_missing_robot_render_prior_fails_explicitly(self):
         with self.assertRaisesRegex(ValueError, 'not attached'):

@@ -8,7 +8,7 @@ import json
 import math
 from numbers import Real
 
-VERSION = 'robot-request-contract-v15'
+VERSION = 'robot-request-contract-v16'
 GROUND_FIELDS = ('camera', 'contact_box_xyxy', 'moving_panel_box_xyxy',
                  'hinge_pixels_xy', 'initial_image_direction_xy')
 GROUND_HELP = '''- ground(regions, moving_part_id=null, contact_part_id=null): fit a current upright door/joint hypothesis and optional vertical handle.
@@ -35,11 +35,12 @@ GROUND_HELP = '''- ground(regions, moving_part_id=null, contact_part_id=null): f
   selected contact point in this image, not camera orientation. Its scale is
   irrelevant; a supplied vector must be finite and nonzero. Use null when the
   image direction is unresolved; never use [0,0] as an unknown direction.
-  A resolved image-motion hint must agree with the adjacent-depth direction
-  hypothesis; disagreement is rejected, not silently overridden. With null,
-  adjacent stationary depth may supply a direction hypothesis. Without that
-  depth evidence, an unresolved hint is an error. Returned
-  motion_direction_check identifies the source; a fit is not proof of the
+  A resolved image-motion hint selects the sign directly. Nearby scene depth
+  never chooses or vetoes opening/closing direction. With null or a geometrically
+  ambiguous hint, geometry can still be returned: +Z is only an axis coordinate
+  convention and task_direction_status is unknown. Positive does not then mean
+  open or close; choose a signed motion from your observations and task intent.
+  Returned motion_direction_check identifies the source; a fit is not proof of the
   hinge hypothesis, retained contact, or task success. No robot motion occurs.
 '''
 
@@ -199,7 +200,7 @@ def ground_parameters(image_sizes=None):
         'moving_panel_box_xyxy': array(4, pixel, description='Moving door box [left,top,right,bottom], ORIGINAL image pixels.'),
         'hinge_pixels_xy': array(2, point, description='Two distinct original-pixel points along the same hypothesized hinge edge.'),
         'initial_image_direction_xy': {**nullable(array(2, number(), **{'not': {'const': [0, 0]}})),
-            'description': 'Intended initial CONTACT-POINT motion in image axes (x right, y down), not camera orientation. Finite nonzero vector, or null if unresolved. Adjacent stationary depth supplies a hypothesis when the image hint is unresolved; conflicting evidence is reported.'},
+            'description': 'Intended initial CONTACT-POINT motion in image axes (x right, y down). A finite nonzero vector selects the rotation sign. Null leaves opening/closing direction unknown; +Z is only a coordinate convention. Scene depth never guesses the task direction.'},
     }, [key for key in GROUND_FIELDS if key!='contact_box_xyxy'])
     part_id=nullable({'type':'string','minLength':1})
     return parameters({'regions': regions,'moving_part_id':part_id,'contact_part_id':part_id}, ['regions'])
