@@ -36,3 +36,24 @@ The fresh study is `results/luna-explicit-contact-ik-push-20261101/watch.html`: 
 Warm physical repeats completed: the second and third 1 cm strokes spent 38.8 ms and 39.1 ms generating all four Cartesian IK targets. Total tool time was 1.820 s and 1.808 s; execution plus capture was 1.666 s and 1.654 s. Instrumentation located the initial delay inside the first solve call (2.166 s), while solver construction itself took 39.3 ms. Subsequent solve calls were 8.4–10.0 ms. Source: `results/explicit-contact-warm-strokes-20261101/check.json` and `attempt01/curobo-queries.json`.
 
 Validation before fresh trials: 317 targeted tests passed; two historical recorded-data fixtures were unavailable. The Codex read-isolation integration check passed separately in the host systemd environment (it cannot run inside the nested tool sandbox). Real GPU alternation between acquisition and continuation reused both cached solvers with zero setup time; measured reused calls were 10.8 ms and 10.3 ms end to end.
+
+
+## Fresh trial results (frozen code 7b325e2)
+
+| Closing state | Native success | Controls | Actor wall | Outside robot service | All IK wall, including first use | Warm IK solve calls | Native approach planning |
+|---|---|---:|---:|---:|---:|---:|---:|
+| 17 | No | 600 | 335.1 s | 233.3 s | 6.10 s | 1.53 s | 0.087 s |
+| 49 | No | 600 | 318.0 s | 235.0 s | 7.26 s | 0.94 s | 0.209 s |
+
+These timing columns overlap; outside-service time includes Luna calls, transport and local analysis, not solely model reasoning. Both episodes exhausted controls, not wall time. The contact pipeline is **not yet reliable**; these results do not establish an improvement in task success.
+
+- State 17: initial pad pushes closed the door partly. Controls 275–372 had no microwave contact. Later contact was arm link 5; the final upward/sideways strokes reopened it. Final opening was 67.4 degrees. All seven issued trajectories completed, with the last skill ending at the control cap.
+- State 49: actual palm/pad contacts during approaches moved the door substantially. The intended strokes barely engaged it. Controls 411–600 had no microwave contact, so the final strokes could not make progress. Final opening was 65.3 degrees. Joint-linked calls reported unresolved visual feedback after their first executed strokes; direction-only continuations then moved in free space.
+
+These physical contacts come from operator-only simulator diagnostics. They were not sent to Luna or the planners. The exact division between observation coverage, sphere approximation and controller tracking in the unpredicted approach contacts is not yet isolated. No task-specific correction, contact-loss veto or automatic fallback was added to manufacture success.
+
+One timing qualification: the process stays alive, but a changed calibrated contact offset requires a different solver. State 17's switch from a pad-based stroke to a TCP-based `push_stroke` incurred another first use (0.91 s end to end). Startup is therefore per solver/contact geometry, not strictly once per trial. Acquisition and continuation at an unchanged offset do retain their independent warm solvers.
+
+Resource monitoring: 340 samples; peak RAM 6.60 GiB, GPU 1802 MiB; maximum host full-I/O pressure 1.54%; memory pressure zero; no OOM or resource interruption. Both simulations ended and GPU 0 returned to 2 MiB residency.
+
+See the study's `watch.html`, `failure-summary.html`, `contact-timeline.png` and `outcome-analysis.json` for videos, per-stage evidence and source timing. Each trial also has `evaluator-diagnostics.json`, explicitly excluded from actor input.
