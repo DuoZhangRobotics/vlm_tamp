@@ -157,12 +157,15 @@ class ProfiledWorker(CoupledWorker):
         state=self._response_state()
         issued_path=0 if not events else events[-1]['reference_index']+1
         complete=(issued_path==len(refs) and (tracking is None or tracking['goal_reached']))
+        budget_stop=bool(not terminal and not complete and self.control_steps>=self.maximum_control_steps)
         return {**state,'trajectory':{'all_commands_issued':complete,'nominal_path_commands':len(refs),
             'planned_commands':len(refs)+(tracking['extra_controls'] if tracking is not None else 0),'issued_commands':len(events),
             'terminated_on_simulator_success':terminal,
             'termination_reason':'simulator_success' if terminal else
+                'control_budget_exhausted' if budget_stop else
                 'reference_not_reached' if tracking_failure else 'trajectory_complete',
-            'terminated_on_tracking_error':bool(tracking_failure and not terminal),
+            'terminated_on_tracking_error':bool(tracking_failure and not terminal and not budget_stop),
+            'terminated_on_control_budget':budget_stop,
             'physical_stall_is_execution_gate':False,
             **({'arrival':tracking} if tracking is not None else {}),
             **({'push_feedback':feedback.result()} if feedback is not None else {}),

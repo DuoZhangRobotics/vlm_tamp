@@ -337,7 +337,7 @@ def compact_response(response):
         result['execution'] = pick(value['execution'], ('planned_commands', 'issued_commands',
             'all_commands_issued', 'terminated_on_simulator_success', 'termination_reason',
             'worker_seconds', 'wall_seconds', 'maximum_joint_reference_error_rad','endpoint_tracking',
-            'arrival','terminated_on_tracking_error','nominal_path_commands'))
+            'arrival','terminated_on_tracking_error','terminated_on_control_budget','nominal_path_commands'))
     if 'motion_effect' in value:result['motion_effect']=value['motion_effect']
     if 'scene_observation_support' in value:result['scene_observation_support']=evidence(value['scene_observation_support'])
     if isinstance(value.get('result'), dict):

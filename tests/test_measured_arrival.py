@@ -114,3 +114,15 @@ def test_dashboard_explains_measured_failure_and_whether_push_started():
     assert 'push was not started' in report
     active=issue_explanation({'arrival':arrival,'push_stroke_issued':True})
     assert 'Remaining motion references' in active
+
+
+def test_budget_ends_between_references_without_claiming_completion(monkeypatch):
+    robot,calls,_=worker(monkeypatch,response=.5,controls=62)
+    refs=np.zeros((2,7));refs[:,0]=[.2,.4]
+    result=robot.joint_trajectory(refs,arrival={'maximum_wait_steps':20})['trajectory']
+    assert robot.control_steps==62
+    assert result['termination_reason']=='control_budget_exhausted'
+    assert result['terminated_on_control_budget']
+    assert not result['all_commands_issued'] and not result['arrival']['goal_reached']
+    assert not result['terminated_on_tracking_error']
+    assert result['arrival']['last_reference']['ready_for_next_reference']

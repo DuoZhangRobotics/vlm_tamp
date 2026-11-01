@@ -1356,8 +1356,10 @@ class RobotService:
             success_terminated_trajectories=sum(bool(x.get('terminated_on_simulator_success')) for x in self.executions),
             all_trajectories_completed_or_success_terminated=all(x.get('all_commands_issued',False) or x.get('terminated_on_simulator_success',False) for x in self.executions))
         feedback_stops=[bool((x.get('termination_reason')=='measured_push_stall' and x.get('push_feedback',{}).get('stalled'))
-            or x.get('terminated_on_tracking_error')) for x in self.executions]
+            or x.get('terminated_on_tracking_error')
+            or (x.get('terminated_on_control_budget') and len(actions)>=self.maximum_control_steps)) for x in self.executions]
         summary.update(feedback_terminated_trajectories=sum(feedback_stops),
+            budget_terminated_trajectories=sum(bool(x.get('terminated_on_control_budget')) for x in self.executions),
             all_trajectories_completed_or_feedback_terminated=all(x.get('all_commands_issued',False)
                 or x.get('terminated_on_simulator_success',False) or stopped for x,stopped in zip(self.executions,feedback_stops)))
         successful_indices=[i for i,a in enumerate(actions) if a['evaluation_task_success']]
