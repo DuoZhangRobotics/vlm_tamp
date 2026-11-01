@@ -13,7 +13,7 @@ from vlm_tamp.robot_contracts import (GROUND_HELP, RequestValidationError, opera
 
 
 def regions():
-    return {'camera':'frontview','contact_box_xyxy':[10,20,30,80],
+    return {'camera':'frontview','contact_pixel_xy':[20,50],'contact_box_xyxy':[10,20,30,80],
             'moving_panel_box_xyxy':[5,10,90,95],'hinge_pixels_xy':[[8,15],[8,90]],
             'initial_image_direction_xy':[0,1]}
 

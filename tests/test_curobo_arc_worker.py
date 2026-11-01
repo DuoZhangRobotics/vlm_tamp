@@ -128,7 +128,10 @@ def test_contact_continuation_reuses_one_current_posture_seed(worker_scene):
     for supplied,call in zip([args,second],solvers[0].calls):
         np.testing.assert_array_equal(call['seed_config'].numpy(),np.array(supplied['seed']).reshape(1,1,7))
         np.testing.assert_array_equal(call['current_state'].position.numpy(),[supplied['seed']])
-    assert result['orientation_is_soft_preference']
+    assert not result['orientation_is_soft_preference']
+    assert solvers[0].criteria['contact_point'].terminal_pose_axes_weight_factor == [1.,1.,1.,0.,0.,0.]
+    assert 'optimization_dt' not in solvers[0].options
+    assert 'velocity_regularization_weight' not in solvers[0].options
     assert worker.solver.grasp_solver_untouched
 
 
@@ -163,6 +166,21 @@ def test_local_optimizer_is_reused_only_within_one_arc_and_rng_resets(worker_sce
     assert worker.solver.grasp_solver_untouched
 
 
+def test_contact_acquisition_and_continuation_do_not_evict_each_other(worker_scene):
+    worker,_,_,solvers=worker_scene
+    args=dict(point=[.5,.1,.2],contact_local=[.04,0.,0.],
+        reference_quaternion_xyzw=[0.,0.,0.,1.],seed=[.1,.2,.3,.4,.5,.6,.7])
+    first=worker.solve_contact(**args,local=False)
+    second=worker.solve_contact(**args,local=True)
+    third=worker.solve_contact(**args,local=False)
+    fourth=worker.solve_contact(**args,local=True)
+    assert len(solvers)==2 and all(s.destroy_count==0 for s in solvers)
+    assert first['solver_created'] and second['solver_created']
+    for row in (third,fourth):
+        assert not row['solver_created'] and not row['first_solve_for_contact_solver']
+        assert row['solver_setup_seconds']==0.
+
+
 def test_reconfigure_invalidates_old_ids_and_requires_local_solve_id(worker_scene):
     worker, config, _, solvers = worker_scene
     first = worker.configure_arc(**config)
@@ -187,9 +205,9 @@ def test_local_geometry_ownership_and_optimizer_settings(worker_scene):
     assert setup['collision_owner']=='native MC-VAMP sphere planner'
     assert meshes==[] and solvers[0].options['scene_model'].mesh==[]
     options = solvers[0].options
-    assert options['optimization_dt'] == .2
-    assert options['velocity_regularization_weight'] == .001
-    assert options['seed_velocity_weight'] == 0.
+    assert 'optimization_dt' not in options
+    assert 'velocity_regularization_weight' not in options
+    assert 'seed_velocity_weight' not in options
     assert not solvers[0].config.use_lm_seed
     assert not solvers[0].config.exit_early
 
@@ -205,7 +223,7 @@ def test_global_mode_keeps_query_reset_and_uses_only_current_collision_clouds(wo
     assert setup['seed_velocity_weight']==0.
     assert setup['velocity_regularization_weight'] is None
     assert setup['velocity_regularization_source']=='upstream_optimizer_default'
-    assert solvers[0].options['velocity_regularization_weight'] is None
+    assert 'velocity_regularization_weight' not in solvers[0].options
     first, second = solve(worker), solve(worker)
     assert len(solvers) == 2 and solvers[0].destroy_count == 1
     assert first['optimizer_generation'] == 1 and second['optimizer_generation'] == 2
@@ -231,7 +249,7 @@ def test_cleared_clouds_do_not_reuse_a_previous_moving_obstacle(worker_scene,mod
 @pytest.mark.parametrize('change', [
     {'local_dt': 0.}, {'local_dt': float('nan')}, {'mesh_pitch': -.01},
     {'moving_mesh_pitch': float('inf')}, {'solver_mode': 'unsupported'},
-    {'local_seed_std': -.1}, {'local_velocity_weight': float('nan')},
+    {'local_seed_std': -.1},
     {'axis': [0., 0., 0.]}, {'origin': [0., float('inf'), 0.]},
     {'scene_arrays_sha256': 'incorrect'},
 ])

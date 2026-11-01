@@ -1,8 +1,7 @@
-"""Multiple GPU IK proposals, robot-model validation, and joint-limit reserve.
+"""cuRobo IK results, unchanged, for the native motion planner.
 
-cuRobo generates poses. VAMP validates self collision; the grasp selector and
-executor validate observed scene geometry and intended contacts. Point-goal
-placement retains a bounded CPU refinement because orientation is free there.
+FK errors are reported, not used for a second IK acceptance decision. The native
+planner owns collision admission. Point continuation uses cuRobo as well.
 """
 
 import json
@@ -10,14 +9,11 @@ import time
 from pathlib import Path
 
 import numpy as np
-from scipy.optimize import least_squares
 from scipy.spatial.transform import Rotation
 
-from vlm_tamp.pose_constraints import skew
 from .curobo_client import CuroboClient
 from .curobo_model import export_model
 from .geometry import interpolate_path, pose_matrix
-from .robot_chain_v4 import fixed_orientation_residual
 from .task_ik_v6 import TaskIK as BaseIK
 
 
@@ -26,8 +22,7 @@ def joint_reserve(q, limits):
 
 
 def posture_cost(q, seed, limits):
-    gaps = np.minimum(q-limits[:, 0], limits[:, 1]-q)
-    return float(np.linalg.norm(q-seed) + .015*np.sum(1/(gaps+.05)))
+    return float(np.linalg.norm(q-seed))
 
 
 class TaskIK(BaseIK):
@@ -84,7 +79,7 @@ class TaskIK(BaseIK):
         result = self.client.solve(np.asarray(target_pose).tolist(), seed.tolist())
         rpc_seconds = time.perf_counter()-rpc_started
         postprocess_started = time.perf_counter()
-        solutions, rejected = [], {'solver': 0, 'bounds': 0, 'residual': 0, 'duplicate': 0, 'self_collision': 0}
+        solutions, rejected = [], {'solver': 0, 'invalid_output': 0, 'duplicate': 0}
         proposals = list(zip(result['solutions'], result['success']));optimizer_failed_flags=0
         if self.config.get('curobo_query_reproducible', False):
             proposals.sort(key=lambda item: (posture_cost(np.asarray(item[0]), seed, self.chain.limits)
@@ -92,41 +87,32 @@ class TaskIK(BaseIK):
         for q, success in proposals:
             q = np.asarray(q, float)
             if not success:
-                # Optimizer convergence is diagnostic. Independent robot FK,
-                # requested residuals, real bounds and self geometry decide.
                 optimizer_failed_flags += 1
-            if not np.isfinite(q).all():
-                rejected['bounds'] += 1
+                rejected['solver'] += 1
                 continue
-            # Proposals may round beyond a float32 boundary or need a box
-            # projection. The projected candidate must still pass actual FK
-            # residual and self checks; no out-of-range command is admitted.
-            proposed=q.copy()
-            q=np.clip(q,self.chain.limits[:,0]+self.reserve,self.chain.limits[:,1]-self.reserve)
+            if q.shape != (7,) or not np.isfinite(q).all():
+                rejected['invalid_output'] += 1
+                continue
+            if any(np.array_equal(q, other['joints']) for other in solutions):
+                rejected['duplicate'] += 1
+                continue
             pose = self.chain.forward(q)
             matrix = pose_matrix(pose)
             position = float(np.linalg.norm(matrix[:3, 3]-target[:3, 3]))
             angle = float(Rotation.from_matrix(target[:3, :3].T@matrix[:3, :3]).magnitude())
-            if position > self.config['ik_position_tolerance_m'] or angle > self.config['ik_orientation_tolerance_rad']:
-                rejected['residual'] += 1
-                continue
-            if any(np.max(np.abs(q-np.asarray(other['joints']))) < .025 for other in solutions):
-                rejected['duplicate'] += 1
-                continue
-            if not self.self_valid(q):
-                rejected['self_collision'] += 1
-                continue
             solutions.append({'joints': q.tolist(), 'pose_world_xyzw': pose.tolist(),
                 'position_error_m': position, 'orientation_error_rad': angle,
                 'joint_reserve_rad': joint_reserve(q, self.chain.limits),
                 'posture_cost': posture_cost(q, seed, self.chain.limits), 'backend': 'curobo',
                 'scene_collision_checked': False,'solver_reported_success':bool(success),
-                'joint_bound_projection_rad':float(np.max(np.abs(q-proposed)))})
+                'candidate_modified': False, 'joint_bound_projection_rad': 0.,
+                'collision_admission': 'native motion planner'})
         solutions.sort(key=lambda row: row['posture_cost'])
         for rank, solution in enumerate(solutions):
             solution['posture_rank'] = rank
         self.events.append({'query': len(self.events), 'pose': np.asarray(target_pose).tolist(),
-            'returned': len(result['solutions']), 'distinct_robot_valid': len(solutions),
+            'returned': len(result['solutions']), 'distinct_solver_successes': len(solutions),
+            'acceptance_authority': 'cuRobo success flag; no CPU rescue or pose correction',
             'rejected': rejected,'optimizer_failed_flags':optimizer_failed_flags,
             'admitted_failed_flag_candidates':sum(not s['solver_reported_success'] for s in solutions), 'elapsed_seconds': result['elapsed_seconds'],
             'worker_rpc_seconds': rpc_seconds,
@@ -138,35 +124,44 @@ class TaskIK(BaseIK):
 
     def solve(self, target_pose, seed, seed_count=None):
         solutions = self.solve_many(target_pose, seed)
-        # Joint reserve is already a hard bound. During local continuation,
-        # preserve the selected branch instead of trading motion for reserve.
         return min(solutions, key=lambda row: np.linalg.norm(np.asarray(row['joints'])-seed)) if solutions else None
 
-    def solve_contact(self, target_world, contact_local, seed, orientation_reference):
-        """cuRobo point continuation, with the existing robot validity criteria."""
+    def contact_solutions(self, target_world, contact_local, seed, orientation_reference, *, local):
+        """Existing cuRobo point IK: one continuation seed or an acquisition batch."""
         began = time.perf_counter()
         seed, point, offset = [np.asarray(x, float) for x in (seed, target_world, contact_local)]
         result = self.client.request('solve_contact', point=point.tolist(),
             contact_local=offset.tolist(), seed=seed.tolist(),
-            reference_quaternion_xyzw=Rotation.from_matrix(orientation_reference).as_quat().tolist())
+            reference_quaternion_xyzw=Rotation.from_matrix(orientation_reference).as_quat().tolist(), local=local)
         candidates = []
         for values, success in zip(result['solutions'], result['success']):
             q = np.asarray(values, float)
-            if not np.isfinite(q).all():
+            if not success or q.shape != (7,) or not np.isfinite(q).all():
                 continue
-            q = np.clip(q, self.chain.limits[:, 0]+self.reserve, self.chain.limits[:, 1]-self.reserve)
             pose = self.chain.forward(q); transform = pose_matrix(pose)
             error = float(np.linalg.norm(transform[:3, 3]+transform[:3, :3]@offset-point))
-            if error > self.config['ik_position_tolerance_m'] or not self.self_valid(q):
+            # Physical push continuation has no environment path query, so this
+            # existing VAMP self check is its sole robot self-collision check.
+            if local and not self.self_valid(q):
                 continue
             candidates.append({'joints': q.tolist(), 'pose_world_xyzw': pose.tolist(),
                 'position_error_m': error, 'solver_reported_success': bool(success),
-                'orientation_is_soft_preference': True, 'backend': result['backend']})
+                'orientation_is_soft_preference': False, 'candidate_modified': False,
+                'backend': result['backend']})
         self.events.append({'query': len(self.events), 'backend': result['backend'],
-            'seed_count': 1, 'returned': len(result['solutions']),
-            'distinct_robot_valid': len(candidates), 'elapsed_seconds': result['elapsed_seconds'],
+            'seed_count': result.get('seed_count'), 'returned': len(result['solutions']),
+            'distinct_solver_successes': len(candidates), 'elapsed_seconds': result['elapsed_seconds'],
+            **{k:result[k] for k in ('solver_created','first_solve_for_contact_solver',
+                'solver_setup_seconds','solve_call_seconds','solver_reported_seconds') if k in result},
             'wall_seconds': time.perf_counter()-began})
+        return sorted(candidates, key=lambda row: np.linalg.norm(np.asarray(row['joints'])-seed))
+
+    def solve_contact(self, target_world, contact_local, seed, orientation_reference):
+        candidates = self.contact_solutions(target_world, contact_local, seed, orientation_reference, local=True)
         return candidates[0] if candidates else None
+
+    def solve_contact_many(self, target_world, contact_local, seed, orientation_reference):
+        return self.contact_solutions(target_world, contact_local, seed, orientation_reference, local=False)
 
     def approach(self, initial_joints, grasp_solution):
         target = np.asarray(grasp_solution['pose_world_xyzw'])
@@ -203,45 +198,10 @@ class TaskIK(BaseIK):
                 'method': 'backward Cartesian continuation anchored at selected grasp; joint interpolation to standoff'}
 
     def solve_point(self, target_world, point_local, seed, orientation_reference=None, seed_count=2):
-        seed = np.asarray(seed, float)
-        target_world, point_local = np.asarray(target_world, float), np.asarray(point_local, float)
-        reference = (pose_matrix(self.chain.forward(seed))[:3, :3] if orientation_reference is None
-                     else np.asarray(orientation_reference))
-        low, high = self.chain.limits.T
-        low, high = low+self.reserve, high-self.reserve
-        rng, solutions = np.random.default_rng(0), []
-        for index in range(seed_count):
-            initial = np.clip(seed if index == 0 else seed+rng.normal(0, .3, 7), low, high)
-            cached, residual, derivative = None, None, None
-
-            def both(q):
-                nonlocal cached, residual, derivative
-                if cached is None or not np.array_equal(q, cached):
-                    pose, jac = self.chain.forward(q, jacobian=True)
-                    matrix = pose_matrix(pose)
-                    rotation = matrix[:3, :3]
-                    point = matrix[:3, 3]+rotation@point_local
-                    jp = jac[:3]-rotation@skew(point_local)@jac[3:]
-                    angle, ja = fixed_orientation_residual(reference, rotation, jac[3:])
-                    residual = np.r_[point-target_world, .015*angle, .00005*(q-seed)]
-                    derivative = np.vstack([jp, .015*ja, .00005*np.eye(7)])
-                    cached = q.copy()
-                return residual, derivative
-
-            result = least_squares(lambda q: both(q)[0], initial, jac=lambda q: both(q)[1],
-                bounds=(low, high), max_nfev=100, ftol=1e-8, xtol=1e-8, gtol=1e-8)
-            pose = self.chain.forward(result.x)
-            matrix = pose_matrix(pose)
-            error = float(np.linalg.norm(matrix[:3, 3]+matrix[:3, :3]@point_local-target_world))
-            if error <= self.config['ik_position_tolerance_m'] and self.self_valid(result.x):
-                solutions.append({'joints': result.x.tolist(), 'pose_world_xyzw': pose.tolist(),
-                    'position_error_m': error,
-                    'orientation_error_rad': float(Rotation.from_matrix(reference.T@matrix[:3, :3]).magnitude()),
-                    'orientation_is_soft_preference': True,
-                    'joint_reserve_rad': joint_reserve(result.x, self.chain.limits),
-                    'posture_cost': posture_cost(result.x, seed, self.chain.limits),
-                    'backend': 'bounded CPU point-goal refinement', 'evaluations': result.nfev})
-        return min(solutions, key=lambda row: row['posture_cost']) if solutions else None
+        """Compatibility entry point; no SciPy point solve or CPU refinement."""
+        reference = (pose_matrix(self.chain.forward(seed))[:3, :3]
+                     if orientation_reference is None else np.asarray(orientation_reference))
+        return self.solve_contact(target_world, point_local, seed, reference)
 
     def close(self):
         self._save('curobo-queries.json', self.events)

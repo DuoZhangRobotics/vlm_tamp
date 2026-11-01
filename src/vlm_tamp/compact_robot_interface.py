@@ -36,7 +36,7 @@ Omit regions.contact_box_xyxy for door-only grounding. A failed handle fit can
 preserve a usable door/joint model; read grounding_status and handle_fit.
 Door-only geometry supports tracking and joint-linked push/hook, not a pinch.
 Contact positioning: select_surface_contact, plan_contact_pose
-plan_contact_pose(point_world_m) converts an observed surface point into a
+plan_contact_pose(point_world_m, contact_name) converts an observed surface point into a
 calibrated fingertip/pad pose. plan_pose instead takes the TCP origin; never
 copy a surface point directly into that TCP position.
 Progress measurements when enabled: measure_surface, compare_surface_geometry
@@ -65,7 +65,8 @@ push/hook_pull execute by default; preview=true has no motion. An unchanged
 preview is reused by execution. continue_push_available=true describes executable
 robot motion, not established contact or a recommendation to repeat it.
 continue_push(direction_world, distance_m) reuses retained geometry and the scene.
-Targeted push/hook_pull require an explicit world direction or signed associated
+Targeted push/hook_pull require contact_pixel_xy, a contact_name from reset,
+and an explicit world direction or signed associated
 joint increment, including previews. Surface normals do not specify task intent.
 reference_direction_world is a geometric reference, not a recommendation about
 the task. Measured motion along a request can still move away from the goal.
@@ -75,7 +76,7 @@ Other arm/gripper motion clears target association; push_stroke remains availabl
 push modes: controlled; push_and_release. Controlled push insertion and strokes
 use physical execution feedback: observed scene collisions and uncertain object
 tracking do not veto them. World distance requests command hand travel as one
-stroke by default. A measured physical stall returns control and retains the
+stroke by default. A measured physical stall is reported without shortening the requested stroke; retain the
 contact reference. Free approaches, hooks and grasped planning retain their scene
 collision policy. Wrist RGB-D is included in push feedback. No extra dense validation.
 For observed-scene planners, points inside the measured current robot geometry are removed
@@ -88,8 +89,9 @@ robot joints, depth arrays and calibration remain in the full response/files.
 Open useful images with your image viewer. More views are available when needed.
 Depth geometry, IK and collision search run in the numerical tools. Use Python
 with NumPy/SciPy/Pillow for your own analysis; versions: analysis-environment.json.
-Single-view ground is a bootstrap hypothesis. Small plane/cylinder fit residuals
-do not verify its hinge; use independent calibrated views or measured motion.
+Ground requires an exact contact_pixel_xy and two depth-supported hinge pixels.
+It uses no upright/cylinder prior. The line is your hypothesis; inspect other views
+or measured motion. plan_arc and plan_sequence require an explicit grasp_constraint.
 
 Plans do not move the robot. Execute explicitly. Use fresh plans after scene or
 robot changes. A solved plan does not establish grasp retention or task success.
@@ -116,7 +118,7 @@ STATE_KEYS = ('instruction', 'attempt', 'control_steps', 'remaining_control_step
               'infrastructure_failure','valid_task_attempt',
               'eef_pose_world_xyzw', 'gripper_qpos', 'sensor_arrays', 'camera_calibration',
               'in_flight_requests', 'control_state_is_last_completed_request',
-              'image_coordinate_system')
+              'image_coordinate_system','contact_landmarks_in_tcp')
 FIT_KEYS = ('accepted', 'pose_accepted', 'source', 'reason', 'correspondences', 'inliers',
             'rotation_rad', 'rms_m', 'landmark_span_m', 'hinge_world_m',
             'bootstrap_spread90_m', 'radius_m', 'simulator_geometry_used', 'landmark_displacements')

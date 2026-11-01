@@ -13,7 +13,7 @@ ROOT=Path(__file__).resolve().parents[1]
 def cached_profile_run(run,events,actor_wall):
     """Timing artifacts are complete before the corresponding event is appended."""
     source={'events':file_stamp(run/'tool-events.jsonl'),
-            'actor_exit':file_stamp(run/'agent-exit.json'),'profile_version':2}
+            'actor_exit':file_stamp(run/'agent-exit.json'),'profile_version':3}
     source=json.loads(json.dumps(source))
     path=run/'timing-breakdown.json';previous=read(path,{})
     if previous.get('_profile_source')==source:return previous
@@ -28,7 +28,12 @@ def profile_run(run,events,actor_wall):
     for event in events:
         operations[event['request']['operation']]+=event.get('wall_seconds',0.)
         result=event.get('response',{}).get('result',{})
-        if event['request']['operation'] in {'push','continue_push','push_stroke','hook_pull'}:contact.update(result.get('timing_seconds',{}))
+        if event['request']['operation'] in {'push','continue_push','push_stroke','hook_pull'}:
+            contact.update(result.get('timing_seconds',{}))
+            for stage in result.get('planning_stages',[]):
+                nested=stage.get('timing_seconds',{})
+                contact['nested_contact_ik_seconds']+=nested.get('ik_seconds',0.)
+                contact['nested_free_approach_planning_seconds']+=nested.get('approach_planning_seconds',0.)
         for stage in result.get('stages',[]):
             if 'planning_seconds' in stage:arcs['post_closure_arc_planning_seconds']+=stage['planning_seconds']
     for file in run.glob('attempt*/*-issue-timing.json*'):
@@ -36,8 +41,13 @@ def profile_run(run,events,actor_wall):
         issues.update(data.get('phases',{}))
     for file in run.glob('attempt*/curobo-queries.json*'):
         for row in read(file,[]):
-            for name in ['wall_seconds','worker_rpc_seconds','cpu_postprocessing_seconds','elapsed_seconds']:
+            for name in ['wall_seconds','worker_rpc_seconds','cpu_postprocessing_seconds','elapsed_seconds',
+                         'solver_setup_seconds','solve_call_seconds','solver_reported_seconds']:
                 if name in row:ik[name]+=row[name]
+            if row.get('first_solve_for_contact_solver'):
+                ik['first_use_solve_call_seconds']+=row.get('solve_call_seconds',0.)
+            elif 'solve_call_seconds' in row:
+                ik['warm_solve_call_seconds']+=row['solve_call_seconds']
     for file in run.glob('attempt*/*/selection/selected.json*'):
         grasp.update(read(file,{}).get('search_timing_seconds',{}))
     grasp_phases=Counter()

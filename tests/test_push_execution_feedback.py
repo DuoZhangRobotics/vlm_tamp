@@ -47,7 +47,7 @@ def test_short_stroke_history_preserves_real_progress():
     assert feedback.result()['stall_window'] is not None
 
 
-def test_native_worker_attempts_motion_before_returning_physical_stall(monkeypatch):
+def test_native_worker_reports_stall_without_shortening_requested_motion(monkeypatch):
     from vlm_tamp.profiled_sim_worker import ProfiledWorker
     from vlm_tamp.coupled_worker import CoupledWorker
     worker=ProfiledWorker();worker.maximum_control_steps=600;worker.control_steps=60;worker.action_log=[]
@@ -62,6 +62,6 @@ def test_native_worker_attempts_motion_before_returning_physical_stall(monkeypat
     refs=np.zeros((60,7));points=np.c_[np.arange(1,61)*.0015,np.zeros((60,2))]
     result=worker.joint_trajectory(refs,gripper=0,push_feedback={'contact_local_m':[0.,0.,0.],
         'reference_points_world_m':points})['trajectory']
-    assert result['issued_commands']==20 and result['termination_reason']=='measured_push_stall'
-    assert not result['terminated_on_simulator_success'] and not result['all_commands_issued']
+    assert result['issued_commands']==60 and result['termination_reason']=='trajectory_complete'
+    assert not result['terminated_on_simulator_success'] and result['all_commands_issued']
     assert result['push_feedback']['stalled'] and result['execution_veto_checks']==0

@@ -8,60 +8,33 @@ import json
 import math
 from numbers import Real
 
-VERSION = 'robot-request-contract-v16'
+VERSION = 'robot-request-contract-v17'
 GROUND_FIELDS = ('camera', 'contact_box_xyxy', 'moving_panel_box_xyxy',
-                 'hinge_pixels_xy', 'initial_image_direction_xy')
-GROUND_HELP = '''- ground(regions, moving_part_id=null, contact_part_id=null): fit a current upright door/joint hypothesis and optional vertical handle.
-  Pass ONE regions object with camera, moving_panel_box_xyxy, hinge_pixels_xy,
-  and initial_image_direction_xy. Add contact_box_xyxy to fit a handle; omit it
-  or use null for a door-only model. Door-only models support tracking and
-  joint-linked push/hook; they do not provide pinch-grasp geometry.
-  Reuse segment_parts IDs with moving_part_id and/or contact_part_id. Their
-  masks must be from the current physical state and the same selected camera.
-  The selected masks constrain fitting; their boxes do not replace their shapes.
-  A contact_part_id supplies its own box when contact_box_xyxy is omitted.
-  A failed handle fit can still return grounding_status=door_only when the
-  door/joint fit succeeds. Read handle_fit for its reason. refresh_contact can
-  add handle geometry later while preserving the joint. No different feature
-  is silently substituted for the requested contact.
-  Coordinates use ORIGINAL image pixels: origin top-left, x right, y down.
-  See image_sizes in the observation. For width W and height H, use
-  0 <= x < W and 0 <= y < H. Normalized 0..1 or 0..1000 coordinates are not accepted
-  as a different convention; convert explicitly before calling. No auto-scaling.
-  Boxes are [left,top,right,bottom] with positive width/height. contact_box_xyxy
-  selects the handle; moving_panel_box_xyxy selects the door. hinge_pixels_xy
-  contains two distinct points along the SAME hypothesized hinge edge.
-  initial_image_direction_xy is the intended INITIAL movement [dx,dy] of the
-  selected contact point in this image, not camera orientation. Its scale is
-  irrelevant; a supplied vector must be finite and nonzero. Use null when the
-  image direction is unresolved; never use [0,0] as an unknown direction.
-  A resolved image-motion hint selects the sign directly. Nearby scene depth
-  never chooses or vetoes opening/closing direction. With null or a geometrically
-  ambiguous hint, geometry can still be returned: +Z is only an axis coordinate
-  convention and task_direction_status is unknown. Positive does not then mean
-  open or close; choose a signed motion from your observations and task intent.
-  Returned motion_direction_check identifies the source; a fit is not proof of the
-  hinge hypothesis, retained contact, or task success. No robot motion occurs.
+                 'hinge_pixels_xy', 'initial_image_direction_xy','contact_pixel_xy')
+GROUND_HELP = '''- ground(regions, moving_part_id=null, contact_part_id=null): lift your current
+  contact_pixel_xy and two hinge_pixels_xy through calibrated RGB-D. Supply
+  camera, moving_panel_box_xyxy, contact_pixel_xy, hinge_pixels_xy and
+  initial_image_direction_xy. Optionally select contact_box_xyxy/contact_part_id
+  for raw grasp-target points; otherwise the model contains only the moving part.
+  All pixels are integer ORIGINAL image coordinates (x right, y down). The
+  exact selected samples must have measured non-robot depth; no snapping occurs.
+  Current part masks constrain the selected depth points. No upright hinge,
+  cylindrical handle, mount or panel completion is assumed.
+  The two ordered 3D hinge samples define a line. Your nonzero image-motion
+  arrow selects its sign. Null leaves task direction unknown. The hinge remains
+  your hypothesis; depth does not identify the hidden physical joint or decide
+  opening/closing. Inspect it in other views or use measured part motion.
+  refresh_contact also requires contact_pixel_xy and keeps the existing hinge.
+  These tools update the model and invalidate old plans; they issue no motion.
 '''
 
 MULTIVIEW_GROUND_HELP = '''- ground_multiview(observation_id, regions, comparison_regions, check_view):
-  Fit an upright door from YOUR selections in three CURRENT camera views.
-  regions and comparison_regions each use the five-field ground(regions)
-  format. Select the same handle, panel and hypothesized hinge edge in both.
-  check_view is {"camera": name, "hinge_pixels_xy": [[x,y],[x,y]]} from a THIRD
-  view of that same edge. All coordinates are original image pixels. Use the
-  current observation_id; do not mix captures. All three cameras must differ.
-  Existing depth and camera calibration perform the 3D calculations for you.
-  The first two edges triangulate an upright hinge; the third checks its
-  projection. Independent depth fits check handle and panel agreement.
-  The reply gives accepted, failed_checks, measurements and overlay image paths.
-  Inspect the overlays to check part identity and revise your selections or
-  choose clearer views when needed. Consistent edges can still name the wrong
-  physical part; passing is not proof of an exact hidden hinge or stable grasp.
-  A passing fit installs a fresh planning model and invalidates old plans.
-  A failed check leaves the current model unchanged. No robot motion occurs.
-  This optional tool assumes an upright hinge and vertical handle; it does not
-  identify objects automatically or estimate camera calibration.
+  Use the same current-pixel fields as ground in the first two views. check_view
+  contains camera and hinge_pixels_xy from a third view. The primary view's
+  depth-lifted hinge is installed unchanged. Independent depth and reprojection
+  disagreements are reported, with no hard consistency cutoff or upright prior.
+  accepted means required measurements were available, not that your hinge is
+  verified. Inspect the overlays and uncertainty. No robot motion occurs.
 '''
 
 PART_MOTION_HELP = '''- segment_parts(observation_id, camera, points_xy=null, point_labels=null, box_xyxy=null, label=null):
@@ -198,9 +171,10 @@ def ground_parameters(image_sizes=None):
         'camera': camera,
         'contact_box_xyxy': nullable(array(4, pixel, description='Optional handle box [left,top,right,bottom], ORIGINAL pixels. Omit/null for a door-only model unless contact_part_id is supplied.')),
         'moving_panel_box_xyxy': array(4, pixel, description='Moving door box [left,top,right,bottom], ORIGINAL image pixels.'),
-        'hinge_pixels_xy': array(2, point, description='Two distinct original-pixel points along the same hypothesized hinge edge.'),
+        'contact_pixel_xy':array(2,{'type':'integer','minimum':0},description='Exact contact pixel in this camera; no snapping or alternate point is selected.'),
+        'hinge_pixels_xy': array(2, array(2,{'type':'integer','minimum':0}), description='Two distinct original-pixel points along the same hypothesized hinge edge.'),
         'initial_image_direction_xy': {**nullable(array(2, number(), **{'not': {'const': [0, 0]}})),
-            'description': 'Intended initial CONTACT-POINT motion in image axes (x right, y down). A finite nonzero vector selects the rotation sign. Null leaves opening/closing direction unknown; +Z is only a coordinate convention. Scene depth never guesses the task direction.'},
+            'description': 'Intended initial CONTACT-POINT motion in image axes (x right, y down). A finite nonzero vector selects the rotation sign. Null leaves opening/closing direction unknown; the ordered hinge pixels define the axis convention. Scene depth never guesses the task direction.'},
     }, [key for key in GROUND_FIELDS if key!='contact_box_xyxy'])
     part_id=nullable({'type':'string','minLength':1})
     return parameters({'regions': regions,'moving_part_id':part_id,'contact_part_id':part_id}, ['regions'])
@@ -232,6 +206,8 @@ def operation_schemas(image_sizes=None):
     coordinates = {'type': 'array', 'items': point, 'minItems': 1}
     contact_arguments={'observation_id':integer(0,2**31-1),'camera':text,'region_xyxy':nullable(box),
         'moving_part_id':nullable(text),'contact_part_id':nullable(text),
+        'contact_pixel_xy':array(2,{'type':'integer','minimum':0}),
+        'contact_name':text,
         'target_region_xyxy':nullable(box),'direction_world':nullable(array(3)),
         'distance_m':number(exclusiveMinimum=0),
         'joint_degrees':nullable(angle),
@@ -249,28 +225,28 @@ def operation_schemas(image_sizes=None):
     definitions = {
         'compare_surface_geometry': ('Compare two currently measured surfaces, including different parts. Returns relative plane angles and offsets; no motion or native goal threshold is supplied.',
             parameters({'first_id':text,'second_id':text},['first_id','second_id'])),
-        'push': ('Acquire contact and push in simulation. Supply explicit direction_world or a signed associated joint_degrees increment, including for previews; no task direction is inferred from a surface normal. Controlled strokes use physical feedback; predicted scene contact and uncertain tracking do not veto them. Free approaches retain scene planning. preview=true issues no motion.',
+        'push': ('Acquire exactly your contact_pixel_xy with your chosen contact_name, then push in simulation. Supply explicit direction_world or a signed associated joint_degrees increment, including for previews; no task direction is inferred from a surface normal. Controlled strokes use physical feedback; predicted scene contact and uncertain tracking do not veto them. Free approaches retain scene planning. preview=true issues no motion.',
             parameters({**contact_arguments,'mode':{'type':'string','enum':['controlled','push_and_release']},
-                'contact_surface':{'type':'string','enum':['fingertips','palm']},'withdrawal_distance_m':number(exclusiveMinimum=0)},['observation_id','camera'])),
-        'continue_push': ('Attempt a physical hand stroke in the supplied world direction. Reuse prior contact/target feedback when available; otherwise move from the current hand pose without acquiring a contact. Distance is commanded hand travel; uncertain object tracking does not veto motion. No hinge model, image region, contact search or preview is needed.',
+                'contact_surface':{'type':'string','enum':['fingertips','palm']},'withdrawal_distance_m':number(exclusiveMinimum=0)},['observation_id','camera','contact_pixel_xy','contact_name'])),
+        'continue_push': ('Attempt a physical hand stroke in the supplied world direction. Requires a retained contact/target; if none exists, choose push_stroke explicitly to move the current hand. Distance is commanded hand travel; uncertain object tracking does not veto motion. No hinge model, image region, contact search or preview is needed.',
             parameters({'direction_world':array(3),'distance_m':number(exclusiveMinimum=0),
                 'contact_speed_m_s':nullable(number(exclusiveMinimum=0)),
                 'stroke_length_m':nullable(number(exclusiveMinimum=0)),
                 'stroke_plan_seconds':nullable(number(exclusiveMinimum=0)),
                 'budget_seconds':number(minimum=.001,maximum=1800),
                 'max_ineffective_strokes':{'type':'integer','minimum':1}},['direction_world','distance_m'])),
-        'hook_pull': ('Catch an observed retaining feature without pinching; supply an explicit world direction or signed associated joint increment. Test engagement and pull with feedback. A flat surface is not assumed to be a hook.',
-            parameters(contact_arguments,['observation_id','camera'])),
+        'hook_pull': ('Place your selected pad contact_name at contact_pixel_xy on an observed retaining feature without pinching; supply an explicit world direction or signed associated joint increment. Test engagement and pull with feedback. A flat surface is not assumed to be a hook.',
+            parameters(contact_arguments,['observation_id','camera','contact_pixel_xy','contact_name'])),
         'reset': ('Reset the supplied episode and return current sensor observations.', parameters()),
         'observe': ('Read current RGB-D and robot state without motion.', parameters()),
         'motion_settings': ('Read effective motion, collision, numerical and control-budget settings without motion.',parameters()),
         'episode_status': ('Read current success and time/control budgets without motion.', parameters()),
         'await_request': ('Retrieve an existing pending request; never resubmit its action.', parameters({'request_id': {'type': 'string', 'pattern': '^[0-9a-f]{32}$'}}, ['request_id'])),
-        'ground': ('Fit observed door/joint geometry, optionally with a handle. Reuse current segment_parts masks through moving_part_id/contact_part_id. A handle failure preserves a usable door-only model. No motion.', ground_parameters(image_sizes)),
+        'ground': ('Lift your exact contact pixel and two hinge pixels through measured depth. The selected regions/masks supply raw moving/contact points; no upright/cylinder/shape prior. The hinge remains your hypothesis. No motion.', ground_parameters(image_sizes)),
         'refresh_contact': ('Refresh current handle/panel geometry while retaining the fixed-world hinge and signed direction. No motion.',parameters({
-            'camera':text,'contact_box_xyxy':box,'moving_panel_box_xyxy':box,
-            'moving_part_id':nullable(text),'contact_part_id':nullable(text)},['camera','contact_box_xyxy','moving_panel_box_xyxy'])),
-        'ground_multiview': ('Check your three-view upright-door hypothesis using calibration and depth; install only a consistent fit. No motion.', multiview_ground_parameters(image_sizes)),
+            'camera':text,'contact_box_xyxy':box,'moving_panel_box_xyxy':box,'contact_pixel_xy':array(2,{'type':'integer','minimum':0}),
+            'moving_part_id':nullable(text),'contact_part_id':nullable(text)},['camera','contact_box_xyxy','moving_panel_box_xyxy','contact_pixel_xy'])),
+        'ground_multiview': ('Lift your hinge/contact pixels and report cross-view disagreement without a shape prior or hard consistency cutoff. The primary view defines the installed hypothesis. No motion.', multiview_ground_parameters(image_sizes)),
         'segment_parts': ('Propose RGB part masks from your coarse clicks/box; no hinge guess or motion.', parameters({
             'observation_id':integer(0,2**31-1),'camera':text,
             'points_xy':nullable({'type':'array','items':point,'minItems':1,'maxItems':12}),
@@ -303,23 +279,23 @@ def operation_schemas(image_sizes=None):
         'plan_grasp': ('Try up to eight original GraspGen poses by learned score. Filter open-hand scene collisions before IK, then check the arm and approach against the full observed scene. Closure is physical contact; plan manipulation from its measured result.', parameters({'probe_degrees': angle, 'max_candidates': candidates, 'seed': seed,
             'speed':speed,'approach_speed':speed,'hold':{'type':'integer','minimum':0},'close_steps':{'type':'integer','minimum':1},'budget_seconds':number(exclusiveMinimum=0,maximum=1800),'collision_policy':policy})),
         'plan_arc': ('Plan the complete requested relative contact arc; no robot motion. Points overlapping the measured current robot are removed from the planning cloud with zero padding. Future candidate poses do not clear additional points; remaining scene collisions are checked. Contact permission is not proof of a grasp.', parameters({
-            'degrees':angle,'refined':{'type':'boolean'},'grasp_constraint':nullable(grasp),
+            'degrees':angle,'refined':{'type':'boolean'},'grasp_constraint':grasp,
             'position_tolerance_m':nullable({'type':'number','exclusiveMinimum':0}),
             'orientation_tolerance_deg':nullable({'type':'number','minimum':0,'maximum':180}),
             'max_wrist_reorientation_deg':nullable({'type':'number','exclusiveMinimum':0,'maximum':180}),'collision_policy':policy,
-            'budget_seconds':nullable(number(exclusiveMinimum=0,maximum=1800))},['degrees'])),
+            'budget_seconds':nullable(number(exclusiveMinimum=0,maximum=1800))},['degrees','grasp_constraint'])),
         'plan_joint': ('Plan simulation free motion under the declared environment prediction policy to seven joint angles in radians.', parameters({'joints': array(7),'collision_policy':policy}, ['joints'])),
         'ik': ('Compute IK proposals for your world TCP pose; no robot motion.', parameters({'pose_world_xyzw': pose}, ['pose_world_xyzw'])),
         'plan_pose': ('Plan simulation free motion under the declared environment prediction policy to your world TCP pose.', parameters({'pose_world_xyzw': pose,'collision_policy':policy}, ['pose_world_xyzw'])),
-        'plan_contact_pose': ('Plan a fingertip/pad to your observed world contact point. Computes calibrated TCP offsets and tries current/nearby orientations; an optional quaternion fixes orientation. Returns a plan_id for execute with gripper=0. No grasp or confirmed contact is assumed.', parameters({
-            'point_world_m':array(3),'quaternion_xyzw':nullable(array(4)),'contact_name':nullable(text),
-            'collision_policy':policy,'budget_seconds':number(exclusiveMinimum=0,maximum=1800)},['point_world_m'])),
+        'plan_contact_pose': ('Plan a fingertip/pad to your observed world contact point. Uses your selected contact_name and calibrated TCP offset. cuRobo solves free orientation unless you supply a quaternion; no pose menus or substituted contact points. Returns a plan_id for execute with gripper=0. No grasp or confirmed contact is assumed.', parameters({
+            'point_world_m':array(3),'quaternion_xyzw':nullable(array(4)),'contact_name':text,
+            'collision_policy':policy,'budget_seconds':number(exclusiveMinimum=0,maximum=1800)},['point_world_m','contact_name'])),
         'execute': ('Execute a fresh complete plan. gripper=-1 opens, 0 holds, +1 closes; default +1. Choose explicitly for a grasp approach.', parameters({'plan_id': text, 'gripper': {'type': 'integer', 'enum': [-1, 0, 1]}, 'speed': speed, 'hold': {'type':'integer','minimum':0}}, ['plan_id'])),
-        'gripper': ('Physically open/close while holding the arm. If measured arm joints have drifted beyond planner limits, command one inward joint reference increment and report it; simulator state is never assigned.', parameters({'close': {'type': 'boolean'}, 'steps': {'type':'integer','minimum':1}})),
+        'gripper': ('Physically open/close while holding the arm. Retain the existing controller arm reference; no automatic inward arm correction.', parameters({'close': {'type': 'boolean'}, 'steps': {'type':'integer','minimum':1}})),
         'plan_sequence': ('Plan a small GraspGen-only approach; retain the signed manipulation request for fresh planning after measured closure.', parameters({'degrees': angle, 'max_candidates': candidates, 'seed': seed, 'grasp_constraint': grasp,
-            'speed':speed,'approach_speed':speed,'hold':{'type':'integer','minimum':0},'close_steps':{'type':'integer','minimum':1},'budget_seconds':number(exclusiveMinimum=0,maximum=1800),'collision_policy':policy}, ['degrees'])),
+            'speed':speed,'approach_speed':speed,'hold':{'type':'integer','minimum':0},'close_steps':{'type':'integer','minimum':1},'budget_seconds':number(exclusiveMinimum=0,maximum=1800),'collision_policy':policy}, ['degrees','grasp_constraint'])),
         'execute_sequence': ('Execute a prepared sequence with the documented gripper stages.', parameters({'plan_id': text, 'close_steps': {'type':'integer','minimum':1}, 'speed': speed, 'approach_speed':speed, 'hold': {'type':'integer','minimum':0}, 'manipulation_gripper': {'type': 'integer', 'enum': [0, 1]},'feedback_degrees':number(exclusiveMinimum=0),'calibrate_joint':{'type':'boolean'},'open_steps':{'type':'integer','minimum':1}}, ['plan_id'])),
-        'select_surface_contact': ('Select a current observed surface patch using a region or contact_part_id; no grasp or hinge assumption.', parameters({'camera': text, 'region_xyxy': nullable(box), 'contact_part_id':nullable(text), 'radius_m': number(minimum=.005, maximum=.04)}, ['camera'])),
+        'select_surface_contact': ('Select a current observed surface patch using a region or contact_part_id; no grasp or hinge assumption.', parameters({'camera': text, 'region_xyxy': nullable(box), 'contact_part_id':nullable(text), 'radius_m': number(exclusiveMinimum=0),'contact_pixel_xy':array(2,{'type':'integer','minimum':0})}, ['camera','contact_pixel_xy'])),
         'practice_status': ('Read the granted practice budget and learning phase.', parameters()),
         'request_attempts': ('Request more practice within the existing hard cap with your findings and next tests.', parameters({'learned': text, 'next_experiments': {'type': 'array', 'items': text, 'minItems': 1, 'maxItems': 5}}, ['learned', 'next_experiments'])),
         'dino_landmarks': ('Find optional image-feature candidates; no semantic or motion guarantee.', parameters({'camera': text, 'region_xyxy': nullable(box), 'count': integer(1, 32)})),
@@ -442,7 +418,7 @@ def validate_ground_regions(regions, *, image_sizes=None, schema_checked=False):
         raise RequestValidationError('ground', 'regions.initial_image_direction_xy', 'unresolved_direction', 'Use a nonzero intended contact-point motion vector, or null when unresolved.')
     if image_sizes:
         size = image_sizes[regions['camera']]
-        points = [regions[key][i:i+2] for key in ['contact_box_xyxy', 'moving_panel_box_xyxy'] if regions.get(key) is not None for i in [0, 2]] + regions['hinge_pixels_xy']
+        points = [regions['contact_pixel_xy']] + [regions[key][i:i+2] for key in ['contact_box_xyxy', 'moving_panel_box_xyxy'] if regions.get(key) is not None for i in [0, 2]] + regions['hinge_pixels_xy']
         if any(not (0 <= x < size['width'] and 0 <= y < size['height']) for x, y in points):
             raise RequestValidationError('ground', 'regions', 'pixel_out_of_bounds', f"Use original pixels inside the selected {size['width']}x{size['height']} image; no automatic rescaling occurs.")
     return regions

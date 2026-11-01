@@ -34,7 +34,7 @@ from vlm_tamp.arc_contact_scene import ArcContactScene
 from vlm_tamp.hinged_contact_tools import (TaskIK,ground_handle,select_grasp,contact_plan,
     NativeScene,clear_native_cache,tool_configuration,tool_contract,require_grasp_budget,grasp_timing_options)
 from vlm_tamp.rigid_hinge_tracking import RGBDHingeTracker, measured_pose
-from vlm_tamp.timed_execution import schedule,gripper_arm_reference
+from vlm_tamp.timed_execution import schedule
 from vlm_tamp.signed_contact_motion import plan_signed_arc
 from vlm_tamp.sequence_execution import measured_robot_scene
 from vlm_tamp.execution_limits import control_limit,checked_control_steps,DEFAULT_CONTROL_STEPS,LEARNING_CONTROL_STEPS
@@ -318,6 +318,9 @@ class RobotService:
             from vlm_tamp.observation_completion import CompletionEvidence
             self.completion=CompletionEvidence(self.public/f'attempt{self.attempt:02d}'/'completion')
         result={'instruction': self.task_spec['instruction'], 'attempt': self.attempt, **self.capture()}
+        from vlm_tamp.contact_skills import contact_landmarks
+        result['contact_landmarks_in_tcp']=[{k:v.tolist() if hasattr(v,'tolist') else v for k,v in c.items()}
+            for c in contact_landmarks(self.state['metadata'],'palm')]
         if self.practice_budget:result['practice_budget']=self.practice_status()
         return result
 
@@ -364,11 +367,11 @@ class RobotService:
     def ground(self, regions, moving_part_id=None, contact_part_id=None):
         return self._ground_observed_geometry(regions,moving_part_id=moving_part_id,contact_part_id=contact_part_id)
 
-    def refresh_contact(self,camera,contact_box_xyxy,moving_panel_box_xyxy,moving_part_id=None,contact_part_id=None):
+    def refresh_contact(self,camera,contact_box_xyxy,moving_panel_box_xyxy,contact_pixel_xy,moving_part_id=None,contact_part_id=None):
         fixed=self.spec if getattr(self,'contact_scene_kind','articulated')=='articulated' else getattr(self,'retained_articulated_model',None)
         if fixed is None:
             raise ValueError('Establish an articulated joint model before refreshing its contact geometry')
-        regions={'camera':camera,'contact_box_xyxy':contact_box_xyxy,'moving_panel_box_xyxy':moving_panel_box_xyxy}
+        regions={'camera':camera,'contact_box_xyxy':contact_box_xyxy,'moving_panel_box_xyxy':moving_panel_box_xyxy,'contact_pixel_xy':contact_pixel_xy}
         validate_operation('refresh_contact',regions,observed_image_sizes(self.cameras))
         result=self._ground_observed_geometry(regions,fixed_joint=copy.deepcopy(fixed),
             moving_part_id=moving_part_id,contact_part_id=contact_part_id)
@@ -402,58 +405,23 @@ class RobotService:
             from vlm_tamp.part_perception import box_of
             choices['contact_box_xyxy']=box_of(contact_mask)
         choices['panel_mask_selected']=panel_mask is not None
-        task = getattr(self, 'task_spec', task_spec())
-        choices.update(motion=task['motion'], joint_family='revolute', axis_source='vertical_hinge')
-        template = dict(schema_version='articulated-spec-1.0', task_type='articulated',
-            camera=choices['camera'],
-            instruction=task['instruction'], joint_family='revolute', motion=task['motion'],
-            target_progress=float(np.pi/2), progress_units='radians',
-            axis_prior='upright door', contact_policy='selected functional finger contact',
-            constraint={'type':'point_on_circle_with_coupled_orientation'})
-        from vlm_tamp.handle_contact import HandleFitError,ground_panel
-        template=template if fixed_joint is None else {**template,**fixed_joint,'camera':choices['camera']}
-        options={key:value for key,value in [('fixed_joint',fixed_joint),('panel_mask',panel_mask),('contact_mask',contact_mask)] if value is not None}
-        handle_fit={'accepted':False,'status':'not_requested'}
-        if choices.get('contact_box_xyxy') is not None:
-            try:
-                mechanism, cloud, mask, anchors, evidence = ground_handle(
-                    self.cameras,choices,template,self.state['metadata'],**options)
-                handle_fit={'accepted':True,'status':'fitted'}
-            except HandleFitError as error:
-                handle_fit={'accepted':False,'status':'unresolved','reason':str(error),
-                    'diagnostic':getattr(error,'planning_diagnostic',{})}
-        if not handle_fit['accepted']:
-            mechanism,cloud,mask,anchors,evidence=ground_panel(
-                self.cameras,choices,template,self.state['metadata'],fixed_joint=fixed_joint,panel_mask=panel_mask)
-        evidence.update(handle_fit=handle_fit,
-            selected_parts={'moving_part_id':moving_part_id,'contact_part_id':contact_part_id})
-        names=['spec','cloud','mask','anchors','contact_scene_kind','choices','epoch','scene','tracker']
-        previous={key:getattr(self,key,None) for key in names}
-        self.spec, self.cloud, self.mask, self.anchors = mechanism.spec, cloud, mask, anchors
-        if fixed_joint is None:
-            self.spec['hinge_evidence']={'status':'single_view_annotation_not_independently_verified',
-                'note':'Plane/cylinder residuals do not measure hinge accuracy. Check another calibrated view or independent observed motion.'}
-        self.contact_scene_kind='articulated'
-        if handle_fit['accepted']:self.spec['observed_handle_radius_m'] = evidence['cylinder_radius_m']
-        # A successful current handle fit adds grasp geometry to a part-only
-        # joint model. Preserve the fixed joint, but update its capabilities.
-        if handle_fit['accepted']:self.spec.pop('generic_part_joint_model',None)
-        self.choices = choices
-        self.epoch += 1
-        self.scene = None
-        try:self.rebuild()
-        except Exception:
-            for key,value in previous.items():setattr(self,key,value)
-            raise
-        self.tracker = None
-        self.scene_reference_control_step=int(self.state['control_steps'])
-        folder = self.folder('grounding'); folder.mkdir()
-        write_json(folder/'agent-regions.json', choices)
-        write_json(folder/'geometry.json', evidence)
-        write_json(folder/'model.json', self.spec)
+        from vlm_tamp.explicit_grounding import ground_pixels,selected_scene
+        candidate=ground_pixels(self.cameras,self.state['metadata'],choices,
+            fixed_joint=fixed_joint,panel_mask=panel_mask,contact_mask=contact_mask)
+        spec=candidate['spec'];spec['motion']=self.task_spec['motion']
+        scene=selected_scene(candidate,self.cameras,self.state['metadata'],self.ik.chain,self.config)
+        self.spec,self.cloud,self.mask,self.anchors=(candidate[k] for k in ('spec','cloud','mask','anchors'))
+        self.choices=choices;self.scene=scene;self.tracker=None;self.epoch+=1
+        self.contact_scene_kind='articulated';self.scene_reference_control_step=int(self.state['control_steps'])
+        evidence=candidate['evidence']
+        evidence['selected_parts']={'moving_part_id':moving_part_id,'contact_part_id':contact_part_id}
+        folder=self.folder('grounding');folder.mkdir()
+        write_json(folder/'agent-regions.json',choices);write_json(folder/'geometry.json',evidence)
+        write_json(folder/'model.json',self.spec)
         return {**self.export_geometry(evidence),
-            'grounding_status':'door_and_handle' if handle_fit['accepted'] else 'door_only',
-            'handle_fit':handle_fit,'handle_model_available':handle_fit['accepted'],
+            'grounding_status':'observed_contact_and_part' if not spec['generic_part_joint_model'] else 'observed_part',
+            'handle_model_available':not spec['generic_part_joint_model'],
+            'handle_fit':{'status':'raw_selected_depth','shape_fit_performed':False},
             'selected_parts':evidence['selected_parts'],'planner_model_updated':True,'robot_motion_executed':False}
 
     def export_geometry(self, evidence=None):
@@ -633,19 +601,17 @@ class RobotService:
         result={'accepted':review['accepted'],'grounding_review':compact_review(review),
             'images':[str(path.relative_to(self.workspace)) for path in images],
             'review_file':str((public/'review.json').relative_to(self.workspace)),
-            'overlay_legend':'cyan=selected edge; red=triangulated hinge; orange=handle; green=panel; yellow=fitted handle anchor',
+            'overlay_legend':'cyan=selected edge; red=depth-lifted hinge hypothesis; orange=contact region; green=moving part; yellow=selected contact pixel',
             'planner_model_updated':False,'robot_motion_executed':False,
             'geometry_epoch':self.epoch,'control_steps':int(self.state['control_steps']),
             'observation_id':observation_id}
         if not review['accepted']:return result
         # Construct before committing. Do not retain role assignments from an
         # earlier, possibly incorrect hinge/handle hypothesis.
-        candidate['spec']['hinge_evidence']={'status':'calibrated_cross_view_consistency_checked',
+        candidate['spec']['hinge_evidence']={'status':'caller_hinge_with_cross_view_measurements',
             'semantic_identity_verified':False,'calibrated_accuracy_guarantee':False}
-        robot=RobotVolumes(self.ik.chain,self.state['metadata']['robot_collision_volumes_world'],
-                           self.state['metadata']['joint_positions'])
-        scene=ArcContactScene(self.cameras,self.state['metadata'],candidate['spec'],candidate['cloud'],
-                             candidate['mask'],candidate['choices'],self.config,robot=robot)
+        from vlm_tamp.explicit_grounding import selected_scene
+        scene=selected_scene(candidate,self.cameras,self.state['metadata'],self.ik.chain,self.config)
         self.spec,self.cloud,self.mask,self.anchors=(candidate[k] for k in ['spec','cloud','mask','anchors'])
         self.choices=candidate['choices'];self.scene=scene;self.tracker=None
         self.contact_scene_kind='articulated';self.epoch+=1
@@ -951,7 +917,7 @@ class RobotService:
             'note':'For a pinch grasp, open before planning, execute the approach with gripper=-1, then close at arrival and inspect grasp evidence. plan_sequence/execute_sequence stage approach/closure/manipulation automatically.'}
         return result
 
-    def plan_sequence(self,degrees,max_candidates=8,seed=0,grasp_constraint='jaw_axis',
+    def plan_sequence(self,degrees,max_candidates=8,seed=0,grasp_constraint=None,
                       speed=.35,approach_speed=None,hold=6,close_steps=40,budget_seconds=30.,collision_policy=None):
         if grasp_constraint not in {'point','rigid','jaw_axis'}:raise ValueError('Unknown grasp constraint')
         approach_speed=float(self.config.get('grasp_approach_speed_rad_s',.6) if approach_speed is None else approach_speed)
@@ -991,7 +957,8 @@ class RobotService:
         if budget_seconds is not None:
             remaining=self.episode_status().get('remaining_wall_seconds')
             if remaining is not None:search_budget=min(search_budget,remaining)
-        mode = grasp_constraint or self.config.get('grasp_constraint', 'point')
+        mode = grasp_constraint
+        if mode is None:raise ValueError('Select grasp_constraint explicitly: point, jaw_axis, or rigid')
         if mode not in {'point','rigid','jaw_axis'}:
             raise ValueError('Choose point, rigid or jaw_axis grasp constraint')
         tolerance=float(self.config.get('arc_position_tolerance_m',.006)
@@ -1063,12 +1030,13 @@ class RobotService:
                 and self.surface_reference_step!=self.state['control_steps']):
             raise ValueError('Surface-contact geometry is from before the last motion. Select a contact region from current observations before planning again.')
 
-    def select_surface_contact(self,camera,region_xyxy=None,radius_m=.02,contact_part_id=None):
+    def select_surface_contact(self,camera,contact_pixel_xy,region_xyxy=None,radius_m=.02,contact_part_id=None):
         if not self.sim:raise ValueError('Reset before selecting contact')
         from vlm_tamp.surface_contact_tools import contact_snapshot
         from vlm_tamp.contact_skills import contact_landmarks
         scene,evidence=contact_snapshot(self.cameras,self.state['metadata'],camera,region_xyxy,
-            self.ik.chain,radius_m=float(radius_m),selected_mask=self._part_mask(contact_part_id,camera))
+            self.ik.chain,radius_m=float(radius_m),selected_mask=self._part_mask(contact_part_id,camera),
+            contact_pixel_xy=contact_pixel_xy)
         evidence['selected_parts']={'contact_part_id':contact_part_id}
         from vlm_tamp.observed_joint_scene import retain_observed_articulation
         retain_observed_articulation(self)
@@ -1129,7 +1097,7 @@ class RobotService:
         return {'solutions': self.ik.solve_many(vector(pose_world_xyzw,7),
                     self.state['metadata']['joint_positions'],maximum=8)}
 
-    def push(self,observation_id,camera,region_xyxy=None,target_region_xyxy=None,direction_world=None,
+    def push(self,observation_id,camera,contact_pixel_xy,contact_name,region_xyxy=None,target_region_xyxy=None,direction_world=None,
              distance_m=.03,joint_degrees=None,joint_model_epoch=None,mode='controlled',
              contact_speed_m_s=.03,contact_surface='fingertips',preview=False,budget_seconds=120.,collision_policy='veto',
              approach_speed_rad_s=.6,stroke_length_m=None,search_seconds=None,stroke_plan_seconds=None,max_ineffective_strokes=2,withdrawal_distance_m=.015,
@@ -1138,7 +1106,7 @@ class RobotService:
         arguments={key:value for key,value in locals().items() if key not in {'self','run_skill'}}
         return run_skill(self,'push',**arguments)
 
-    def hook_pull(self,observation_id,camera,region_xyxy=None,target_region_xyxy=None,direction_world=None,
+    def hook_pull(self,observation_id,camera,contact_pixel_xy,contact_name,region_xyxy=None,target_region_xyxy=None,direction_world=None,
                   distance_m=.03,joint_degrees=None,joint_model_epoch=None,
                   contact_speed_m_s=.03,preview=False,budget_seconds=120.,collision_policy='veto',
                   approach_speed_rad_s=.6,stroke_length_m=None,search_seconds=None,stroke_plan_seconds=None,max_ineffective_strokes=2,
@@ -1156,8 +1124,11 @@ class RobotService:
 
     def push_stroke(self,direction_world,distance_m,contact_speed_m_s=None,
                     stroke_length_m=None,budget_seconds=120.,stroke_plan_seconds=None,max_ineffective_strokes=2):
-        return self.continue_push(direction_world,distance_m,contact_speed_m_s,stroke_length_m,
-            budget_seconds,stroke_plan_seconds,max_ineffective_strokes)
+        from vlm_tamp.contact_skill_service import run_skill
+        return run_skill(self,'push',direction_world=direction_world,distance_m=distance_m,
+            contact_speed_m_s=contact_speed_m_s,stroke_length_m=stroke_length_m,budget_seconds=budget_seconds,
+            stroke_plan_seconds=stroke_plan_seconds,max_ineffective_strokes=max_ineffective_strokes,
+            continuation=True,current_hand=True)
 
     def execute_plan(self, plan_id, gripper=1, speed=.35, hold=6):
         plan = self.plans[plan_id]
@@ -1180,16 +1151,13 @@ class RobotService:
     def gripper(self, close=True, steps=40):
         if isinstance(steps,bool) or type(steps) is not int or steps<1:
             raise ValueError('Gripper hold steps must be a positive integer')
-        limits=self.ik.chain.limits.copy()
-        target,recovery=gripper_arm_reference(self.state['metadata']['joint_positions'],limits,
-            planning_reserve_rad=JOINT_ADMISSION_RESERVE_RAD)
-        refs = np.repeat(target[None],int(steps),axis=0)
-        result=self.issue(refs,1 if close else -1,'close' if close else 'open')
-        after=np.asarray(self.state['metadata']['joint_positions'])
-        admitted=limits+np.array([JOINT_ADMISSION_RESERVE_RAD,-JOINT_ADMISSION_RESERVE_RAD])
-        recovery.update(measured_after_rad=after.tolist(),
-            inside_admitted_limits_after=bool(np.all(after>=admitted[:,0]) and np.all(after<=admitted[:,1])))
-        result['joint_limit_recovery']=recovery
+        # A gripper command holds the existing controller reference. It must
+        # not invent an inward arm movement after measured tracking overshoot.
+        target = vector(self.state['metadata']['joint_servo']['reference_joint_positions'], 7)
+        refs = np.repeat(target[None], int(steps), axis=0)
+        result = self.issue(refs, 1 if close else -1, 'close' if close else 'open')
+        result['arm_reference'] = {'policy': 'hold_existing_controller_reference',
+            'joints': target.tolist(), 'automatic_arm_recovery': False}
         return result
 
     def issue(self, refs, gripper, label, *, articulated=False,camera_names=None,track_scene=True,push_feedback=None):

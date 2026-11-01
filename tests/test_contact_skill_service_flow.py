@@ -49,6 +49,8 @@ def test_advisory_release_flow_and_native_success_termination(tmp_path,monkeypat
             self.scene=s;self.record={}
         def __enter__(self):return self
         def __exit__(self,*args):pass
+        def plan(self,start,goal,**kwargs):
+            return np.vstack([start,goal]),{'exact_solution':True,'status':'solved'}
         def validate(self,q):
             return {'accepted':getattr(self.scene,'skill_collision_policy','veto')!='advisory',
                 'static_rejections':1,'joint_bound_violations':[],'timed_out':False,

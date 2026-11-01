@@ -386,9 +386,6 @@ class NativeScene:
             'maximum_solve_seconds':seconds,'maximum_planning_seconds':seconds,
             'deadline_scope':'upstream planner search','maximum_iterations':iterations}
         path=output[:max(0,n)].astype(float)
-        # Native float32 bounds can round a few ulps outside the exact driver
-        # bounds. Normalize the returned references to the same real limits.
-        if len(path):path=np.clip(path,self.chain.limits[:,0],self.chain.limits[:,1])
         return path,result
 
     def _solve_native(self,start,goal,constrained,seconds,iterations,temporary):

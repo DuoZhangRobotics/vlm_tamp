@@ -1,207 +1,64 @@
-Contact skills: choosing how to move an observed part
+Contact tools: caller choices and numerical execution
 
-You choose the target, desired motion, contact mode and experiments. Numerical
-tools compute robot poses, IK, collisions and timing. No TCP quaternion or joint
-configuration is required for push, continue_push or hook_pull.
+You choose the target, contact pixel, robot contact point and desired motion.
+The tools convert calibrated RGB-D and robot offsets, solve cuRobo IK, and
+execute timed references. They supply no task-specific action sequence.
 
-- push_stroke(direction_world, distance_m, contact_speed_m_s=null,
-  stroke_length_m=null, budget_seconds=120, stroke_plan_seconds=null):
-  Move the current hand directly, holding its current aperture. This requires
-  only a reset robot, a world direction and a distance. No contact acquisition,
-  region annotation, hinge estimate or previous push is required. It attempts
-  the stroke through simulator physics and reports actual motion/stalls.
-  Prior target tracking is reused when available; otherwise object motion is
-  unmeasured, and contact is not assumed. The tool does not reposition the hand
-  to a selected target for you. You choose when the current pose is suitable.
-  A targeted push preview is not a prerequisite or permission check for this tool.
-  Sub-strokes advance finite waypoints toward the original requested endpoint.
-  Shortfall is reported; blocked motion does not restart the same sub-stroke
-  until the episode budget is consumed.
+- push(observation_id, camera, contact_pixel_xy, contact_name,
+  region_xyxy=null, target_region_xyxy=null, direction_world=null,
+  distance_m=0.03, joint_degrees=null, joint_model_epoch=null,
+  mode="controlled", contact_speed_m_s=0.03, contact_surface="fingertips",
+  preview=false, budget_seconds=120): use the exact original-image integer
+  pixel and a contact_name from reset's contact_landmarks_in_tcp. Select the
+  observed part with a region or current part mask. No nearby pixel, wrist
+  menu, stand-off or replacement contact is chosen. Without a supplied hand
+  quaternion, cuRobo solves the chosen contact point with free wrist orientation.
+  VAMP plans the free-space approach, checking arm/palm and allowing all finger
+  contacts. Planning and execution use the same aperture. preview issues no motion.
+  After approach, the requested straight stroke starts at the actual measured
+  hand pose. It uses Cartesian waypoints and cuRobo IK, with no push path planner,
+  CPU IK refinement or extra dense collision pass. Physics resolves contact.
+  Requested, commanded and measured motion are different; inspect each result.
 
-- continue_push(direction_world, distance_m, contact_speed_m_s=null,
-  stroke_length_m=null, budget_seconds=120, stroke_plan_seconds=null):
-  continue_push_available=true means another robot stroke can be issued. It reuses
-  the retained contact geometry and scene; it does not establish current engagement.
-  Issuing that motion needs no new region, hinge model, contact search or preview.
-  Fingertip contact is the default for
-  acquisition; continuation keeps the contact surface you already selected.
-  direction_world and distance_m specify the commanded contact/hand stroke.
-  Actual hand and object motion are reported separately. Speed defaults to the
-  retained setting. A continuation is one complete requested stroke by default;
-  stroke_length_m can explicitly split a larger request. The returned
-  reference_direction_world transports the previous request with observed part
-  rotation. It is a geometric reference, not a goal-directed recommendation.
-  Robot/gripper movement through another operation clears the retained contact;
-  observations alone do not. Without a retained contact, continue_push behaves
-  like push_stroke from the current hand pose. Acquire a fresh targeted contact
-  when you need the tool to approach a particular selected region.
-  Weak or unresolved object motion is feedback, not a veto of a direction-only
-  push. The robot contact reference remains available. You can explicitly change
-  direction, distance or speed without repeating contact acquisition.
+- continue_push(direction_world, distance_m, contact_speed_m_s=null): reuse an
+  existing retained contact/target. No scene rebuild or contact search. If no
+  retained contact exists, this tool returns that fact; select push_stroke
+  yourself if you want an unassociated hand motion.
 
-An unchanged push preview is reused by execution; its geometry and approach are
-not recomputed. During a push, static geometry is retained and the selected rigid
-part is updated from RGB-D motion feedback. This does not certify unseen changes
-elsewhere in the scene. Initial region selection is for acquisition, not something
-you must repeat for each small continuation.
+- push_stroke(direction_world, distance_m, contact_speed_m_s=null): move the
+  current hand directly through straight Cartesian IK targets. Only reset,
+  direction and distance are needed. No target, hinge or contact is assumed;
+  object motion is unmeasured. Hold the existing gripper aperture.
 
-- push(observation_id, camera, region_xyxy=null, target_region_xyxy=null,
-  direction_world=null, distance_m=0.03, joint_degrees=null,
-  joint_model_epoch=null, mode="controlled", contact_speed_m_s=0.03,
-  contact_surface="fingertips", preview=false, budget_seconds=120,
-  collision_policy="veto", approach_speed_rad_s=0.6, stroke_length_m=null,
-  search_seconds=null, stroke_plan_seconds=null, max_ineffective_strokes=2,
-  moving_part_id=null, contact_part_id=null):
-  Select the CURRENT contact region and, preferably, a larger region on the SAME
-  moving part for visual feedback. Boxes use original pixels. Alternatively,
-  use current segment_parts masks: moving_part_id
-  identifies the moving part and contact_part_id selects a contact feature.
-  Reuse the same IDs used for grounding, in the same camera/current state.
-  With an ID, its box is supplied automatically when omitted; its mask remains
-  the selection throughout contact/target scene assembly. A world direction
-  specifies the intended hand motion. Supply either direction_world or
-  joint_degrees, including for previews; the tool never silently substitutes a
-  surface normal for your task intent. select_surface_contact returns a measured
-  point/normal when you want geometry without issuing a push.
-  For a current, explicitly associated joint model, instead supply a signed
-  joint_degrees increment and its geometry_epoch as joint_model_epoch. A joint
-  sign is not synonymous with open or close. Check that it serves the task.
-  Motion along the requested vector is not necessarily progress toward the goal.
-  An open-hand push applies compression; reversing the same hand motion can
-  withdraw from the object instead of moving it back. Choose contact placement
-  and motion from observed state changes and the task goal.
-  A surface-alignment warning cannot establish that a previous action was wrong.
-  part_motion_evidence keeps the latest measurement and the last measured change
-  separately; an unresolved later measurement does not erase earlier movement.
-  If motion tracking fails, the tool may capture two additional retained views
-  to resolve it. This is timed separately and does not veto physical pushing.
-  Compare the same part before/after the action when deciding whether to reverse.
-  A rectangle can contain background. Inspect the selected-point overlay and
-  reselect the actual feature in a clearer view if the point lies off the target.
-  A positive increment follows the installed joint_axis_world. A supplied image
-  arrow selects its sign. Without a resolved arrow, +Z is only a coordinate
-  convention and opening/closing direction remains unknown. Depth does not
-  supply a task-direction guess. Choose signed motion from observed evidence.
-  Controlled world-direction pushing defaults to the complete requested hand
-  distance in one stroke at 0.03 m/s. A 0.10 m request is allowed. Joint-linked
-  goals use incremental strokes while joint progress remains measurable.
-  You may request another positive stroke_length_m or contact_speed_m_s; timing always respects
-  the controller's 1 rad/s joint-reference limit. Feedback occurs between strokes. Choose contact_surface="palm" explicitly
-  to plan palm contact with the chosen target patch. preview=true plans without motion.
-  Free approach planning uses the requested scene collision policy. Controlled
-  push insertion and strokes execute through simulator physics: predicted scene
-  collisions and uncertain visual object tracking do not veto the stroke.
-  Reachable kinematic prefixes may execute if the complete request cannot be
-  planned. Actual mechanical joint bounds and the 1 rad/s reference limit remain.
-  During longer strokes, one second of less than 1 mm measured hand progress in
-  the commanded direction while
-  references advance at least 1 cm returns physical_stall. This happens after
-  physical execution; its history spans short sub-strokes within the same call.
-  It is not a scene prediction. Requested versus commanded
-  versus measured travel and object-motion uncertainty are returned separately.
-  The retained robot contact reference remains usable after a stall or missing
-  object measurement. An unknown object pose is not used as a current grasp model.
-  To position a finger at an observed point, use plan_contact_pose(point_world_m)
-  then execute(plan_id, gripper=0). It computes the calibrated finger-to-TCP
-  offset. plan_pose takes a TCP-origin pose, not a point on the object.
-  Hook-pull and push-and-release retain their existing planned-contact behavior.
-  Distal finger-pad contact may slide over the selected moving part. The initial
-  contact region selects an approach site; target_region_xyxy identifies the
-  moving part used for tracking. VAMP's arm and palm spheres are checked.
-  Fingers may contact any environment surface, including stationary geometry;
-  simulator physics determines the resulting contact. Explicit contact_surface="palm"
-  also permits palm contact with the selected part. Hook-pull still requires
-  observed retaining geometry and engagement evidence.
-  The planner's own checks use zero added padding. There is no extra dense
-  validation pass and no automatic robot-only/advisory route fallback.
-  Before planning, points inside the measured current robot geometry are removed
-  from the collision map. The cleaned map is shared by downstream searches;
-  hypothetical robot poses never clear additional obstacle points.
-  Incomplete depth and controller tracking error remain limits of the prediction.
-  The current gripper aperture is used for planning and held during execution.
-  A supported current contact posture can be reused; a new approach is not
-  mandatory for each call. Object-motion feedback still tests engagement.
-  Choose a different aperture with gripper before selecting a fresh observation.
-  If measured arm joints drift outside the planner's limits, gripper also makes
-  one bounded inward joint reference correction and reports it. This is physical
-  controller execution, not a simulator state reset.
-  mode="push_and_release" defaults to one pulse up to 3 cm, withdraws by
-  withdrawal_distance_m=0.015 (configurable), and allows one
-  second of simulated coasting. A slow contact test precedes the pulse.
-  distance_m bounds the pulse length in this mode, not the uncertain total
-  object displacement. A failed contact test prevents the faster pulse.
-  Momentum can
-  move the object after release; final displacement is unknown. This mode is
-  available for simulation experiments. Validation is reported separately.
-  The 0.03, 0.06 and 0.12 m/s settings have matched replay data. Other positive
-  speed requests are allowed experiments; replies report achieved speed.
-  Larger signed joint requests are tracked through incremental observed rotations.
-  Search budgets default to 30 seconds for initial contact and 5 seconds for
-  subsequent stroke plans, capped by the remaining skill/episode allowance.
-  They do not shrink proportionally when you request a shorter whole-skill
-  budget. You can override them explicitly.
-- hook_pull(observation_id, camera, region_xyxy=null, target_region_xyxy=null,
-  direction_world=null, distance_m=0.03, joint_degrees=null,
-  joint_model_epoch=null, contact_speed_m_s=0.03, preview=false,
-  budget_seconds=120, collision_policy="veto", approach_speed_rad_s=0.6, stroke_length_m=null,
-  search_seconds=null, stroke_plan_seconds=null, max_ineffective_strokes=2,
-  moving_part_id=null, contact_part_id=null): catch a visibly resolved retaining bar/lip without
-  pinching, test engagement with a small movement, then pull in bounded strokes.
-  Select a retaining feature and desired pulling direction. Hook planning
-  accepts the same current part IDs and masks as push and ground.
-  It searches observed geometry for a retaining posture across candidates,
-  using scene collision checks throughout the same contact-search budget.
-  It requires observed thickness and a rear contact surface; unseen openings and
-  arbitrary flat surfaces are not assumed hookable. Feature failures report the
-  measured dimensions and failed detector conditions. Aspect ratio alone does
-  not reject a retaining feature. no_hookable_feature means this detector lacks
-  a supported catch; physical hookability has not been disproved. Change the
-  aperture before calling when a wider opening is needed. A hook is distinct
-  from the existing closed-gripper handle grasp and arc manipulation.
+- hook_pull uses the same explicit pixel/contact fields and an inward-facing
+  pad on a visible retaining feature, without pinching. A flat selection has
+  no retaining thickness. A small test motion measures engagement; unknown
+  tracking is not evidence that a hook has engaged. Hook evidence is distinct
+  from pinch-grasp evidence.
 
-Replies distinguish search failure, insufficient budget, wrong-side contact,
-unresolved object motion, engagement loss and measured progress. Robot motion
-alone proves neither engagement nor task completion. Read native task_success
-for the episode outcome. Inspect overlays and measured feedback after each call.
-For joint requests, observed_joint_change_degrees uses the same signed axis and
-degree units as joint_degrees. It is a sensor estimate, not a native joint readout.
-After physical motion, old articulated geometry is stale: update its observed
-pose or refresh it before requesting a new joint-associated action.
+- plan_contact_pose(point_world_m, contact_name, quaternion_xyzw=null) converts
+  a measured point and chosen robot contact offset into cuRobo IK and a VAMP
+  approach. An optional quaternion requests that orientation explicitly.
+  Execute the returned plan with gripper=0 to keep the planned aperture.
 
-In practice, test relevant alternatives and record conditional lessons, actual
-settings, outcomes and uncertainty. Record both successes and failures. Supplied
-tool knowledge is not your discovery. Keep episode pixels, world poses and joint
-paths out of transferable guidelines; estimate geometry anew in each scene.
+Supply either direction_world or a signed increment of an explicitly associated
+joint, including for previews. A surface normal does not determine task intent.
+Positive joint motion follows the exported axis; it does not inherently mean
+opening or closing. Geometry and motion measurements remain hypotheses/evidence.
 
-Grasped manipulation now chooses approach postures by control cost, uses actual
-closure geometry for its manipulation plan, and returns recovery choices after
-lost engagement. Query motion_settings for effective bounds and defaults.
-An independent apply_joint_estimate can initialize a joint-linked part without
-a handle model: use a current registered mask (current_part_id), or valid tracks
-carrying the original part to the current capture. motion_sign sets the sign of
-the fitted unsigned axis; it does not certify the task's opening/closing direction.
+Controlled direction pushes attempt the full requested hand distance (including
+10 cm). stroke_length_m can explicitly divide it. Timing respects requested
+contact speed and the existing 1 rad/s joint reference limit. Tracking failures
+and measured stalls are reported; they do not silently trigger new views,
+corrective insertion or repeated strokes. No force/tactile sensing is assumed.
 
-Contact tracking retains its original multi-view references across strokes;
-camera selection includes wrist RGB-D and follows measured track availability.
-Controlled pushes do not force a full-scene recapture or stop for a failed object
-fit. The result reports object_motion_status="unresolved"; it does not invent
-object motion from hand motion. Request more observations when useful.
-Withdrawal replies report actual robot travel,
-not a physical detachment certificate. Inspect current geometry if contact may remain.
+push_and_release establishes slow contact, issues a bounded pulse and withdraws.
+Requested speed may differ from achieved speed, and final object motion/rebound
+is uncertain. Use observation and native success rather than a kinematic claim.
 
-Grasp sequences can explicitly calibrate a rough hinge through small physical increments:
-the fixed joint is fitted from RGB-D motion, verified against a later interval,
-and revised only with improved prediction support. This is a reported model
-revision, distinct from moving the part pose or assuming attachment. This is
-opt-in with calibrate_joint=true; the default retains the supplied fixed model.
-
-Pinch-grasp sequences default to jaw_axis retention: the measured closing
-direction follows the moving part while rotation about that line remains free.
-point and rigid remain explicit alternatives. GraspGen supplies a small batch of
-unaltered poses with a fixed robot-frame conversion; there is no depth menu.
-Arc planning first targets the full requested angle with MC-VAMP. Only if that
-attempt fails does it try local continuation, reported separately. The planner's
-returned path is executed without another collision-validation pass.
-Approach planning uses the open
-gripper reference. If the prior command closed it, execution opens and replans
-from the new observation before approaching.
+Initial search defaults to 30 s, later stroke IK to 5 s, and a skill to 120 s,
+capped by the episode. Budgets limit work, not physical feasibility. An IK prefix
+may execute if a whole physical push cannot be solved. Read reachable_prefix and
+stop_reason. Fresh attempts re-estimate geometry; no successful coordinates or
+state-specific triggers are supplied. Record your own successes, failures and
+uncertainty separately from this tool description.

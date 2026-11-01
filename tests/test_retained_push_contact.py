@@ -185,7 +185,9 @@ def test_observe_alone_keeps_contact_but_unrelated_motion_clears_it(contact_serv
     service.calls+=1;service.capture()
     assert call(service,continued=True)['continue_push_available']
     q=np.asarray(service.state['metadata']['joint_positions']);service.issue(q[None],0,'unrelated')
-    fresh=call(service,continued=True)
+    with pytest.raises(ValueError,match='No retained push contact'):
+        call(service,continued=True)
+    fresh=call(service,continued=True,current_hand=True)
     assert fresh['input_mode']=='current_hand' and not fresh['contact_reused']
     assert fresh['object_motion_status']=='unmeasured' and fresh['robot_motion_executed']
     assert counts['builds']==1
@@ -221,10 +223,10 @@ def test_ineffective_strokes_accumulate_across_continuation_calls(contact_servic
 def test_bad_hinge_does_not_discard_measured_pose_for_direction_only_continuation(contact_service):
     service,counts,_=contact_service
     initial=call(service,direction_world=None,joint_degrees=15.,joint_model_epoch=0)
-    assert initial['stop_reason']=='motion_inconsistent_with_fixed_joint'
-    assert initial['continue_push_available'] and not initial['joint_model_supported']
-    result=call(service,continued=True,direction_world=[0,1,0])
-    assert result['stop_reason']=='stroke_executed'
+    assert initial['robot_motion_executed']
+    assert any(row['reason']=='motion_inconsistent_with_fixed_joint' for row in initial['motion_warnings'])
+    assert initial['part_motion_evidence']['accepted_measurements']>0
+    assert initial['stop_reason']!='motion_inconsistent_with_fixed_joint'
     assert counts['builds']==counts['searches']==1
 
 
@@ -236,7 +238,7 @@ def test_continuation_schema_needs_only_direction_and_distance():
 
 def test_current_hand_stroke_has_no_contact_or_perception_prerequisite(contact_service):
     service,counts,_=contact_service
-    result=call(service,continued=True,distance_m=.1)
+    result=call(service,continued=True,current_hand=True,distance_m=.1)
     assert result['stop_reason']=='stroke_executed' and result['input_mode']=='current_hand'
     assert result['measured_contact_progress_m']==pytest.approx(.1)
     assert counts['builds']==counts['searches']==counts['trackers']==0

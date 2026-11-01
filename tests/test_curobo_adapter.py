@@ -57,54 +57,49 @@ def test_invalid_reserve_rejected(tmp_path, margin):
         export_model(record(), tmp_path, margin)
 
 
-def test_failed_optimizer_flag_does_not_veto_independently_valid_ik():
-    solver=object.__new__(TaskIK);solver.chain=RobotChain(record());q=solver.chain.reference_joints.copy()
-    solver.reserve=0.;solver.events=[]
-    solver.config={'ik_position_tolerance_m':.003,'ik_orientation_tolerance_rad':.01}
-    solver.self_valid=lambda joints:True
+def fake_solver():
+    solver=object.__new__(TaskIK)
+    solver.chain=RobotChain(record());solver.reserve=0.;solver.events=[]
+    solver.config={'ik_position_tolerance_m':.001,'ik_orientation_tolerance_rad':.01}
+    solver.self_valid=lambda q: True
+    return solver
+
+
+def test_failed_optimizer_flag_is_not_rescued_by_cpu_fk():
+    solver=fake_solver();q=solver.chain.reference_joints.copy()
     solver.client=SimpleNamespace(solve=lambda *a:{'solutions':[q.tolist()],'success':[False],
         'elapsed_seconds':.01,'peak_gpu_allocated_bytes':0})
-    found=solver.solve_many(solver.chain.forward(q),q)
-    assert len(found)==1 and not found[0]['solver_reported_success']
+    assert solver.solve_many(solver.chain.forward(q),q)==[]
+    assert solver.events[-1]['admitted_failed_flag_candidates']==0
 
 
-def test_ik_proposals_filtered_by_exact_fk_reserve_and_self_collision():
-    solver = object.__new__(TaskIK)
-    solver.chain = RobotChain(record())
-    q = solver.chain.reference_joints.copy()
-    solver.reserve, solver.events = .025, []
-    solver.config = {'ik_position_tolerance_m': .001, 'ik_orientation_tolerance_rad': .01}
-    invalid = q.copy()
-    invalid[5] = solver.chain.limits[5, 1]-.0001
-    wrong_pose = q.copy()
-    wrong_pose[2] += .3
-    solver.self_valid = lambda value: True
-    solver.client = SimpleNamespace(solve=lambda pose, seed: {
-        'solutions': [invalid.tolist(), wrong_pose.tolist(), q.tolist(), q.tolist()],
-        'success': [True]*4, 'elapsed_seconds': .01, 'peak_gpu_allocated_bytes': 10})
-    candidates = solver.solve_many(solver.chain.forward(q), q)
-    assert len(candidates) == 1
-    assert solver.events[-1]['rejected'] == {'solver': 0, 'bounds': 0, 'residual': 2, 'duplicate': 1, 'self_collision': 0}
-    solver.self_valid = lambda value: False
-    assert solver.solve_many(solver.chain.forward(q), q) == []
+def test_solver_successes_are_unchanged_and_not_cpu_filtered():
+    solver=fake_solver();q=solver.chain.reference_joints.copy()
+    rounded=q.copy();rounded[5]=float(np.float32(solver.chain.limits[5,1]))
+    nearby=q.copy();nearby[2]+=.001
+    solver.self_valid=lambda value: (_ for _ in ()).throw(AssertionError('Native planner owns collision admission'))
+    solver.client=SimpleNamespace(solve=lambda *a:{
+        'solutions':[rounded.tolist(),nearby.tolist(),q.tolist(),q.tolist()],
+        'success':[True]*4,'elapsed_seconds':.01,'peak_gpu_allocated_bytes':0})
+    candidates=solver.solve_many(solver.chain.forward(q),q)
+    assert len(candidates)==3  # Only the exact duplicate is removed.
+    for proposal in (q,nearby,rounded):
+        assert any(np.array_equal(row['joints'],proposal) for row in candidates)
+    assert all(not row['candidate_modified'] for row in candidates)
+    assert candidates[0]['joints']==q.tolist()
 
 
-def test_posture_cost_penalizes_stops_and_point_ik_keeps_reserve():
-    solver = object.__new__(TaskIK)
-    solver.chain = RobotChain(record())
-    solver.reserve = .025
-    solver.config = {'ik_position_tolerance_m': .001}
-    solver.self_valid = lambda q: True
-    q = solver.chain.reference_joints.copy()
-    local = np.array([.01, 0, -.01])
-    pose = pose_matrix(solver.chain.forward(q))
-    target = pose[:3, 3]+pose[:3, :3]@local+np.array([.01, .01, .01])
-    solution = solver.solve_point(target, local, q)
-    assert solution is not None
-    assert joint_reserve(np.asarray(solution['joints']), solver.chain.limits) >= solver.reserve-1e-8
-    risky = q.copy()
-    risky[5] = solver.chain.limits[5, 1]-.0001
-    assert posture_cost(risky, risky, solver.chain.limits) > posture_cost(q, q, solver.chain.limits)
+def test_point_compatibility_entry_uses_curobo_and_preserves_its_failure():
+    solver=fake_solver();q=solver.chain.reference_joints.copy();calls=[]
+    def request(operation, **kw):
+        calls.append((operation,kw))
+        return {'solutions':[q.tolist()],'success':[False],'elapsed_seconds':.01,'backend':'curobo_v2'}
+    solver.client=SimpleNamespace(request=request)
+    assert solver.solve_point([.1,.2,.3],[0.,0.,.01],q) is None
+    assert calls[0][0]=='solve_contact' and calls[0][1]['local'] is True
+    assert posture_cost(q,q,solver.chain.limits)==0.
+    at_stop=solver.chain.limits[:,1]
+    assert posture_cost(at_stop,at_stop,solver.chain.limits)==0.
 
 
 def test_scene_rejection_of_one_ik_does_not_discard_same_grasp(monkeypatch, tmp_path):

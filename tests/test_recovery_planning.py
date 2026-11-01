@@ -43,7 +43,7 @@ def test_signed_large_request_is_segmented_without_mutating_observed_scene(tmp_p
     monkeypatch.setattr(module,'predicted_rotation',lambda scene,angle:copy.copy(scene))
     ik=SimpleNamespace(chain=SimpleNamespace(forward=lambda q:[0,0,0,0,0,0,1]))
     path,report=plan_signed_arc(ik,scene,{}, {},np.zeros(7),-225,tmp_path/'plan',{'arc_search_seconds':10})
-    assert [np.degrees(a) for _,a in calls]==pytest.approx([90,90,45])
+    assert [np.degrees(a) for _,a in calls]==pytest.approx([112.5,112.5])
     assert all(axis[2]==-1 for axis,_ in calls)
     assert path[-1,0]==pytest.approx(np.radians(-225))
     assert np.array_equal(scene.axis,[0,0,1]) and scene.spec['joint_axis_world']==[0,0,1]
@@ -51,7 +51,7 @@ def test_signed_large_request_is_segmented_without_mutating_observed_scene(tmp_p
 
 
 def test_extended_contact_requests_keep_the_controller_joint_limit():
-    validate_operation('push',{'observation_id':1,'camera':'view','region_xyxy':[0,0,10,10],
+    validate_operation('push',{'observation_id':1,'camera':'view','contact_pixel_xy':[5,5],'contact_name':'pad','region_xyxy':[0,0,10,10],
         'joint_degrees':-150,'joint_model_epoch':1,'contact_speed_m_s':.25,'stroke_length_m':.05})
     class Chain:
         def forward(self,q):return np.r_[q[:3],[0,0,0,1]]
@@ -131,13 +131,12 @@ def test_sequence_replans_from_actual_closure_and_returns_slip_recovery(tmp_path
     robot.issue=issue
     result=robot.execute_sequence('test',close_steps=3,hold=0,calibrate_joint=False)
     assert result['post_closure_replanning'] and result['measured_closure_aperture_qpos']==[.012,-.009]
-    assert planned==([15.] if lose_contact else [15.,15.])
-    if lose_contact:
-        assert result['stop_reason']=='grasp_engagement_lost' and result['recovery_required']
-        assert result['remaining_control_steps']>0
+    assert planned==[15.,15.]
+    assert result['stop_reason']=='requested_reference_motion_complete'
+    assert result['remaining_control_steps']>0
 
 
-def test_automatic_joint_revision_uses_longer_baseline_and_third_check(tmp_path,monkeypatch):
+def test_explicit_joint_calibration_uses_longer_baseline_and_third_check(tmp_path,monkeypatch):
     import vlm_tamp.sequence_execution as module
     import vlm_tamp.joint_feedback as feedback
     from test_robot_sequence import service,install_sequence
@@ -172,7 +171,7 @@ def test_automatic_joint_revision_uses_longer_baseline_and_third_check(tmp_path,
         return {'task_success':False,'episode_done':False,'observation':{},'grasp_evidence':{},
             'motion_effect':{'observed_region_rotation_deg':planned[-1] if planned else 0.}}
     robot.issue=issue
-    result=robot.execute_sequence('test',close_steps=3,hold=0)
+    result=robot.execute_sequence('test',close_steps=3,hold=0,calibrate_joint=True)
     assert revisions==[3]
     assert planned==[3.,3.,3.,15.,6.]
     assert result['stop_reason']=='requested_reference_motion_complete'
@@ -189,7 +188,7 @@ def test_arc_search_allowance_is_explicit_and_bounded_by_episode_time(tmp_path,m
         budgets.append(config['arc_search_seconds'])
         return np.zeros((2,7)),{'status':'solved'}
     monkeypatch.setattr(module,'plan_signed_arc',plan)
-    validate_operation('plan_arc',{'degrees':30,'budget_seconds':60})
-    result=robot.plan_arc(30,budget_seconds=60)
+    validate_operation('plan_arc',{'degrees':30,'budget_seconds':60,'grasp_constraint':'point'})
+    result=robot.plan_arc(30,budget_seconds=60,grasp_constraint='point')
     assert budgets==[40.] and result['constraints']['arc_search_budget_seconds']==40.
     assert robot.config['arc_search_seconds']==20.

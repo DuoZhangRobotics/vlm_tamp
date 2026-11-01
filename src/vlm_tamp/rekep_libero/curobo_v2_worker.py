@@ -114,8 +114,8 @@ class Worker:
                 raise ValueError('Every cuRobo IK optimizer stage requires a tool-pose objective')
         return InverseKinematics(cfg)
 
-    def solve_contact(self, point, contact_local, reference_quaternion_xyzw, seed):
-        """Continue one contact point from the previous posture; wrist pose is soft.
+    def solve_contact(self, point, contact_local, reference_quaternion_xyzw, seed, local=True):
+        """Continue one contact point from the previous posture; wrist orientation is unconstrained.
 
         A physical push needs a point trajectory. Global full-pose IK can change
         posture families between adjacent points, producing a large hand sweep
@@ -126,41 +126,57 @@ class Worker:
         point, offset, quat, initial = [np.asarray(x, float) for x in
             (point, contact_local, reference_quaternion_xyzw, seed)]
         started = time.perf_counter()
-        signature = tuple(np.round(offset, 10))
-        if getattr(self, 'contact_solver_signature', None) != signature:
-            previous = getattr(self, 'contact_solver', None)
-            if previous is not None:
-                previous.destroy()
+        signature = tuple(offset)
+        count = 1 if local else self.count
+        # Keep acquisition and continuation alive independently. Switching
+        # between them must not repeatedly evict and warm the other optimizer.
+        if not hasattr(self, 'contact_solvers'):self.contact_solvers={}
+        cached=self.contact_solvers.get(bool(local))
+        created=cached is None or cached['offset']!=signature
+        setup_seconds=0.
+        if created:
+            if cached is not None:cached['solver'].destroy()
+            setup_started=time.perf_counter()
             model = copy.deepcopy(self.robot_config)
             model['kinematics'].update(tool_frames=['contact_point'], extra_links={
                 'contact_point': {'parent_link_name': 'tcp', 'link_name': 'contact_point',
                     'joint_name': 'contact_point_fixed', 'joint_type': 'FIXED',
                     'fixed_transform': [*offset.tolist(), 1., 0., 0., 0.]}})
-            solver = self.create_solver(model, num_seeds=1, orientation_tolerance=3.2,
-                velocity_regularization_weight=.001, seed_velocity_weight=0., optimization_dt=.05)
-            solver.config.use_lm_seed = False
-            solver.config.exit_early = False
+            solver = self.create_solver(model, num_seeds=count, orientation_tolerance=3.2)
+            if local:
+                solver.config.use_lm_seed = False
+                solver.config.exit_early = False
             solver.update_tool_pose_criteria({'contact_point': ToolPoseCriteria(
-                terminal_pose_axes_weight_factor=[1., 1., 1., .002, .002, .002],
+                terminal_pose_axes_weight_factor=[1., 1., 1., 0., 0., 0.],
                 project_distance_to_goal=False, device_cfg=self.device)})
-            self.contact_solver, self.contact_solver_signature = solver, signature
+            cached={'solver':solver,'offset':signature,'used':False}
+            self.contact_solvers[bool(local)]=cached
+            setup_seconds=time.perf_counter()-setup_started
+        solver=cached['solver'];first_solve=not cached['used']
         goal = GoalToolPose.from_poses({'contact_point': Pose(
             position=self.device.to_device(point[None]),
             quaternion=self.device.to_device(quat[[3, 0, 1, 2]][None]))})
-        result = self.contact_solver.solve_pose(goal,
+        solve_started=time.perf_counter()
+        result = solver.solve_pose(goal,
             current_state=self.joint_state(initial[None]),
-            seed_config=self.device.to_device(initial.reshape(1, 1, 7)), return_seeds=1)
+            seed_config=self.device.to_device(initial.reshape(1, 1, 7)), return_seeds=count)
         torch.cuda.synchronize()
+        solve_call_seconds=time.perf_counter()-solve_started
+        cached['used']=True
         return {'solutions': result.solution.detach().cpu().reshape(-1, 7).tolist(),
                 'success': result.success.detach().cpu().reshape(-1).tolist(),
                 'elapsed_seconds': time.perf_counter()-started,
-                'backend': 'curobo_v2_contact_continuation', 'seed_count': 1,
-                'orientation_is_soft_preference': True}
+                'solver_created':created,'first_solve_for_contact_solver':first_solve,
+                'solver_setup_seconds':setup_seconds,'solve_call_seconds':solve_call_seconds,
+                'solver_reported_seconds':float(result.solve_time),
+                'backend': 'curobo_v2_contact_continuation' if local else 'curobo_v2_contact_ik', 'seed_count': count,
+                'orientation_is_soft_preference': False}
 
     def configure_arc(self, collision_spheres, pad_local, scene_arrays_path,
                       scene_arrays_sha256, origin, axis, mesh_pitch=.005,
                       solver_mode='global', local_dt=.2, moving_mesh_pitch=.002,
-                      local_seed_std=.02, local_velocity_weight=.001,position_tolerance=None):
+                      local_seed_std=.02,position_tolerance=None,
+                      orientation_tolerance=None):
         """Load sensor-derived scene surfaces, preserving moving-part ownership."""
         from pathlib import Path
         started = time.perf_counter()
@@ -170,8 +186,7 @@ class Worker:
                             'local_dt': local_dt}.items():
             if not np.isfinite(value) or value <= 0.:
                 raise ValueError(f'{name} must be finite and positive')
-        for name, value in {'local_seed_std': local_seed_std,
-                            'local_velocity_weight': local_velocity_weight}.items():
+        for name, value in {'local_seed_std': local_seed_std}.items():
             if not np.isfinite(value) or value < 0.:
                 raise ValueError(f'{name} must be finite and nonnegative')
         origin, axis, pad_local = [np.asarray(value, float) for value in (origin, axis, pad_local)]
@@ -197,7 +212,8 @@ class Worker:
         self.arc_solver_mode = solver_mode
         self.arc_local_dt = float(local_dt)
         self.arc_local_seed_std = float(local_seed_std)
-        self.arc_local_velocity_weight = float(local_velocity_weight)
+        self.arc_orientation_tolerance = (float(self.config.get('arc_orientation_tolerance_rad', np.radians(3.)))
+            if orientation_tolerance is None else float(orientation_tolerance))
         self.arc_position_tolerance=float(self.config.get('arc_position_tolerance_m',.006) if position_tolerance is None else position_tolerance)
         if not np.isfinite(self.arc_position_tolerance) or self.arc_position_tolerance<=0:
             raise ValueError('Arc position tolerance must be positive')
@@ -232,13 +248,10 @@ class Worker:
                 'solver_recreated': True, 'gpu_environment_collision_checked': False,
                 'collision_owner': 'native MC-VAMP sphere planner',
                 'current_moving_surface_only': True,
-                'local_optimization_dt_seconds': self.arc_local_dt if solver_mode == 'local_continuation' else None,
+                'local_optimization_dt_seconds': None,
                 'local_seed_std_rad': self.arc_local_seed_std if solver_mode == 'local_continuation' else None,
-                'velocity_regularization_weight': (self.arc_local_velocity_weight if solver_mode == 'local_continuation'
-                    else self.config.get('curobo_v2_arc_velocity_weight')),
-                'velocity_regularization_source': ('local_continuation_setting' if solver_mode=='local_continuation'
-                    else 'explicit_configuration' if self.config.get('curobo_v2_arc_velocity_weight') is not None
-                    else 'upstream_optimizer_default'),
+                'velocity_regularization_weight': None,
+                'velocity_regularization_source': 'upstream_optimizer_default',
                 'seed_velocity_weight': 0.,
                 'seed_penalty_reference': 'disabled; no zero-joint posture prior',
                 'all_seeds_local': solver_mode == 'local_continuation',
@@ -253,11 +266,8 @@ class Worker:
         # Load the shared robot spheres for FK calibration, with an empty GPU world.
         solver = self.create_solver(self.arc_robot_config, collision=True, scene_model=self.arc_scene,
             position_tolerance=float(getattr(self,'arc_position_tolerance',self.config.get('arc_position_tolerance_m', .006))),
-            collision_cache={'mesh': 2}, orientation_tolerance=3.2,
-            velocity_regularization_weight=(self.arc_local_velocity_weight if local
-                else self.config.get('curobo_v2_arc_velocity_weight')),
-            seed_velocity_weight=0., optimizer_collision_activation_distance=.002,
-            **({'optimization_dt': self.arc_local_dt} if local else {}))
+            collision_cache={'mesh': 2},
+            orientation_tolerance=self.arc_orientation_tolerance or (1e-6/.15))
         if local:
             # The pinned IK implementation reads these config fields. Local
             # seeds must bypass global LM reseeding and early seed-only exits.
@@ -328,9 +338,9 @@ class Worker:
         if self.moving_mesh_name is not None:
             self.arc_solver.scene_collision_checker.data.update_obstacle_pose(self.moving_mesh_name,
                 Pose.from_list([*translation, quat[3], *quat[:3]], device_cfg=self.device))
-        # Orientation is a soft proposal preference in point mode. The native
-        # model remains responsible for exact jaw-axis and wrist constraints.
-        orient_weights = {'point': [.002]*3, 'rigid': [1.]*3, 'jaw_axis': [0., 1., 1.]}[mode]
+        # Express the caller-selected attachment directly in cuRobo.
+        # There is no soft orientation objective for a point-only target.
+        orient_weights = {'point': [0.]*3, 'rigid': [1.]*3, 'jaw_axis': [0., 1., 1.]}[mode]
         self.arc_solver.update_tool_pose_criteria({'contact_point': ToolPoseCriteria(
             terminal_pose_axes_weight_factor=[1., 1., 1., *orient_weights],
             project_distance_to_goal=mode == 'jaw_axis', device_cfg=self.device)})

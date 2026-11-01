@@ -180,10 +180,10 @@ Tool interfaces (all coordinate conventions are explicit):
   trajectory; gripper=-1 opens, 0 holds, +1 closes. Speed is maximum joint rad/s.
   For an approach you can request open fingers. Returns new sensor observation.
 - gripper(close=true, steps=40): physically close/open while holding the current
-  arm joints. Steps are a positive count within the episode budget. If measured
-  joints have overshot their bounds, a bounded inward reference recovers them.
+  arm controller reference. Steps are a positive count within the episode
+  budget. No automatic inward arm correction is made.
   No virtual attachment or simulator state assignment is made.
-- plan_arc(degrees, grasp_constraint="point", position_tolerance_m=null,
+- plan_arc(degrees, grasp_constraint, position_tolerance_m=null,
   orientation_tolerance_deg=null, max_wrist_reorientation_deg=null): plan a relative
   signed nonzero angle around your current pivot/axis. Larger requests use
   multiple planning reference frames internally, without wrapping progress.
@@ -218,7 +218,7 @@ Tool interfaces (all coordinate conventions are explicit):
 - ik(pose_world_xyzw): return robot-valid IK proposals for a chosen TCP pose.
 - plan_joint(joints, collision_policy="veto"): free-motion plan to seven
   arm joint angles, checking the observed scene, real joint limits and self geometry.
-- plan_sequence(degrees, max_candidates=8, seed=0, grasp_constraint="jaw_axis",
+- plan_sequence(degrees, grasp_constraint, max_candidates=8, seed=0,
   speed=0.35, approach_speed=0.6, hold=6, close_steps=40, budget_seconds=30,
   collision_policy="veto"): plan the same open-hand GraspGen approach and retain
   the signed manipulation intent. The exact manipulation cost remains unknown
@@ -234,9 +234,8 @@ Tool interfaces (all coordinate conventions are explicit):
   A fitted joint can replace the previous hypothesis only after support from a
   separate later interval and improved prediction error. The revision is reported.
   The signed motion is executed in complete feedback increments, with fresh
-  planning between them. Native success terminates immediately. A collapsed pad
-  gap or a part that does not follow returns actionable recovery evidence and the
-  remaining budget; the episode remains available for local regrasp or push.
+  planning between them. Native success terminates immediately. Pad gap and
+  observed part motion are feedback, not automatic recovery actions.
   Physical grasp retention is uncertain and reported separately from plan success.
 Successful arc/sequence responses are concise. planning_details names a JSON
 file with the full numerical evidence when deeper inspection is useful.
@@ -247,10 +246,10 @@ commands during an arc. The neutral command does not disable scene updates.
 The planners check the observed point cloud. Intended finger contact with the
 selected part is allowed; arm/palm and other surfaces are checked. Every issued
 trajectory executes fully. Observation/model revisions occur BETWEEN trajectories.
-Grasped manipulation permits finger bodies and pads against the selected handle;
-unrelated surfaces and the arm/palm remain checked. The planner's own checked
+Grasped manipulation permits finger bodies and pads against all environment
+surfaces; arm/palm remain checked. The planner's own checked
 path is used without an extra dense validation pass.
-The numerical tools inherit existing robot calibration, upright geometry priors,
+The numerical tools use existing robot calibration and caller-selected geometry,
 grasp proposal/filtering and contact/collision implementations. These are supplied
 tools, not discoveries by you. You cannot inspect their source or prior solutions.
 There is no run-the-entire-task or recovery-policy tool.
@@ -612,9 +611,9 @@ Past successful recipes are hypotheses, not restrictions to one contact mode.
 No specific object surface, direction, trajectory or recovery sequence is supplied.
 
 Additional generic contact interfaces:
-- select_surface_contact(camera, region_xyxy=null, radius_m=0.02,
+- select_surface_contact(camera, contact_pixel_xy, region_xyxy=null, radius_m=0.02,
   contact_part_id=null): select a bounded
-  patch of the CURRENT observed surface. Radius is 0.005..0.04 metres. Returns a
+  patch of the CURRENT observed surface. Radius is a positive caller-selected distance. Returns a
   measured point, approximate surface normal toward the camera, point clouds,
   and configured finger-pad centres in the TCP frame. It builds a fresh
   observed scene and permits configured-finger contact with only that patch.
@@ -623,12 +622,11 @@ Additional generic contact interfaces:
   A current contact_part_id reuses a segment_parts mask in this camera; its
   box is used when region_xyxy is omitted. The mask is retained in the scene.
   This switches to a free-motion surface scene. It does not move the robot.
-- plan_contact_pose(point_world_m, quaternion_xyzw=null, contact_name=null,
+- plan_contact_pose(point_world_m, contact_name, quaternion_xyzw=null,
   collision_policy=null, budget_seconds=30): place a calibrated fingertip/pad
-  at YOUR observed world surface point. It tries the current hand orientation
-  and nearby rotations; an optional quaternion fixes your chosen orientation. The tool computes
-  TCP offsets, checks the hand before IK, and tries the closest scene-valid arm
-  solution. Returns a plan_id; execute with gripper=0 to hold aperture. No motion
+  at YOUR observed world surface point. cuRobo solves the selected contact point with free orientation unless you
+  explicitly supply a quaternion. The tool computes calibrated TCP offsets and
+  sends unchanged IK solutions to VAMP; there is no wrist-angle menu. Returns a plan_id; execute with gripper=0 to hold aperture. No motion
   or confirmed physical contact occurs during planning.
 - plan_pose(pose_world_xyzw): find IK and a collision-aware joint path to YOUR
   requested TCP pose in the current scene. It returns a plan_id for execute.

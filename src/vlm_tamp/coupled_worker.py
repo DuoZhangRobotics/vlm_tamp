@@ -35,7 +35,11 @@ def checked_joint_target(target, limits):
     bounds = np.asarray(limits, dtype=float)
     if target.shape != (7,) or bounds.shape != (7, 2) or not np.isfinite(target).all():
         raise ValueError('Expected seven finite arm joints and seven joint-limit pairs')
-    if np.any(target < bounds[:, 0]) or np.any(target > bounds[:, 1]):
+    # Both native planning and GPU IK return float32 joints. Compare in that
+    # representation so a rounded boundary is accepted without rewriting it.
+    represented = target.astype(np.float32)
+    represented_bounds = bounds.astype(np.float32)
+    if np.any(represented < represented_bounds[:, 0]) or np.any(represented > represented_bounds[:, 1]):
         raise ValueError('Joint target exceeds configured Panda limits')
     return target
 
@@ -83,6 +87,7 @@ class CoupledWorker(ArticulatedWorker):
             result['joint_servo'] = {
                 'action_convention': 'official absolute joint goal with reference slew limiting' if self.joint_reference_mode=='slew_limited' else 'legacy measured-relative normalized delta',
                 'reference_mode':self.joint_reference_mode,'maximum_reference_speed_rad_s':1.,
+                'reference_joint_positions': np.asarray(self._joint_reference).tolist(),
                 'joint_delta_scale_rad': JOINT_DELTA_SCALE_RAD,
                 'kp': np.asarray(self.robot.controller.kp).tolist(),
                 'kd': np.asarray(self.robot.controller.kd).tolist(),

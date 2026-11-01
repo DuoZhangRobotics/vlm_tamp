@@ -15,7 +15,7 @@ def inputs():
     for view in views.values():view['rgb']=np.zeros((512,512,3),np.uint8)
     selections={name:{'camera':name,'contact_box_xyxy':[240,220,270,310],
         'moving_panel_box_xyxy':[180,180,300,330],
-        'hinge_pixels_xy':pixels(view,[.2,-.1]).tolist(),'initial_image_direction_xy':None}
+        'contact_pixel_xy':[255,260],'hinge_pixels_xy':np.rint(pixels(view,[.2,-.1])).astype(int).tolist(),'initial_image_direction_xy':None}
         for name,view in views.items()}
     arguments={'observation_id':1,'regions':selections['a'],'comparison_regions':selections['b'],
         'check_view':{k:selections['check'][k] for k in ['camera','hinge_pixels_xy']}}
@@ -24,32 +24,32 @@ def inputs():
 
 @pytest.fixture
 def fitted(monkeypatch):
-    from vlm_tamp import hinged_contact_tools
-    def fit(cameras,choices,template,metadata,**kwargs):
-        spec={**template,'source_anchor_world_m':[.4,0.,1.],
+    from vlm_tamp import explicit_grounding
+    def fit(cameras,metadata,choices,**kwargs):
+        spec={'camera':choices['camera'],'source_anchor_world_m':[.4,0.,1.],
               'joint_origin_world_m':[.1,-.1,1.],'joint_axis_world':[0,0,1],
-              'panel_normal_world':[1.,0.,0.]}
+              'panel_normal_world':[1.,0.,0.],'direction_source':{'task_direction_status':'unknown'}}
         cloud=np.array([[.4,0.,z] for z in np.linspace(.9,1.1,20)])
-        return SimpleNamespace(spec=spec),cloud,np.zeros((512,512),bool),[[.4,0.,1.]],{
-            'cylinder_radius_m':.01,'motion_direction_check':{'observed_bulk_world_m':[.4,.5,1.]}}
-    monkeypatch.setattr(hinged_contact_tools,'ground_handle',fit)
+        return {'spec':spec,'cloud':cloud,'moving_points':cloud,'mask':np.ones((512,512),bool),
+            'anchors':[[.4,0.,1.]],'choices':choices,'evidence':{'handle_shape_prior':None}}
+    monkeypatch.setattr(explicit_grounding,'ground_pixels',fit)
 
 
-def test_consistent_caller_edges_recover_hinge_without_altering_inputs(fitted):
+def test_cross_view_measurements_do_not_adjust_primary_hypothesis(fitted):
     views,args=inputs();before=copy.deepcopy(args)
     candidate,review=fit_multiview(views,{}, {'motion':'close','instruction':'close the door'},args)
     assert review['accepted'] and not review['semantic_identity_verified']
-    np.testing.assert_allclose(candidate['spec']['joint_origin_world_m'],[.2,-.1,1.],atol=1e-12)
+    np.testing.assert_allclose(candidate['spec']['joint_origin_world_m'],[.1,-.1,1.],atol=1e-12)
     assert candidate['spec']['joint_axis_world']==[0,0,1]
-    assert not review['triangulation']['views']['check']['used_for_fit']
+    assert not review['primary_hypothesis_adjusted'] and not review['consistency_cutoff_applied']
     assert args==before
 
 
-def test_wrong_withheld_edge_is_rejected_with_specific_feedback(fitted):
-    views,args=inputs();args['check_view']['hinge_pixels_xy']=pixels(views['check'],[.2,.15]).tolist()
+def test_wrong_withheld_edge_is_reported_without_a_hidden_veto(fitted):
+    views,args=inputs();args['check_view']['hinge_pixels_xy']=np.rint(pixels(views['check'],[.2,.15])).astype(int).tolist()
     _,review=fit_multiview(views,{}, {'motion':'close','instruction':'close the door'},args)
-    assert not review['accepted']
-    assert 'hinge_projections_within_4px' in review['failed_checks']
+    assert review['accepted']
+    assert not review['failed_checks']
     assert review['measurements']['hinge_projection_error_px']['check']>20
 
 
@@ -76,20 +76,22 @@ def service(tmp_path):
     return module,robot,args
 
 
-def test_failed_consistency_leaves_previous_model_scene_and_epoch_untouched(tmp_path,fitted):
+def test_missing_depth_leaves_previous_scene_untouched(tmp_path,monkeypatch):
     _,robot,args=service(tmp_path);old=(robot.spec,robot.scene,robot.tracker)
-    args['check_view']['hinge_pixels_xy']=pixels(robot.cameras['check'],[.2,.15]).tolist()
+    from vlm_tamp import explicit_grounding
+    def missing(*a,**k):raise ValueError('Selected pixel has no depth')
+    monkeypatch.setattr(explicit_grounding,'ground_pixels',missing)
     result=robot.ground_multiview(**args)
     assert not result['accepted'] and not result['planner_model_updated']
     assert (robot.spec,robot.scene,robot.tracker)==old and robot.epoch==7
-    assert robot.state['control_steps']==60 and len(result['images'])==3
 
 
 def test_passing_fit_installs_fresh_scene_and_invalidates_old_plan_epoch(tmp_path,fitted,monkeypatch):
     module,robot,args=service(tmp_path);old=robot.scene
     monkeypatch.setattr(module,'RobotVolumes',lambda *a,**k:object())
     scene=SimpleNamespace(moving_reference=np.zeros((1,3)),static_points=np.zeros((1,3)))
-    monkeypatch.setattr(module,'ArcContactScene',lambda *a,**k:scene)
+    import vlm_tamp.explicit_grounding as explicit
+    monkeypatch.setattr(explicit,'selected_scene',lambda *a,**k:scene)
     result=robot.ground_multiview(**args)
     assert result['accepted'] and result['planner_model_updated']
     assert robot.epoch==8 and robot.scene is scene and robot.scene is not old and robot.tracker is None
@@ -106,7 +108,7 @@ def test_stale_capture_cannot_replace_geometry(tmp_path,monkeypatch):
 
 def test_compact_reply_keeps_failure_measurements_and_three_review_images(fitted):
     from vlm_tamp.compact_robot_interface import compact_response
-    views,args=inputs();args['check_view']['hinge_pixels_xy']=pixels(views['check'],[.2,.15]).tolist()
+    views,args=inputs();args['check_view']['hinge_pixels_xy']=np.rint(pixels(views['check'],[.2,.15])).astype(int).tolist()
     _,review=fit_multiview(views,{}, {'motion':'close','instruction':'close the door'},args)
     value={'grounding_review':compact_review(review),'accepted':False,'planner_model_updated':False,
            'images':['a.png','b.png','check.png'],'review_file':'review.json'}

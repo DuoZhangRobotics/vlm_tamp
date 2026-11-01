@@ -50,13 +50,13 @@ class CuroboV2ArcProposer:
         reference = read_json(self.folder/'scene-reference.json')
         self.configure_request = dict(collision_spheres=spheres,
             position_tolerance=self.ik_position_tolerance_m,
+            orientation_tolerance=self.model.orientation_tolerance_rad,
             pad_local=context.pad_local.tolist(), scene_arrays_path=reference['arrays_path'],
             scene_arrays_sha256=reference['arrays_sha256'], origin=context.origin.tolist(),
             axis=context.axis.tolist(), mesh_pitch=float(context.scene.config.get('curobo_v2_mesh_pitch_m', .005)),
             solver_mode=self.solver_mode, local_dt=float(self.local_dt),
             moving_mesh_pitch=float(options.get('curobo_v2_moving_mesh_pitch_m', .002)),
-            local_seed_std=float(options.get('curobo_v2_local_seed_std_rad', .02)),
-            local_velocity_weight=float(options.get('curobo_v2_local_velocity_weight', .001)))
+            local_seed_std=float(options.get('curobo_v2_local_seed_std_rad', .02)))
         self.setup = ik.client.request('configure_arc', **self.configure_request)
         self.arc_id = self.setup['arc_id']
         try:
@@ -99,7 +99,7 @@ class CuroboV2ArcProposer:
     def __exit__(self, *args):
         self.close()
 
-    def candidates(self, seed, angle, *, maximum=8, deadline=None, gpu_result=None,
+    def candidates(self, seed, angle, *, maximum=None, deadline=None, gpu_result=None,
                    excluded_seeds=(), previous_goals=()):
         if self.closed:
             raise ValueError('Arc planning scope is closed')
@@ -130,8 +130,8 @@ class CuroboV2ArcProposer:
                                 'equality_polish_seconds': 0.})
                 continue
             q = initial.copy()
-            residual = self.model.residual(q, angle)
-            position_error = float(np.linalg.norm(residual[:3]))
+            errors = gpu.get('position_error_m')
+            position_error = float(errors[index]) if errors is not None else None
             row = {'seed': index, 'source': 'curobo_v2', 'gpu_accepted': bool(gpu['success'][index]),
                    'gpu_input_position_error_m': position_error,
                    'joints': q.tolist(), 'candidate_modified': False,
@@ -142,14 +142,6 @@ class CuroboV2ArcProposer:
             if not row['gpu_accepted']:
                 row['reason'] = 'curobo_ik_failed'
                 continue
-            # Read-only evaluation of the existing point/jaw constraints. The
-            # native path planner retains its own manifold projection internally.
-            if position_error > self.ik_position_tolerance_m:
-                row['reason'] = 'ik_position_error'
-                continue
-            if np.linalg.norm(residual[3:]) > self.model.angular_weighted_tolerance:
-                row['reason'] = 'grasp_constraint_error'
-                continue
             excursion = wrist_excursion(self.context, q)
             error = float(self.context.progress(q)-angle)
             row.update(scene_admission='owned_by_path_planner', joints=q.tolist(), progress_error_rad=error,
@@ -158,14 +150,14 @@ class CuroboV2ArcProposer:
                        position_tolerance_m=self.model.position_tolerance_m)
             row['accepted'] = bool(excursion <= short_wrist_limit(self.context, self.goal))
             row['rejection_reasons'] = ["wrist_excursion_limit"] if not row['accepted'] else []
-            if row['accepted'] and not any(np.max(np.abs(q-other)) < .12 for other in [*previous_goals,*valid]):
+            if row['accepted'] and not any(np.array_equal(q, other) for other in [*previous_goals,*valid]):
                 valid.append(q)
-            if len(valid) >= maximum:
+            if maximum is not None and len(valid) >= maximum:
                 break
         valid.sort(key=lambda q: np.linalg.norm(q-seed))
         query.update(checks=records, admitted=len(valid), total_seconds=time.perf_counter()-before,
             unexamined_seeds=len(order)-len(records),
-            stopped_because=('admitted_candidate_budget' if len(valid)>=maximum else
+            stopped_because=('admitted_candidate_budget' if maximum is not None and len(valid)>=maximum else
                 'deadline' if len(records)<len(order) else 'all_seeds_examined'),
             rejected_by={reason:sum(reason in row.get('rejection_reasons',[row.get('reason')])
                 for row in records) for reason in sorted({reason for row in records for reason in
@@ -238,7 +230,7 @@ class CuroboV2ArcProposer:
                     check.get('rejection_reasons',[check['reason']] if check.get('reason') else [])))
                 if not goals:break
                 q=goals[0]
-                if any(np.max(np.abs(q-other))<.12 for other in tried_goals):break
+                if any(np.array_equal(q, other) for other in tried_goals):break
                 tried_goals.append(q)
                 if getattr(self,'queries',None):batch=self.queries[-1]['gpu_result']
                 remaining = deadline-time.perf_counter()
@@ -302,7 +294,7 @@ class CuroboV2ArcProposer:
         goals=[];phase=time.perf_counter()
         if phase<deadline:
             report['full_arc_ik_queries']+=1
-            goals,checks=self.candidates(context.reference_q,float(goal),maximum=8,deadline=deadline)
+            goals,checks=self.candidates(context.reference_q,float(goal),deadline=deadline)
             report['goal_proposals']=checks
         report['goal_generation_seconds']=time.perf_counter()-phase
         report['admissible_goals']=len(goals)

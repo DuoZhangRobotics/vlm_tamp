@@ -43,6 +43,11 @@ def observed_scene():
         'moving_panel_box_xyxy':[p0[0]-2,p0[1]-2,p1[0]+2,p1[1]+30],
         'hinge_pixels_xy':project([[-.12,0.,1.],[ -.12,0.,1.2]],camera).tolist(),
         'initial_image_direction_xy':[1.,0.],'motion':'close'}
+    finite=np.isfinite(camera['world_points']).all(2);yy,xx=np.where(finite);cloud=camera['world_points'][finite]
+    def pixel_at(p):
+        i=int(np.argmin(np.linalg.norm(cloud-np.asarray(p),axis=1)));return [int(xx[i]),int(yy[i])]
+    regions['contact_pixel_xy']=pixel_at([.25,-.06,1.08])
+    regions['hinge_pixels_xy']=[pixel_at([-.11,0.,1.01]),pixel_at([-.11,0.,1.20])]
     return {'view':camera},regions
 
 
@@ -86,45 +91,48 @@ def test_selected_mask_holes_and_camera_visibility_constrain_projection():
     assert projected_selection(points,camera,[0,0,7,7],mask).tolist()==[True,False,True,False]
 
 
-def service(tmp_path):
+def service(tmp_path,monkeypatch):
     import serve_subscription_robot as module
     robot=module.RobotService.__new__(module.RobotService)
     robot.sim=object();robot.cameras,regions=observed_scene()
     robot.state={'control_steps':60,'metadata':{}};robot.epoch=0;robot.calls=1;robot.episode=tmp_path
+    robot.ik=SimpleNamespace(chain=object());robot.config={};robot.task_spec={'motion':'close'}
+    import vlm_tamp.explicit_grounding as explicit
+    monkeypatch.setattr(explicit,'selected_scene',lambda *a,**k:object())
     robot.rebuild=lambda:None;robot.export_geometry=lambda evidence:{'model':copy.deepcopy(robot.spec),'fit_diagnostics':evidence}
     return module,robot,regions
 
 
-def test_handle_failure_preserves_independent_door_model(tmp_path,monkeypatch):
-    module,robot,regions=service(tmp_path)
-    def fail(*args,**kwargs):raise HandleFitError('Selected patch is flat')
-    monkeypatch.setattr(module,'ground_handle',fail)
+def test_raw_contact_selection_does_not_invoke_a_cylinder_fit_or_fallback(tmp_path,monkeypatch):
+    module,robot,regions=service(tmp_path,monkeypatch)
+    monkeypatch.setattr(module,'ground_handle',lambda *a,**k:pytest.fail('No cylinder fit'))
     result=robot.ground({k:v for k,v in regions.items() if k!='motion'})
-    assert result['grounding_status']=='door_only'
-    assert result['handle_fit']['reason']=='Selected patch is flat'
-    assert not result['handle_model_available']
-    assert robot.spec['generic_part_joint_model'] and robot.epoch==1
-    assert result['planner_model_updated'] and not result['robot_motion_executed']
+    assert result['grounding_status']=='observed_contact_and_part'
+    assert result['handle_model_available'] and not result['handle_fit']['shape_fit_performed']
+    assert 'observed_handle_radius_m' not in robot.spec
+    assert robot.epoch==1 and result['planner_model_updated']
 
 
-def test_direction_failure_is_not_disguised_as_a_handle_failure(tmp_path,monkeypatch):
-    module,robot,regions=service(tmp_path);robot.spec={'old':True}
-    def fail(*args,**kwargs):raise ValueError('Conflicting direction evidence')
-    monkeypatch.setattr(module,'ground_handle',fail)
-    with pytest.raises(ValueError,match='Conflicting direction'):robot.ground({k:v for k,v in regions.items() if k!='motion'})
+def test_missing_exact_contact_depth_preserves_previous_model(tmp_path,monkeypatch):
+    _,robot,regions=service(tmp_path,monkeypatch);robot.spec={'old':True}
+    x,y=regions['contact_pixel_xy'];robot.cameras['view']['world_points'][y,x]=np.nan
+    with pytest.raises(ValueError,match='selected contact pixel has no measured'):
+        robot.ground({k:v for k,v in regions.items() if k!='motion'})
     assert robot.spec=={'old':True} and robot.epoch==0
 
 
 def test_registered_masks_reach_fitter_and_stale_masks_do_not(tmp_path,monkeypatch):
-    module,robot,regions=service(tmp_path)
+    module,robot,regions=service(tmp_path,monkeypatch)
     mask=np.isfinite(robot.cameras['view']['world_points']).all(2)
     robot._perception_tools=SimpleNamespace(parts={'part':{'observation_id':1,'camera':'view','mask':mask}},
         _record=lambda oid:{'control_steps':60})
     called=[]
-    def fit(cameras,choices,template,metadata,**kwargs):
+    import vlm_tamp.explicit_grounding as explicit
+    original=explicit.ground_pixels
+    def fit(cameras,metadata,choices,**kwargs):
         called.append(kwargs['panel_mask'])
-        return SimpleNamespace(spec=template),np.zeros((100,3)),mask,[],{'cylinder_radius_m':.01}
-    monkeypatch.setattr(module,'ground_handle',fit)
+        return original(cameras,metadata,choices,**kwargs)
+    monkeypatch.setattr(explicit,'ground_pixels',fit)
     result=robot.ground({k:v for k,v in regions.items() if k!='motion'},moving_part_id='part')
     np.testing.assert_array_equal(called[0],mask)
     assert robot.choices['panel_mask_selected']
@@ -145,17 +153,19 @@ def test_compact_feedback_keeps_partial_model_and_selection_evidence():
 
 
 def test_contact_part_can_supply_its_box_without_new_pixel_selection(tmp_path,monkeypatch):
-    module,robot,regions=service(tmp_path);regions.pop('contact_box_xyxy');regions.pop('motion')
+    module,robot,regions=service(tmp_path,monkeypatch);regions.pop('contact_box_xyxy');regions.pop('motion')
     world=robot.cameras['view']['world_points']
     mask=np.isfinite(world).all(2)&(world[:,:,1]<-.02)&(world[:,:,2]>.95)
     robot._perception_tools=SimpleNamespace(parts={'bar':{'observation_id':1,'camera':'view','mask':mask}},
         _record=lambda oid:{'control_steps':60})
-    def fit(cameras,choices,template,metadata,**kwargs):
+    import vlm_tamp.explicit_grounding as explicit
+    original=explicit.ground_pixels
+    def fit(cameras,metadata,choices,**kwargs):
         from vlm_tamp.part_perception import box_of
         assert choices['contact_box_xyxy']==box_of(mask)
         np.testing.assert_array_equal(kwargs['contact_mask'],mask)
-        return SimpleNamespace(spec=template),world[mask],mask,[],{'cylinder_radius_m':.01}
-    monkeypatch.setattr(module,'ground_handle',fit)
+        return original(cameras,metadata,choices,**kwargs)
+    monkeypatch.setattr(explicit,'ground_pixels',fit)
     args={'regions':regions,'contact_part_id':'bar'}
     validate_operation('ground',args)
     result=robot.ground(**args)

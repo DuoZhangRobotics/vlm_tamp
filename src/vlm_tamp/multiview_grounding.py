@@ -13,68 +13,40 @@ from .robot_contracts import validate_operation, observed_image_sizes
 from .sensor_geometry_check import triangulate_vertical_hinge, cross_view_fit_agreement
 
 
-def fit_multiview(cameras, metadata, task, arguments):
-    """Return a candidate plus public checks; never mutate a planning service."""
+def fit_multiview(cameras,metadata,task,arguments):
+    """Measure disagreement; the primary caller hypothesis is never rewritten."""
+    from .explicit_grounding import ground_pixels
+    from .rekep_libero.mechanism_geometry import project
     validate_operation('ground_multiview',arguments,observed_image_sizes(cameras))
-    from .hinged_contact_tools import ground_handle
-    from .handle_contact import direction_from_image_hint
-    began=time.perf_counter();phases={};fits=[];candidate=None
+    began=time.perf_counter();fits=[];candidate=None
     review={'accepted':False,'status':'unresolved','failed_checks':[],
         'measurements':{},'observation_id':arguments['observation_id'],
-        'calibration_source':'existing observation calibration; not estimated by caller or tool',
+        'calibration_source':'existing RGB-D camera calibration',
         'semantic_identity_verified':False,'simulator_object_geometry_used':False,
-        'scope':'Upright hinge and vertical handle prior. Cross-view agreement does not prove part identity, hidden hinge accuracy, contact retention or task success.'}
-    stage='primary_depth_fit'
+        'scope':'Caller-selected 3D hinge line and raw selected depth. Cross-view errors are measurements, not a hidden admission threshold.'}
     try:
-        for name in ['regions','comparison_regions']:
-            stage='primary_depth_fit' if name=='regions' else 'comparison_depth_fit'
-            started=time.perf_counter();choices=copy.deepcopy(arguments[name])
-            choices.update(motion=task['motion'],joint_family='revolute',axis_source='vertical_hinge')
-            template={'schema_version':'articulated-spec-1.0','task_type':'articulated',
-                'camera':choices['camera'],'instruction':task['instruction'],
-                'joint_family':'revolute','motion':task['motion'],'target_progress':float(np.pi/2),
-                'progress_units':'radians','axis_prior':'upright door',
-                'contact_policy':'selected functional finger contact',
-                'constraint':{'type':'point_on_circle_with_coupled_orientation'}}
-            try:
-                mechanism,cloud,mask,anchors,evidence=ground_handle(cameras,choices,template,metadata)
-            finally:phases[stage]=time.perf_counter()-started
-            fits.append({'spec':mechanism.spec,'cloud':cloud,'mask':mask,'anchors':anchors,
-                         'evidence':evidence,'choices':choices})
-        stage='cross_view_geometry';started=time.perf_counter()
-        annotations={v['camera']:v['hinge_pixels_xy'] for v in
-                     [arguments['regions'],arguments['comparison_regions'],arguments['check_view']]}
-        hinge=triangulate_vertical_hinge(cameras,annotations,
-            fit_cameras=[f['choices']['camera'] for f in fits],
-            reference_z_m=fits[0]['spec']['source_anchor_world_m'][2])
-        agreement=cross_view_fit_agreement(fits[0]['spec'],fits[1]['spec'])
-        measurements={**agreement,'view_geometry_condition_number':hinge['condition_number'],
-            'hinge_projection_error_px':{name:v['hinge_line_reprojection_error_px'] for name,v in hinge['views'].items()},
-            'edge_verticality_error_px':{name:v['annotation_verticality_error_px'] for name,v in hinge['views'].items()}}
-        checks={'handle_centres_within_10mm':agreement['handle_center_xy_difference_mm']<=10,
-                'panel_normals_within_5deg':agreement['signed_panel_normal_difference_deg']<=5,
-                'hinge_projections_within_4px':all(v['hinge_line_reprojection_error_px']<=4 for v in hinge['views'].values()),
-                'annotated_edges_within_3px_of_vertical':all(v['annotation_verticality_error_px']<=3 for v in hinge['views'].values())}
-        candidate=copy.copy(fits[0]);candidate['spec']=copy.deepcopy(fits[0]['spec'])
-        spec=candidate['spec'];spec['joint_origin_world_m']=hinge['origin_world_m']
-        spec['observed_handle_radius_m']=candidate['evidence']['cylinder_radius_m']
-        phases[stage]=time.perf_counter()-started
-        review.update(measurements=measurements,checks=checks,triangulation=hinge,
-                      failed_checks=[key for key,value in checks.items() if not value])
-        stage='motion_direction'
-        axis,direction=direction_from_image_hint(spec['source_anchor_world_m'],np.asarray(hinge['origin_world_m']),
-            cameras[arguments['regions']['camera']],arguments['regions']['initial_image_direction_xy'])
-        spec['joint_axis_world']=axis.tolist()
-        spec['direction_source']=direction
-        spec['geometry_source']='caller-selected RGB regions; calibrated multiview hinge triangulation and independent depth fits'
-        spec['geometry_review']={'source':'multiview sensor consistency','semantic_identity_verified':False,
-                                 'simulator_object_geometry_used':False}
-        candidate['evidence']={**candidate['evidence'],'motion_direction_check':direction}
-        review.update(accepted=all(checks.values()),status='consistent' if all(checks.values()) else 'inconsistent')
+        for key in ('regions','comparison_regions'):
+            fits.append(ground_pixels(cameras,metadata,arguments[key]))
+        candidate=fits[0];candidate['spec']['motion']=task['motion']
+        a,b=[f['spec'] for f in fits]
+        origin=np.asarray(a['joint_origin_world_m']);axis=np.asarray(a['joint_axis_world'])
+        other=np.asarray(b['joint_axis_world'])
+        measurements={'axis_line_angle_deg':float(np.degrees(np.arccos(np.clip(abs(axis@other),0.,1.)))),
+            'other_origin_to_primary_line_m':float(np.linalg.norm(np.cross(np.asarray(b['joint_origin_world_m'])-origin,axis))),
+            'hinge_projection_error_px':{}}
+        for key in ('regions','comparison_regions','check_view'):
+            annotation=arguments[key];view=cameras[annotation['camera']]
+            uv=project(np.asarray([origin,origin+axis]),view)
+            direction=uv[1]-uv[0];norm=np.linalg.norm(direction)
+            delta=np.asarray(annotation['hinge_pixels_xy'])-uv[0]
+            error=(float(np.mean(np.abs(delta[:,0]*direction[1]-delta[:,1]*direction[0])/norm))
+                if norm>0 and np.isfinite(uv).all() else None)
+            measurements['hinge_projection_error_px'][annotation['camera']]=error
+        review.update(accepted=True,status='hypothesis_with_measurements',measurements=measurements,
+            consistency_cutoff_applied=False,primary_hypothesis_adjusted=False)
     except ValueError as error:
-        review.update(status='unresolved',failed_checks=[*review['failed_checks'],stage],reason=str(error))
-    review['timing_seconds']={'total':time.perf_counter()-began,'phases':phases}
-    # Arrays remain host-side; explicit diagnostic receipts contain only fits.
+        review.update(reason=str(error),failed_checks=['required_observed_depth_unavailable'])
+    review['timing_seconds']={'total':time.perf_counter()-began}
     review['depth_fits']=[{'camera':f['choices']['camera'],'model':f['spec'],'fit':f['evidence']} for f in fits]
     return candidate,review
 
@@ -87,12 +59,12 @@ def write_overlays(folder,cameras,arguments,candidate):
     for view in [arguments['regions'],arguments['comparison_regions'],arguments['check_view']]:
         name=view['camera'];image=Image.fromarray(cameras[name]['rgb']).copy();draw=ImageDraw.Draw(image)
         draw.line([tuple(p) for p in view['hinge_pixels_xy']],fill='cyan',width=3)
-        if 'contact_box_xyxy' in view:
+        if view.get('contact_box_xyxy') is not None:
             draw.rectangle(view['contact_box_xyxy'],outline='orange',width=2)
             draw.rectangle(view['moving_panel_box_xyxy'],outline='lime',width=2)
         if candidate is not None:
             spec=candidate['spec'];origin=np.asarray(spec['joint_origin_world_m']);points=np.repeat(origin[None],2,axis=0)
-            points[:,2]+=np.array([-.20,.20]);uv=project(points,cameras[name])
+            points+=np.array([-.20,.20])[:,None]*np.asarray(spec['joint_axis_world']);uv=project(points,cameras[name])
             if np.isfinite(uv).all():draw.line([tuple(p) for p in uv],fill='red',width=2)
             point=project([spec['source_anchor_world_m']],cameras[name])[0]
             if np.isfinite(point).all():draw.ellipse([point[0]-4,point[1]-4,point[0]+4,point[1]+4],outline='yellow',width=2)

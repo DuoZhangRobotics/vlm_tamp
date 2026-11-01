@@ -34,13 +34,13 @@ def test_gpu_seed_outside_accuracy_is_reported_without_cpu_repair(tmp_path,monke
     proposer.model=SimpleNamespace(reference_rotation=np.eye(3),grasp_constraint='point',position_tolerance_m=.003,
         point=lambda a:np.zeros(3),residual=lambda q,a:np.array([.0038,0.,0.,0.]),project=project)
     proposer.ik=SimpleNamespace(client=SimpleNamespace(request=lambda *a,**k:{'solutions':[q.tolist()],
-        'success':[gpu_success],'elapsed_seconds':.1,'solver_seconds':.1}))
+        'success':[gpu_success],'position_error_m':[.0038],'elapsed_seconds':.1,'solver_seconds':.1}))
     monkeypatch.setattr(module,'wrist_excursion',lambda *a:np.radians(29.6))
     goals,checks=proposer.candidates(q,.1)
-    assert len(projected)==0 and len(goals)==0
+    assert len(projected)==0 and len(goals)==int(gpu_success)
     assert checks[0]['gpu_input_position_error_m']>.003
-    assert not checks[0]['accepted']
-    assert checks[0]['reason']==('ik_position_error' if gpu_success else 'curobo_ik_failed')
+    assert checks[0]['accepted']==gpu_success
+    if not gpu_success:assert checks[0]['reason']=='curobo_ik_failed'
     assert checks[0]['candidate_modified'] is False
     assert proposer.queries[0]['unexamined_seeds']==0
 
@@ -63,7 +63,7 @@ def test_pose_budget_includes_learned_and_oblique_grasps(monkeypatch):
 
 
 def test_public_schema_accepts_explicit_tolerances_and_wrist_policy():
-    validate_operation('plan_arc',{'degrees':15,'position_tolerance_m':.006,
+    validate_operation('plan_arc',{'degrees':15,'grasp_constraint':'point','position_tolerance_m':.006,
         'orientation_tolerance_deg':3,'max_wrist_reorientation_deg':None})
     with pytest.raises(ValueError):
         validate_operation('plan_arc',{'degrees':15,'position_tolerance_m':-.006})
@@ -83,7 +83,7 @@ def test_plan_sequence_prices_and_reports_the_requested_timing(tmp_path):
             'source':'test','search_seconds':0.,'joints':[0.]*7,'budget_timing_assumptions':timing}
     service._select_contact=select
     service.keep_plan=lambda *a,**k:{'plan_id':'p1'}
-    args={'degrees':15,'speed':.35,'approach_speed':.5,'hold':0,'close_steps':12}
+    args={'degrees':15,'grasp_constraint':'point','speed':.35,'approach_speed':.5,'hold':0,'close_steps':12}
     validate_operation('plan_sequence',args)
     result=service.plan_sequence(**args)
     assert received[0]['grasp_budget_speed_rad_s']==.5

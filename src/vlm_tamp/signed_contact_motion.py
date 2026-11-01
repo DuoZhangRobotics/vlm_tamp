@@ -35,11 +35,12 @@ def plan_signed_arc(ik,scene,record,metadata,start,degrees,folder,config):
     from .arc_execution import contact_arc
     query=signed_scene(scene,degrees)
     angle=abs(float(np.radians(degrees)));folder=Path(folder)
-    if angle<=np.pi/2+1e-12:
+    if angle<np.pi:
         path,result=contact_arc(query,record,metadata,start,angle,folder,config,ik=ik)
         return path,{**result,'requested_signed_degrees':degrees,'signed_axis_world':query.axis.tolist()}
     folder.mkdir(parents=True,exist_ok=False);preserve_scene(scene,folder)
     started=time.perf_counter();deadline=started+float(config.get('arc_search_seconds',20.))
+    segment_angle=angle/(int(np.floor(angle/np.pi))+1)
     remaining=angle;paths=[];reports=[];q=np.asarray(start);meta=copy.deepcopy(metadata)
     while remaining>1e-10:
         seconds=deadline-time.perf_counter()
@@ -47,7 +48,7 @@ def plan_signed_arc(ik,scene,record,metadata,start,degrees,folder,config):
             report={'status':'search_budget_exhausted','search_complete':False,'requested_signed_degrees':degrees,
                 'planned_degrees':float(np.degrees(angle-remaining))*np.sign(degrees),'segments':reports}
             write_json(folder/'result.json',report);raise ValueError('Signed-arc search budget exhausted before the complete request was planned')
-        chunk=min(np.pi/2,remaining)
+        chunk=min(segment_angle,remaining)
         path,result=contact_arc(query,record,meta,q,chunk,folder/f'segment{len(paths):03d}',
             {**config,'arc_search_seconds':seconds},ik=ik)
         paths.append(path if not paths else path[1:]);reports.append(result);q=path[-1]

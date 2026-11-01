@@ -7,7 +7,7 @@ from .coupled_scene import RobotVolumes
 from .execution_limits import remaining_controls
 from .grasp_observation import grasp_observation
 from .signed_contact_motion import plan_signed_arc
-from .timed_execution import schedule,gripper_arm_reference
+from .timed_execution import schedule
 from .current_robot_scene import clear_current_robot_scene
 
 
@@ -53,7 +53,7 @@ def execute_sequence(service,plan_id,*,close_steps=40,speed=.35,approach_speed=N
 
     try:
         if opening_required:
-            q,_=gripper_arm_reference(service.state['metadata']['joint_positions'],service.ik.chain.limits)
+            q=np.asarray(service.state['metadata']['joint_servo']['reference_joint_positions'])
             if issue(np.repeat(q[None],open_steps,axis=0),'opening',-1):return result
             service.calls+=1
             options=extra.get('selection_options',{})
@@ -74,38 +74,16 @@ def execute_sequence(service,plan_id,*,close_steps=40,speed=.35,approach_speed=N
             if len(refs)+close_steps>remaining_controls(service.state):
                 result.update(stop_reason='approach_and_closure_exceed_remaining_controls',recovery_required=True);return result
         if issue(refs,'approach',-1):return result
-        # The approach can move the object before any pinch is established.
-        # If its pose tracker lost the part, closing at the old grasp endpoint
-        # silently spends another closure interval on stale geometry. Return
-        # the current observation for recovery; this is not an IK/collision
-        # infeasibility claim and the explicit gripper tool remains available.
-        reference_step=getattr(service,'scene_reference_control_step',None)
-        current_step=int(service.state['control_steps'])
-        feedback=last.get('scene_pose_observation',last.get('scene_pose_update',{}))
-        result['approach_contact_feedback']={
-            'scene_reference_control_step':reference_step,'current_control_step':current_step,
-            'pose_source':feedback.get('source'),
-            'tracking_reason':feedback.get('fit',{}).get('reason'),
-            'correspondences':feedback.get('fit',{}).get('correspondences'),
-            'physical_grasp_verified':False}
-        if (reference_step is not None and reference_step!=current_step
-                and last.get('scene_pose_observation',{}).get('source')=='unresolved_rgbd_motion'):
-            result.update(stop_reason='approach_target_pose_unresolved',recovery_required=True,
-                physical_infeasibility_proved=False,closure_issued=False,
-                explanation='The part tracker lost the target during approach. The automatic sequence needs a current contact estimate before using the old grasp endpoint; inspect or refresh contact, or explicitly command the gripper.')
-            return result
         service.calls+=1
         # Continue holding the intended approach reference during closure; the
         # arm may still be settling. Replanning uses the measured end state.
-        target=np.clip(np.asarray(extra['grasp_joints']),service.ik.chain.limits[:,0],service.ik.chain.limits[:,1])
+        target=np.asarray(extra['grasp_joints'])
         recovery={'performed':False,'reference':'planned approach endpoint; measured closure state used for the next plan'}
         result['closure_issued']=True
         if issue(np.repeat(target[None],close_steps,axis=0),'closure',1):return result
         result['closure_joint_limit_recovery']=recovery
         result['measured_closure_aperture_qpos']=service.state['metadata']['gripper_qpos']
         result['closure_evidence']=grasp_observation(service.state['metadata'],service.spec)
-        if result['closure_evidence'].get('status')=='near_closed_without_bar_width_support':
-            result.update(stop_reason='grasp_not_established',recovery_required=True);return result
         requested=float(extra['goal_degrees']);direction=np.sign(requested);ineffective=0;calibration_done=not calibrate_joint
         manipulation_count=0;calibration_pair=None
         feedback_records=[]
@@ -161,13 +139,6 @@ def execute_sequence(service,plan_id,*,close_steps=40,speed=.35,approach_speed=N
                     revision=revise_from_feedback(service,pair)
                     result.setdefault('joint_feedback',[]).append(revision)
                     calibration_done=bool(revision.get('motion_supported'))
-            evidence=last.get('grasp_evidence',{})
-            if evidence.get('status') in {'gripper_gap_collapsed_during_manipulation','near_closed_without_bar_width_support'}:
-                result.update(stop_reason='grasp_engagement_lost',recovery_required=True);break
-            stationary=last.get('motion_effect',{}).get('status')=='selected_region_stationary_despite_hand_motion'
-            ineffective=ineffective+1 if stationary else 0
-            if ineffective>=2:
-                result.update(stop_reason='selected_part_not_following',recovery_required=True);break
         result.setdefault('stop_reason','native_task_success' if result['task_success'] else 'requested_reference_motion_complete')
     finally:
         result['total_seconds']=time.perf_counter()-started

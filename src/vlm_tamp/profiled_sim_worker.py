@@ -120,12 +120,13 @@ class ProfiledWorker(CoupledWorker):
                 terminal=bool(stop_on_success and self.action_log[-1]['evaluation_task_success'])
                 if feedback is not None:
                     stalled=feedback.update(state['metadata']['eef_pose_world_xyzw'],i)
-                    if terminal or stalled:break
+                    if terminal:break
         finally:self.in_batch=False;self._write_action_log()
         state=self._response_state()
         return {**state,'trajectory':{'all_commands_issued':len(events)==len(refs),'planned_commands':len(refs),'issued_commands':len(events),
             'terminated_on_simulator_success':terminal,
-            'termination_reason':'simulator_success' if terminal else 'measured_push_stall' if stalled else 'trajectory_complete',
+            'termination_reason':'simulator_success' if terminal else 'trajectory_complete',
+            'physical_stall_is_execution_gate':False,
             **({'push_feedback':feedback.result()} if feedback is not None else {}),
             'worker_seconds':time.perf_counter()-before,'execution_veto_checks':0,
             'maximum_joint_reference_error_rad':max((r['joint_reference_error_rad'] for r in events),default=0.),'events':events}}

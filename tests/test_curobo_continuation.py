@@ -130,7 +130,7 @@ def test_gpu_endpoint_is_not_resolved_clipped_or_rescued(tmp_path):
         project=forbidden, validate=validate, progress=lambda q: .105)
     proposer.model = SimpleNamespace(reference_rotation=np.eye(3), grasp_constraint='point',
         point=lambda a: np.zeros(3), project=forbidden,
-        residual=lambda q, a: np.array([.0008, 0., 0., 0.]),
+        residual=forbidden,
         position_tolerance_m=.006, angular_weighted_tolerance=1e-6)
     proposer.folder, proposer.closed, proposer.arc_id = tmp_path, False, 1
     proposer.goal, proposer.queries, proposer.ik_position_tolerance_m = .1, [], .001

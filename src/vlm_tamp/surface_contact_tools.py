@@ -11,7 +11,7 @@ from .coupled_storage import write_json,preserve_scene
 from .hinged_contact_tools import NativeScene
 from .rekep_libero.geometry import pose_matrix,matrix_pose,transform_points
 from .rekep_libero.scene_state_v7 import observed_points
-from .part_perception import region_mask,projected_selection
+from .part_perception import region_mask,projected_selection,usable_pixels
 
 
 class ObservedContactPatchScene(Scene):
@@ -33,20 +33,33 @@ def selected_region_points(view,region,occupied,selected_mask=None):
     return candidate,box
 
 
+def selected_pixel_point(view, pixel_xy, region=None, selected_mask=None):
+    """Lift the caller's exact RGB-D sample; never snap to a different surface."""
+    pixel=np.asarray(pixel_xy,float)
+    if pixel.shape!=(2,) or not np.isfinite(pixel).all() or not np.array_equal(pixel,np.rint(pixel)):
+        raise ValueError('contact_pixel_xy must contain two integer original-image pixel coordinates')
+    x,y=pixel.astype(int);world=np.asarray(view['world_points']);h,w=world.shape[:2]
+    if not (0<=x<w and 0<=y<h):raise ValueError('Contact pixel is outside the selected camera image')
+    if not usable_pixels(view)[y,x]:
+        raise ValueError('The selected contact pixel has no measured non-robot depth; choose another pixel explicitly')
+    if region is not None or selected_mask is not None:
+        mask,_=region_mask(view,region,selected_mask)
+        if not mask[y,x]:raise ValueError('Contact pixel is outside the selected target region/mask')
+    return world[y,x].copy()
+
+
 def contact_snapshot(cameras,metadata,camera,region_xyxy,chain,*,radius_m=.02,observed=None,
-                     selected_mask=None,selected_points=None):
+                     selected_mask=None,selected_points=None,contact_pixel_xy=None):
     if camera not in cameras:raise ValueError('Choose an observed camera')
-    if not np.isfinite(radius_m) or not .005<=radius_m<=.04:
-        raise ValueError('Contact-patch radius must be 0.005..0.04 metres')
+    if not np.isfinite(radius_m) or radius_m<=0:
+        raise ValueError('Contact-patch radius must be finite and positive')
     view=cameras[camera]
     occupied,filter_record=(observed_points(cameras,metadata,spacing=.003) if observed is None else observed)
     if selected_points is None:candidate,box=selected_region_points(view,region_xyxy,occupied,selected_mask)
     else:candidate,box=np.asarray(selected_points),list(region_xyxy)
-    if len(candidate)<8:raise ValueError(f'Selected region has {len(candidate)} eligible non-robot surface points; need 8.')
-    median=np.median(candidate,axis=0)
-    center=candidate[np.argmin(np.linalg.norm(candidate-median,axis=1))]
+    center=selected_pixel_point(view,contact_pixel_xy,region_xyxy,selected_mask)
     patch=candidate[np.linalg.norm(candidate-center,axis=1)<=radius_m]
-    if len(patch)<8:raise ValueError('Contact patch has too little measured support')
+    if len(patch)<3:raise ValueError('At least three depth samples are needed to report a surface normal')
     _,_,vt=np.linalg.svd(patch-patch.mean(0),full_matrices=False)
     normal=vt[-1]
     origin=pose_matrix(view['camera_to_world'])[:3,3]
@@ -68,7 +81,8 @@ def contact_snapshot(cameras,metadata,camera,region_xyxy,chain,*,radius_m=.02,ob
     inverse=np.linalg.inv(pose_matrix(metadata['eef_pose_world_xyzw']))
     pads={v['robot_geom_name']:transform_points(v['vertices_world'],inverse).mean(0).tolist()
           for v in metadata['robot_collision_volumes_world'] if v['robot_geom_name'].endswith('_pad_collision')}
-    record={'camera':camera,'region_xyxy':box,'point_world_m':center.tolist(),
+    record={'camera':camera,'region_xyxy':box,'contact_pixel_xy':list(contact_pixel_xy),
+        'point_source':'exact caller-selected RGB-D pixel','point_world_m':center.tolist(),
         'normal_toward_camera_world':normal.tolist(),'radius_m':radius_m,
         'selected_observed_points':len(contact),'other_observed_points':len(static),
         'surface_fit_residual_m':float(np.median(np.abs((patch-center)@normal))),
@@ -80,69 +94,59 @@ def contact_snapshot(cameras,metadata,camera,region_xyxy,chain,*,radius_m=.02,ob
 
 
 def contact_pose_candidates(metadata,point_world_m,quaternion_xyzw=None,contact_name=None):
-    """Convert an observed contact point to TCP poses using current hand geometry."""
+    """Describe exactly one caller-selected robot contact, without pose menus."""
     from .contact_skills import contact_landmarks
     point=np.asarray(point_world_m,float)
     if point.shape!=(3,) or not np.isfinite(point).all():raise ValueError('Use a finite world contact point')
+    landmarks=contact_landmarks(metadata,'palm' if contact_name and 'hand_collision' in contact_name else 'fingertips')
+    contact=next((c for c in landmarks if c['name']==contact_name),None)
+    if contact is None:raise ValueError('Choose contact_name explicitly from contact_landmarks_in_tcp')
     current=pose_matrix(metadata['eef_pose_world_xyzw'])
-    rotations=[current[:3,:3]] if quaternion_xyzw is None else [pose_matrix([0.,0.,0.,*quaternion_xyzw])[:3,:3]]
+    rotation=current[:3,:3] if quaternion_xyzw is None else pose_matrix([0.,0.,0.,*quaternion_xyzw])[:3,:3]
+    pose=np.eye(4);pose[:3,:3]=rotation;pose[:3,3]=point-rotation@contact['point']
+    return [{'contact_name':contact['name'],'contact_local_m':contact['point'].tolist(),
+        'point_world_m':point.tolist(),'tcp_pose_world_xyzw':matrix_pose(pose).tolist(),
+        'orientation_constraint':'free' if quaternion_xyzw is None else 'caller_quaternion',
+        'gripper_aperture_qpos':metadata.get('gripper_qpos'),
+        'conversion':'TCP translation = requested contact point - rotation × calibrated contact offset'}]
+
+
+def contact_solutions(ik,metadata,point,contact_name,quaternion_xyzw=None):
+    candidate=contact_pose_candidates(metadata,point,quaternion_xyzw,contact_name)[0]
+    start=np.asarray(metadata['joint_positions'])
     if quaternion_xyzw is None:
-        for axis in np.eye(3):
-            for angle in [-np.pi/4,np.pi/4]:rotations.append(Rotation.from_rotvec(axis*angle).as_matrix()@current[:3,:3])
-    landmarks=contact_landmarks(metadata,'fingertips')
-    if contact_name is not None:landmarks=[c for c in landmarks if c['name']==contact_name]
-    if not landmarks:raise ValueError('Choose a configured fingertip/pad from contact_landmarks_in_tcp')
-    candidates=[]
-    for contact in landmarks:
-        for rotation in rotations:
-            pose=np.eye(4);pose[:3,:3]=rotation;pose[:3,3]=point-rotation@contact['point']
-            candidates.append({'contact_name':contact['name'],'contact_local_m':contact['point'].tolist(),
-                'point_world_m':point.tolist(),'tcp_pose_world_xyzw':matrix_pose(pose).tolist(),
-                'gripper_aperture_qpos':metadata.get('gripper_qpos'),
-                'conversion':'TCP translation = requested contact point - rotation × calibrated contact offset'})
-    return sorted(candidates,key=lambda c:np.linalg.norm(np.asarray(c['tcp_pose_world_xyzw'][:3])-current[:3,3])
-        +.04*Rotation.from_matrix(current[:3,:3].T@pose_matrix(c['tcp_pose_world_xyzw'])[:3,:3]).magnitude())
+        solutions=ik.solve_contact_many(point,candidate['contact_local_m'],start,
+            pose_matrix(metadata['eef_pose_world_xyzw'])[:3,:3])
+    else:
+        solutions=ik.solve_many(candidate['tcp_pose_world_xyzw'],start)
+    return candidate,solutions
 
 
 def plan_contact_pose(ik,scene,record,metadata,point,folder,*,quaternion_xyzw=None,contact_name=None,budget_seconds=30.):
-    """Plan to a finger contact point; do not ask the actor to solve TCP offsets."""
+    """cuRobo endpoint IK followed by native planning; no extra collision pass."""
     folder=Path(folder);folder.mkdir();start=np.asarray(metadata['joint_positions'])
-    candidates=contact_pose_candidates(metadata,point,quaternion_xyzw,contact_name)
-    deadline=time.perf_counter()+float(budget_seconds);attempts=[];timing={}
+    began=time.perf_counter();deadline=began+float(budget_seconds);attempts=[]
+    candidate,solutions=contact_solutions(ik,metadata,point,contact_name,quaternion_xyzw)
+    timing={'ik_seconds':time.perf_counter()-began,'approach_planning_seconds':0.}
     with NativeScene(scene,record,metadata,start,.05,articulated=False) as context:
-        for candidate in candidates:
-            if time.perf_counter()>=deadline:break
-            pose=candidate['tcp_pose_world_xyzw'];attempt={'contact_pose':candidate};attempts.append(attempt)
-            before=time.perf_counter();hand=context.validate_hand_pose(pose)
-            timing['hand_scene_filter_seconds']=timing.get('hand_scene_filter_seconds',0.)+time.perf_counter()-before
-            attempt['hand_check']=hand
-            if not hand['accepted']:
-                attempt.update(reason='contact_hand_collision',diagnostic=hand);continue
-            before=time.perf_counter();solutions=ik.solve_many(pose,start,maximum=8)
-            timing['ik_seconds']=timing.get('ik_seconds',0.)+time.perf_counter()-before
-            solutions=sorted(solutions,key=lambda row:np.linalg.norm(np.asarray(row['joints'])-start))
-            attempt['robot_valid_ik_solutions']=len(solutions);attempt['endpoint_checks']=[]
-            attempt['reason']='no_scene_valid_ik' if solutions else 'no_contact_ik'
-            for solution in solutions:
-                check=context.validate(solution['joints']);attempt['endpoint_checks'].append(check)
-                if not check['accepted']:continue
-                remaining=deadline-time.perf_counter()
-                if remaining<=0:break
-                before=time.perf_counter();path,result=context.plan(start,solution['joints'],constrained=False,seconds=min(8.,remaining))
-                timing['approach_planning_seconds']=timing.get('approach_planning_seconds',0.)+time.perf_counter()-before
-                attempt['path_result']=result
-                if result['exact_solution']:
-                    attempt['reason']='solved'
-                    np.save(folder/'path.npy',path);write_json(folder/'attempts.json',attempts)
-                    return path,{**result,'contact_pose':candidate,'requested_pose_world_xyzw':pose,
-                        'grasp_required':False,'articulation_constraint_used':False,
-                        'search_timing_seconds':timing,'physical_contact_verified':False}
-                # One closest scene-valid arm solution per calibrated landmark.
-                attempt['reason']='approach_search_incomplete'
-                break
-    complete=len(attempts)==len(candidates) and time.perf_counter()<deadline
-    diagnostic={'status':'contact_pose_candidates_exhausted' if complete else 'contact_pose_search_incomplete',
-        'search_complete':complete,'physical_infeasibility_proved':False,'attempts':attempts,'timing_seconds':timing}
+        for solution in solutions:
+            remaining=deadline-time.perf_counter()
+            if remaining<=0:break
+            before=time.perf_counter()
+            path,result=context.plan(start,solution['joints'],constrained=False,seconds=min(8.,remaining))
+            timing['approach_planning_seconds']+=time.perf_counter()-before
+            attempts.append({'joints':solution['joints'],'path_result':result})
+            if result['exact_solution']:
+                candidate['tcp_pose_world_xyzw']=ik.chain.forward(path[-1]).tolist()
+                np.save(folder/'path.npy',path);write_json(folder/'attempts.json',attempts)
+                return path,{**result,'contact_pose':candidate,
+                    'requested_point_world_m':np.asarray(point).tolist(),
+                    'grasp_required':False,'articulation_constraint_used':False,
+                    'search_timing_seconds':timing,'physical_contact_verified':False}
+    diagnostic={'status':'contact_pose_search_incomplete' if time.perf_counter()>=deadline else
+        'contact_ik_failed' if not solutions else 'contact_path_not_found',
+        'search_complete':len(attempts)==len(solutions),'physical_infeasibility_proved':False,
+        'attempts':attempts,'timing_seconds':timing,'contact_pose':candidate}
     write_json(folder/'attempts.json',attempts)
     error=ValueError('Contact-pose planning: '+diagnostic['status']);error.planning_diagnostic=diagnostic
     raise error

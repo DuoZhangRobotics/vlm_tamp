@@ -1,5 +1,7 @@
 # Heuristic removal and remaining assumptions — 2026-11-01
 
+This is the earlier audit snapshot. Subsequent removals, explicit-input contracts and IK-only push execution are recorded in [the implementation follow-up](explicit_contact_20261101.md).
+
 This audit covers the active Luna robot service and its grounding, IK, contact, arc-planning, execution and feedback helpers. Historical offline backends are identified separately. Passing implementation tests is **not evidence that a heuristic improves task performance**. Unless stated otherwise below, no controlled necessity ablation has been established.
 
 ## Removed in this change

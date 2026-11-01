@@ -62,11 +62,15 @@ def test_grounded_model_keeps_camera_required_by_scene_update(tmp_path,monkeypat
     robot.sim=object();robot.cameras={'frontview':{'rgb':np.zeros((512,512,3),dtype=np.uint8)}}
     robot.state={'control_steps':60,'metadata':{}};robot.epoch=0;robot.calls=1;robot.episode=tmp_path
     robot.rebuild=lambda:None;robot.export_geometry=lambda evidence:robot.spec
-    def fit(cameras,choices,template,metadata,**kwargs):
-        return SimpleNamespace(spec=template),np.zeros((100,3)),np.zeros((512,512)),[],{'cylinder_radius_m':.01}
-    monkeypatch.setattr(module,'ground_handle',fit)
+    robot.ik=SimpleNamespace(chain=object());robot.config={};robot.task_spec={'motion':'close'}
+    import vlm_tamp.explicit_grounding as explicit
+    def fit(cameras,metadata,choices,**kwargs):
+        return {'spec':{'camera':choices['camera'],'generic_part_joint_model':False},
+            'cloud':np.zeros((100,3)),'mask':np.zeros((512,512)),'anchors':[],'evidence':{}}
+    monkeypatch.setattr(explicit,'ground_pixels',fit)
+    monkeypatch.setattr(explicit,'selected_scene',lambda *a:object())
     result=robot.ground({'camera':'frontview','moving_panel_box_xyxy':[10,10,90,90],
-        'contact_box_xyxy':[70,20,80,80],'hinge_pixels_xy':[[10,10],[10,90]],'initial_image_direction_xy':None})
+        'contact_box_xyxy':[70,20,80,80],'contact_pixel_xy':[75,50],'hinge_pixels_xy':[[10,10],[10,90]],'initial_image_direction_xy':None})
     assert result['camera']=='frontview'
 
 

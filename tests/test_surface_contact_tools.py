@@ -22,7 +22,7 @@ def surface_scene():
         'known_robot_depth_prior':np.zeros((40,40)),
         'robot_depth_prior':{'source':RENDER_PRIOR_SOURCE,'scene_geometry_used':False,
             'units':'meters','depth_convention':'optical-axis z'}}
-    scene,record=contact_snapshot({'test':view},metadata,'test',[12,12,28,28],chain,radius_m=.015)
+    scene,record=contact_snapshot({'test':view},metadata,'test',[12,12,28,28],chain,radius_m=.015,contact_pixel_xy=[20,20])
     return scene,record,metadata,read_json(folder/'robot-chain.json')
 
 
@@ -71,11 +71,11 @@ def test_contact_point_conversion_uses_calibrated_offset_under_rotation():
         'robot_collision_volumes_world':[{'robot_geom_name':'gripper0_finger1_pad_collision',
             'vertices_world':transform_points(local,pose_matrix(original))}]}
     point=np.array([.3,.2,1.1]);rotation=Rotation.from_euler('y',90,degrees=True)
-    candidate=contact_pose_candidates(metadata,point,rotation.as_quat())[0]
+    candidate=contact_pose_candidates(metadata,point,rotation.as_quat(),'gripper0_finger1_pad_collision')[0]
     target=pose_matrix(candidate['tcp_pose_world_xyzw'])
     actual=target[:3,3]+target[:3,:3]@np.array(candidate['contact_local_m'])
     assert np.allclose(actual,point)
     assert np.linalg.norm(target[:3,3]-point)>.04
     assert candidate['gripper_aperture_qpos']==[.04,-.04]
     from vlm_tamp.robot_contracts import validate_operation
-    validate_operation('plan_contact_pose',{'point_world_m':point.tolist()})
+    validate_operation('plan_contact_pose',{'point_world_m':point.tolist(),'contact_name':'gripper0_finger1_pad_collision'})
