@@ -160,7 +160,7 @@ def build_contact_scene(cameras,metadata,chain,camera,region,target_region,conta
         contact_points=occupied[contact_owned]
         multiview_selected=contact_points
         patch.update(selected_observed_points=len(contact_points),
-            contact_permission='distal fingertips/pads and explicitly chosen palm against measured selected-region samples',
+            contact_permission='fingers may contact all environment surfaces; explicit palm contact is target-specific',
             contact_permission_scope='caller-selected region on the observed surface',
             radius_m=float(np.linalg.norm(contact_points-origin,axis=1).max()))
     if skill_kind=='hook_pull':
@@ -222,12 +222,13 @@ def build_contact_scene(cameras,metadata,chain,camera,region,target_region,conta
     return scene,{**patch,'direction_world':d.tolist(),'joint_associated':associated,
         'contact_mask_used':contact_mask is not None,'target_mask_used':target_mask is not None,
         'contact_surface':contact_surface,'target_observed_points':len(target),'feature_source':feature_source,
-        'contact_permission_scope':'selected moving part; sliding allowed' if skill_kind=='push' else 'selected retaining feature',
-        'permitted_contact':'distal fingertips/pads'+(' and selected palm' if contact_surface=='palm' else ''),
+        'contact_permission_scope':'fingers versus all environment surfaces; target selection determines acquisition and tracking',
+        'permitted_contact':'all finger/environment contacts'+(' and selected palm' if contact_surface=='palm' else ''),
         'target_association':('caller-selected current part masks and observed depth' if contact_mask is not None or target_mask is not None else
             'projected selected region across observed views, within the existing 15 mm local-plane band and 45 cm extent'
             if skill_kind=='push' and not associated else 'selected region, within 15 mm of the observed local contact plane and 45 cm of its centre'),
-        'proximal_fingers_and_arm_checked':True,'target_region_xyxy':target_region or region},multiview_selected
+        'arm_environment_checked':True,'finger_environment_checked':False,
+        'target_region_xyxy':target_region or region},multiview_selected
 
 
 def contact_landmarks(metadata,contact_surface,hook=False):

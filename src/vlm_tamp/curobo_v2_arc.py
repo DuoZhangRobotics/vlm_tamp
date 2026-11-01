@@ -1,8 +1,8 @@
-"""Unmodified cuRobo v2 contact-point goals followed by native admission.
+"""Full-angle cuRobo IK endpoints for upstream MC-VAMP constrained planning.
 
-The GPU sees only observed scene surfaces and calibrated robot geometry. Its
-arm/palm proxy guides optimization; it never replaces the finger contact rules,
-partial-pose equality, wrist limit or complete constrained-path checks.
+MC-VAMP owns the observed collision world. IK does not build a second world,
+and returned planner paths are not rechecked. Local continuation is a reported
+fallback after the full-angle attempt fails.
 """
 from pathlib import Path
 from collections import Counter

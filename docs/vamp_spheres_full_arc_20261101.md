@@ -38,7 +38,24 @@ The initial numerical check retaining cuRobo's separate mesh world failed both r
 Study: `results/luna-vamp-spheres-full-arc-20261101`.
 Two sequential fresh Luna/high evaluations: closing state 17 and closing state 49. No inherited notebooks, no successful coordinates or task-specific script. The tool introduction describes the changed generic policy. The study freezes source hashes and native binaries. RAM is capped at 16 GiB with no swap; the existing two-second RAM/I/O watchdog and GPU monitoring are retained. Dashboard publishing/mirroring remains throttled to 60 seconds and does not reload the page automatically.
 
-Results will be recorded in the study manifest, per-trial timing breakdowns and `watch.html`. A repeated run of these two known states is a regression check, not evidence of broad generalization.
+The frozen evaluation used implementation commit `256e7ef`:
+
+| Closing state | Native task success | Controls | Total actor wall time | Robot service | Luna/transport/local analysis outside service |
+|---|---|---:|---:|---:|---:|
+| 17 | Yes | 538 | 270.1 s | 112.0 s | 158.1 s |
+| 49 | No | 600 | 469.7 s | 112.9 s | 356.8 s |
+
+Both actors selected pushes, with no `plan_arc` calls. These physical results therefore do not establish improved arc performance; arc integration was tested separately above. Contact search/stroke planning totaled 2.10/1.89 seconds for state 17 and 5.93/3.56 seconds for state 49. Observation/execution and actor work account for most wall time.
+
+Peak job RAM: 7.36 GiB; sampled GPU use: 1985 MiB. Across 384 watchdog samples, maximum full I/O pressure was 0.05%, memory pressure was zero, and there were no OOM kills or resource interruptions.
+
+State 49's door went from 107.26° to 119.98° open. The first two approach/insertion sequences opened it to 110.31° and 120.08°; their subsequent push strokes ended at 110.33° and 119.98°. Later strokes mostly left it at 119.98°. Native contact logs show unsuccessful engagement during the strokes. No contact-search-exhausted stop occurred. This is an ineffective contact-acquisition/recovery failure, not the removed finger-collision veto.
+
+A separate grounding error is confirmed: the initial caller hint selected +Z, which matches the native closing axis. The adjacent-depth prior selected −Z and rejected the disagreement; the actor then explicitly omitted its hint and installed the prior's −Z. However, executed pushes used the constant world direction `[0.91917, -0.39386, 0]`, not a joint-linked command, so the wrong axis alone is not demonstrated to cause the executed opening. This heuristic has not been changed as part of the planner cleanup.
+
+After the frozen trials, stale explanatory contact-permission strings were corrected to match the already-active finger exemption. Original run logs are preserved. No physical collision policy changed in that reporting correction.
+
+Results are in the study manifest, per-trial timing breakdowns and `watch.html`. A repeated run of these two known states is a regression check, not evidence of broad generalization.
 
 ## Scope
 

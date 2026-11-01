@@ -73,7 +73,7 @@ def contact_snapshot(cameras,metadata,camera,region_xyxy,chain,*,radius_m=.02,ob
         'selected_observed_points':len(contact),'other_observed_points':len(static),
         'surface_fit_residual_m':float(np.median(np.abs((patch-center)@normal))),
         'configured_pad_centers_in_tcp':pads,'grasp_or_attachment_required':False,
-        'contact_permission':'configured fingers versus this bounded observed patch only',
+        'contact_permission':'fingers may contact any environment surface; the patch selects the requested target',
         'palm_arm_and_other_surface_checks_retained':True,
         'object_motion_predicted':False,'simulator_object_geometry_used':False}
     return scene,record
