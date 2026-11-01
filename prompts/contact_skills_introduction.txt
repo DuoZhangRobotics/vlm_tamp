@@ -105,9 +105,11 @@ you must repeat for each small continuation.
   Hook-pull and push-and-release retain their existing planned-contact behavior.
   Distal finger-pad contact may slide over the selected moving part. The initial
   contact region selects an approach site; target_region_xyxy identifies the
-  moving part that may be touched. The arm, palm, proximal fingers and unrelated
-  surfaces are checked. Explicit contact_surface="palm" also permits palm contact
-  with that selected part. Hook-pull keeps its retaining-feature contact scope.
+  moving part used for tracking. VAMP's arm and palm spheres are checked.
+  Fingers may contact any environment surface, including stationary geometry;
+  simulator physics determines the resulting contact. Explicit contact_surface="palm"
+  also permits palm contact with the selected part. Hook-pull still requires
+  observed retaining geometry and engagement evidence.
   The planner's own checks use zero added padding. There is no extra dense
   validation pass and no automatic robot-only/advisory route fallback.
   Before planning, points inside the measured current robot geometry are removed
@@ -185,16 +187,19 @@ object motion from hand motion. Request more observations when useful.
 Withdrawal replies report actual robot travel,
 not a physical detachment certificate. Inspect current geometry if contact may remain.
 
-Grasp sequences can calibrate a rough hinge through small physical increments:
+Grasp sequences can explicitly calibrate a rough hinge through small physical increments:
 the fixed joint is fitted from RGB-D motion, verified against a later interval,
 and revised only with improved prediction support. This is a reported model
-revision, distinct from moving the part pose or assuming attachment. Set
-calibrate_joint=false on execute_sequence to retain the supplied fixed model.
+revision, distinct from moving the part pose or assuming attachment. This is
+opt-in with calibrate_joint=true; the default retains the supplied fixed model.
 
 Pinch-grasp sequences default to jaw_axis retention: the measured closing
 direction follows the moving part while rotation about that line remains free.
-point and rigid remain explicit alternatives. Grasp candidates include multiple
-contact depths along the calibrated pad face; the selected offset is retained
-when planning from the actual closed aperture. Approach planning uses the open
+point and rigid remain explicit alternatives. GraspGen supplies a small batch of
+unaltered poses with a fixed robot-frame conversion; there is no depth menu.
+Arc planning first targets the full requested angle with MC-VAMP. Only if that
+attempt fails does it try local continuation, reported separately. The planner's
+returned path is executed without another collision-validation pass.
+Approach planning uses the open
 gripper reference. If the prior command closed it, execution opens and replans
 from the new observation before approaching.

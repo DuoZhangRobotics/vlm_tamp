@@ -79,12 +79,13 @@ def test_shared_native_modes_keep_calibrated_arm_and_contact_scope(calibrated_sc
     stationary=Scene.from_points([point],[point],[point],spec)
     with shared.NativeScene(allowed,record,metadata,q,.4,articulated=False,
                             grasp_constraint=mode) as context:
-        assert context.record['configured_convex_arm_links']>=6
+        assert context.record['configured_convex_arm_links']==0
+        assert context.record['native_arm_spheres']==list(range(1,37))
         assert context.record['grasp_constraint']==mode
         assert context.validate(q)['accepted']
     with shared.NativeScene(stationary,record,metadata,q,.4,articulated=False,
                             grasp_constraint=mode) as context:
         result=context.validate(q)
-        assert not result['accepted']
+        assert result['accepted']  # Finger contact is allowed on stationary surfaces too.
         assert result['last_rejected_surface']==0
     shared.clear_native_cache()

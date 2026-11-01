@@ -16,7 +16,7 @@ def summarize_pose_failure(attempts, native_scene=None):
             if check.get('joint_bound_violations'):
                 robot_part,reason='robot','joint_bounds'
             else:
-                robot_part=(f'robot0_link{part-2000}_collision' if 2001<=part<=2007 else
+                robot_part=check.get('blocking_robot_part') or (f'robot0_link{part-2000}_collision' if 2001<=part<=2007 else
                     f'robot_arm_sphere_{part}' if 0<=part<37 else
                     next((r['robot_geom_name'] for r in cover if r['sphere_range'][0]==part-1000),'configured_gripper')
                     if 1000<=part<2000 else 'robot')
@@ -92,6 +92,15 @@ def summarize_arc_failure(result,native_scene=None):
                     part=f'robot0_link{number-2000}_collision'
             roles[role]=roles.get(role,0)+1;parts[part]=parts.get(part,0)+1
         previous=scene
+    connections=list(result.get('global_queries',[]))
+    for layer in result.get('continuation_layers',[]):connections.extend(layer.get('connections',[]))
+    endpoint_examples=[]
+    for connection in connections:
+        for stage,check in connection.get('endpoints',{}).items():
+            if check.get('accepted') is False:
+                endpoint_examples.append({'stage':stage,'robot_part':check.get('blocking_robot_part'),
+                    'sphere_index':check.get('blocking_sphere_index'),'surface':check.get('blocking_surface'),
+                    'joint_bound_violations':check.get('joint_bound_violations',[])})
     return {'status':result.get('status'),'grasp_constraint':result.get('grasp_constraint','point'),
         'current_robot_point_filter':filter_summary((native_scene or {}).get('current_robot_point_filter')),
         'requested_relative_angle_deg':math.degrees(result.get('goal_angle_rad',0.)),
@@ -101,7 +110,11 @@ def summarize_arc_failure(result,native_scene=None):
             'self_rejections','static_rejections','moving_rejections','bounds_rejections','overlap_evidence')
             if k in result['start']} if result.get('start',{}).get('accepted') is False else None),
         'goal_proposals_tried':len(goals),'goal_projection_successes':len(projected),
-        'collision_free_goals':result.get('admissible_goals',0),
+        'collision_free_goals':None if result.get('search_order') else result.get('admissible_goals',0),
+        'ik_goals_offered_to_planner':result.get('admissible_goals',0),
+        'search_order':result.get('search_order'),
+        'continuation_fallback':result.get('continuation_fallback'),
+        'planner_endpoint_rejections':endpoint_examples,
         'projected_goals_rejected_by_collision':sum(not g['scene']['accepted'] for g in checked),
         'first_blocking_surface_by_rejected_goal':roles,
         'first_blocking_robot_part_by_rejected_goal':parts,

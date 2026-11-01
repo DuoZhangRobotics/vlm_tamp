@@ -12,7 +12,7 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 
 from .coupled_storage import read_json, write_json
-from .partial_pose_arc import PartialPoseArc, short_wrist_limit, wrist_excursion, path_wrist_admitted
+from .partial_pose_arc import PartialPoseArc, short_wrist_limit, wrist_excursion
 from .rekep_libero.curobo_collision_model import calibrated_spheres, expected_spheres
 from .rekep_libero.geometry import pose_matrix
 
@@ -24,8 +24,8 @@ class CuroboV2ArcProposer:
         self.ik, self.context, self.folder = ik, context, Path(folder)
         self.goal = float(goal)
         options = getattr(context, 'motion_options', context.scene.config)
-        self.solver_mode = options.get('curobo_v2_arc_solver_mode', 'local_continuation')
-        self.global_fallback_enabled = bool(options.get('curobo_v2_global_fallback', True))
+        self.solver_mode = 'global'
+        self.continuation_fallback_enabled = bool(options.get('curobo_v2_continuation_fallback', True))
         self.step_degrees = float(options.get('arc_continuation_step_deg', 3.))
         self.speed_degrees_per_second = float(options.get('arc_continuation_speed_deg_s', 15.))
         if (not np.isfinite(self.goal) or self.goal <= 0 or
@@ -44,10 +44,8 @@ class CuroboV2ArcProposer:
         self.ik_position_tolerance_m = float(options.get('curobo_v2_arc_ik_position_tolerance_m', .001))
         self.queries = []
         before = time.perf_counter()
-        aperture=tuple(np.asarray(getattr(context,'metadata',{}).get('gripper_qpos',[]),float).round(6))
-        if not hasattr(ik, '_v2_arc_spheres') or getattr(ik,'_v2_arc_aperture',None)!=aperture:
+        if not hasattr(ik, '_v2_arc_spheres'):
             ik._v2_arc_spheres = calibrated_spheres(context.chain, context.scene.robot, context.world_robot)
-            ik._v2_arc_aperture=aperture
         spheres, provenance = ik._v2_arc_spheres
         reference = read_json(self.folder/'scene-reference.json')
         self.configure_request = dict(collision_spheres=spheres,
@@ -152,17 +150,14 @@ class CuroboV2ArcProposer:
             if np.linalg.norm(residual[3:]) > self.model.angular_weighted_tolerance:
                 row['reason'] = 'grasp_constraint_error'
                 continue
-            check = self.context.validate(q)
             excursion = wrist_excursion(self.context, q)
             error = float(self.context.progress(q)-angle)
-            row.update(scene=check, joints=q.tolist(), progress_error_rad=error,
+            row.update(scene_admission='owned_by_path_planner', joints=q.tolist(), progress_error_rad=error,
                        wrist_excursion_deg=float(np.degrees(excursion)),
                        wrist_limit_deg=float(np.degrees(short_wrist_limit(self.context,self.goal))),
                        position_tolerance_m=self.model.position_tolerance_m)
-            row['accepted'] = bool(check['accepted'] and
-                excursion <= short_wrist_limit(self.context, self.goal))
-            row['rejection_reasons'] = (["joint_bounds" if check.get('joint_bound_violations') else "scene_collision"] if not check['accepted'] else []) + (
-                ["wrist_excursion_limit"] if excursion > short_wrist_limit(self.context, self.goal) else [])
+            row['accepted'] = bool(excursion <= short_wrist_limit(self.context, self.goal))
+            row['rejection_reasons'] = ["wrist_excursion_limit"] if not row['accepted'] else []
             if row['accepted'] and not any(np.max(np.abs(q-other)) < .12 for other in [*previous_goals,*valid]):
                 valid.append(q)
             if len(valid) >= maximum:
@@ -179,8 +174,8 @@ class CuroboV2ArcProposer:
         write_json(self.folder/'curobo-v2-queries.json', self.queries)
         return valid, records
 
-    def plan(self, goal, *, seconds):
-        """Plan the whole fixed arc through local IK; never return a partial path."""
+    def continuation_plan(self, goal, *, seconds):
+        """Fallback only: build a complete arc through local continuation."""
         if not np.isclose(goal, self.goal, atol=1e-12, rtol=0):
             raise ValueError('Continuation goal differs from its configured arc')
         before = time.perf_counter()
@@ -215,16 +210,6 @@ class CuroboV2ArcProposer:
             write_json(self.folder/'continuation-progress.json', report)
             return (path if status == 'solved' else np.empty((0, 7))), report
 
-        report['start'] = context.validate(previous)
-        if not report['start']['accepted']:
-            from .contact_collision_evidence import current_collision_witness
-            start=report['start']
-            start['overlap_evidence']=current_collision_witness(context.scene,context.metadata,start)
-            detail=(f"{start['blocking_robot_part']} overlaps {start['blocking_surface']}"
-                if start.get('blocking_robot_part') and start.get('blocking_surface') else
-                'joint bounds' if start.get('joint_bound_violations') else 'robot self-collision or scene admission')
-            return finish('invalid_start', 'start_admission',
-                f'The measured start is rejected: {detail}. No goal IK or path search was attempted.')
         for index, angle in enumerate(np.linspace(0., goal, self.steps+1)[1:]):
             report['attempted_angle_deg'] = float(np.degrees(angle))
             if time.perf_counter() >= deadline:
@@ -270,14 +255,7 @@ class CuroboV2ArcProposer:
                 layer['connections'].append(connection)
                 if not connection['exact_solution']:
                     continue
-                wrist_ok, wrist = path_wrist_admitted(context, edge, goal)
-                collision_ok = all(context.validate(sample)['accepted'] for sample in edge)
-                constraint_ok = all(context.constraint_errors(sample)['accepted'] for sample in edge)
-                connection.update(wrist, wrist_admitted=bool(wrist_ok),
-                    all_samples_admitted=bool(collision_ok and constraint_ok))
-                if not (wrist_ok and collision_ok and constraint_ok):
-                    connection.update(exact_solution=False, status='complete_edge_admission_failed')
-                    continue
+                connection.update(path_validation='upstream planner checks only',additional_path_checks=False)
                 previous = q.copy()
                 if len(path):
                     path = np.vstack([path, edge[1:]])
@@ -308,69 +286,68 @@ class CuroboV2ArcProposer:
                     f'{statuses}; rejected state checks: {collisions}.')
         return finish('solved')
 
-    def global_fallback(self, local_result, *, deadline, started):
-        """Try the retained global endpoint branch within the same arc budget."""
-        context = self.context
-        report = dict(local_result)
-        report['local_failure'] = report.pop('failure', None)
-        report['global_fallback'] = {'attempted': True, 'strategy': 'retained_global_ik',
-            'reason': 'Local continuation could not complete the arc; search an alternative endpoint posture.'}
-        self.close()
-        before_setup = time.perf_counter()
-        setup = self.ik.client.request('configure_arc', **{**self.configure_request, 'solver_mode': 'global'})
-        self.arc_id, self.closed = setup['arc_id'], False
-        setup['total_setup_seconds'] = time.perf_counter()-before_setup
-        report['global_fallback']['setup'] = setup
-        write_json(self.folder/'curobo-v2-fallback-scene.json', setup)
-        before_goals = time.perf_counter()
-        if before_goals < deadline:
-            # Leave time to connect the admitted goals rather than consume the
-            # whole remaining budget on endpoint alternatives.
-            goals, checks = self.candidates(context.reference_q, self.goal,
-                deadline=before_goals+.5*(deadline-before_goals))
-        else:
-            goals, checks = [], []
-        report['goal_generation_seconds'] += time.perf_counter()-before_goals
-        report['goal_proposals'], report['admissible_goals'] = checks, len(goals)
-        report['global_fallback']['admitted_goals'] = len(goals)
-        for q in goals:
-            remaining = deadline-time.perf_counter()
-            if remaining <= 0:
-                break
-            path, result = context.plan(context.reference_q, q, seconds=min(1.5, remaining), iterations=3000)
-            report['native_connection_seconds'] += result.get('total_seconds', 0.)
-            report['global_queries'].append(result)
-            if not result['exact_solution']:
-                continue
-            wrist_ok, wrist = path_wrist_admitted(context, path, self.goal)
-            collision_ok = all(context.validate(sample)['accepted'] for sample in path)
-            constraint_ok = all(context.constraint_errors(sample)['accepted'] for sample in path)
-            result.update(wrist, wrist_admitted=bool(wrist_ok),
-                all_samples_admitted=bool(collision_ok and constraint_ok))
-            if not (wrist_ok and collision_ok and constraint_ok):
-                result.update(exact_solution=False, status='complete_path_admission_failed')
-                continue
-            report.update(status='solved', exact_solution=True,
-                planner='cuRobo local continuation with retained global IK fallback and native admission',
-                total_seconds=time.perf_counter()-started,
-                terminal_progress_rad=float(context.progress(path[-1])),
-                start_projection_max_joint_delta_rad=float(np.max(np.abs(path[0]-context.reference_q))))
-            report['global_fallback']['solved'] = True
-            write_json(self.folder/'continuation-progress.json', report)
-            return path, report
-        report.update(status='search_budget_exhausted' if time.perf_counter() >= deadline else 'continuation_and_global_failed',
-            exact_solution=False, total_seconds=time.perf_counter()-started)
-        reasons = Counter(reason for check in checks for reason in
-            check.get('rejection_reasons', [check['reason']] if check.get('reason') else []))
-        statuses = dict(Counter(row['status'] for row in report['global_queries']))
-        report['global_fallback']['solved'] = False
-        report['failure'] = {'phase': 'global_fallback', 'motion_executed': False,
-            'local_failure': report['local_failure'], 'goal_rejections': dict(reasons),
-            'connection_outcomes': statuses,
-            'summary': f'Local continuation failed; global fallback admitted {len(goals)} goals. '
-                       f'Goal rejections: {dict(reasons)}; connection outcomes: {statuses}.'}
-        write_json(self.folder/'continuation-progress.json', report)
-        return np.empty((0, 7)), report
+    def plan(self, goal, *, seconds):
+        """One full-angle goal query and native constrained plan before any fallback."""
+        if not np.isclose(goal,self.goal,atol=1e-12,rtol=0):
+            raise ValueError('Requested arc differs from configured arc')
+        began=time.perf_counter();deadline=began+float(seconds);context=self.context
+        report={'goal_backend':'curobo_v2','goal_angle_rad':float(goal),
+            'planner':'MC-VAMP CRRTC full arc first','solver_mode':'global',
+            'grasp_constraint':context.grasp_constraint,'complete_arc_required':True,
+            'execution_during_search':False,'search_order':['full_arc','continuation_fallback'],
+            'global_queries':[],'continuation_layers':[],'goal_proposals':[],
+            'full_arc_ik_queries':0,'goal_admission_scope':'IK targets; collision admission belongs to MC-VAMP',
+            'goal_generation_seconds':0.,'native_connection_seconds':0.,
+            'continuation_fallback':{'attempted':False},'additional_path_checks':False}
+        goals=[];phase=time.perf_counter()
+        if phase<deadline:
+            report['full_arc_ik_queries']+=1
+            goals,checks=self.candidates(context.reference_q,float(goal),maximum=8,deadline=deadline)
+            report['goal_proposals']=checks
+        report['goal_generation_seconds']=time.perf_counter()-phase
+        report['admissible_goals']=len(goals)
+        for target in goals:
+            remaining=deadline-time.perf_counter()
+            if remaining<=0:break
+            path,connection=context.plan(context.reference_q,target,seconds=min(5.,remaining),iterations=5000)
+            report['native_connection_seconds']+=connection.get('total_seconds',0.)
+            report['global_queries'].append(connection)
+            if connection['exact_solution']:
+                report.update(status='solved',exact_solution=True,total_seconds=time.perf_counter()-began,
+                    solved_by='full_arc',terminal_progress_rad=float(context.progress(path[-1])))
+                write_json(self.folder/'continuation-progress.json',report)
+                return path,report
+        primary_status=('search_budget_exhausted' if time.perf_counter()>=deadline else
+            'full_arc_no_ik_goal' if not goals else 'full_arc_connection_failed')
+        report['full_arc_attempt']={'status':primary_status,'goal_queries':report['full_arc_ik_queries'],
+            'goal_generation_seconds':report['goal_generation_seconds'],
+            'native_connection_seconds':report['native_connection_seconds'],
+            'admitted_goals':len(goals),'connections':report['global_queries']}
+        remaining=deadline-time.perf_counter()
+        if self.continuation_fallback_enabled and remaining>0:
+            self.close();phase=time.perf_counter()
+            setup=self.ik.client.request('configure_arc',**{**self.configure_request,'solver_mode':'local_continuation'})
+            self.arc_id,self.closed,self.solver_mode=setup['arc_id'],False,'local_continuation'
+            setup['total_setup_seconds']=time.perf_counter()-phase
+            path,fallback=self.continuation_plan(goal,seconds=max(0.,deadline-time.perf_counter()))
+            report['continuation_fallback']={'attempted':True,'reason':primary_status,
+                'setup':setup,'status':fallback['status'],'solved':fallback['exact_solution']}
+            report['continuation_layers']=fallback['continuation_layers']
+            report['goal_generation_seconds']+=fallback['goal_generation_seconds']
+            report['native_connection_seconds']+=fallback['native_connection_seconds']
+            report.update(status=fallback['status'],exact_solution=fallback['exact_solution'],
+                terminal_progress_rad=fallback['terminal_progress_rad'],
+                continuation_result=fallback,total_seconds=time.perf_counter()-began,
+                solved_by='continuation_fallback' if fallback['exact_solution'] else None)
+            if not fallback['exact_solution']:report['failure']=fallback.get('failure')
+            write_json(self.folder/'continuation-progress.json',report)
+            return path,report
+        report.update(status=primary_status,exact_solution=False,total_seconds=time.perf_counter()-began,
+            failure={'phase':'full_arc','motion_executed':False,
+                'summary':f'Full-arc search ended with {primary_status}; {len(goals)} goal postures, '
+                    f'{len(report["global_queries"])} native connections. No partial motion was executed.'})
+        write_json(self.folder/'continuation-progress.json',report)
+        return np.empty((0,7)),report
 
     def generate(self, goal, *, deadline=None):
         goals, records = self.candidates(self.context.reference_q, goal, deadline=deadline)

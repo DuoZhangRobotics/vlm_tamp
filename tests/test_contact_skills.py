@@ -301,29 +301,26 @@ def calibrated_robot():
     return meta,record
 
 
-@pytest.mark.parametrize('surface,local,permitted',[
-    ('fingertips',[-.004,0,0],True),
-    ('fingertips',[-.018,0,-.032],False),
-    ('fingertips',[0,0,-.065],False),
-    ('palm',[0,0,-.065],True),
-    ('palm',[-.018,0,-.032],False),
-])
-def test_native_contact_permissions_are_geometric_and_target_specific(calibrated_robot,surface,local,permitted):
+@pytest.mark.parametrize('surface',['fingertips','palm'])
+@pytest.mark.parametrize('sphere',[56,54])
+def test_native_finger_exemption_and_explicit_palm_contact(calibrated_robot,surface,sphere):
     from vlm_tamp.coupled_scene import Scene
-    from vlm_tamp.rekep_libero.geometry import pose_matrix,transform_points
+    from vlm_tamp.rekep_libero.geometry import transform_points
     from vlm_tamp.mcvamp_contact_numerical import NativeScene,clear_native_cache
-    meta,record=calibrated_robot;t=pose_matrix(meta['eef_pose_world_xyzw']);point=transform_points([local],t)
+    from vlm_tamp.vamp_sphere_model import native_spheres
+    meta,record=calibrated_robot
+    point=transform_points(native_spheres(meta['joint_positions'])[sphere,:3][None],
+        np.linalg.inv(np.asarray(record['calibration']['world_to_robot'])))
     spec={'joint_origin_world_m':point[0].tolist(),'joint_axis_world':[0,0,1],
         'front_plane':{'point_world_m':point[0].tolist()},'panel_normal_world':[1,0,0]}
-    scene=Scene.from_points(np.empty((0,3)),point,point,spec)
-    scene.skill_contact_surface=surface
+    scene=Scene.from_points(np.empty((0,3)),point,point,spec);scene.skill_contact_surface=surface
     with NativeScene(scene,record,meta,meta['joint_positions'],.05,articulated=False) as context:
-        assert context.validate(meta['joint_positions'])['accepted']==permitted
-        assert context.record['proximal_fingers_checked']
+        assert context.validate(meta['joint_positions'])['accepted']==(sphere==56 or surface=='palm')
+        assert not context.record['proximal_fingers_checked']
     far=point+3
     static=Scene.from_points(point,far,far,spec);static.skill_contact_surface=surface
     with NativeScene(static,record,meta,meta['joint_positions'],.05,articulated=False) as context:
-        assert not context.validate(meta['joint_positions'])['accepted']
+        assert context.validate(meta['joint_positions'])['accepted']==(sphere==56)
     clear_native_cache()
 
 
@@ -359,7 +356,7 @@ def test_known_current_robot_overlap_is_cleared_for_all_planning_modes(calibrate
     clear_native_cache()
 
 
-def test_continuation_does_not_permit_a_new_finger_collision(calibrated_robot):
+def test_continuation_permits_finger_environment_contact(calibrated_robot):
     from vlm_tamp.coupled_scene import Scene,RobotVolumes
     from vlm_tamp.mcvamp_contact_numerical import NativeScene,clear_native_cache
     from vlm_tamp.rekep_libero.robot_chain_v4 import RobotChain
@@ -381,7 +378,7 @@ def test_continuation_does_not_permit_a_new_finger_collision(calibrated_robot):
     with NativeScene(scene,record,meta,q,.05,articulated=True) as context:
         assert context.validate(q)['accepted']
         failure=context.validate(later)
-        assert not failure['accepted'] and failure['moving_rejections']>0
+        assert failure['accepted']
     clear_native_cache()
 
 

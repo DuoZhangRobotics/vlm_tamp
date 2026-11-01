@@ -191,7 +191,7 @@ class Worker:
         for role, points in clouds.items():
             if points.ndim != 2 or points.shape[1] != 3 or not np.isfinite(points).all():
                 raise ValueError(f'{role} observed surfaces must contain finite xyz points')
-        from curobo.scene import Mesh, Scene
+        from curobo.scene import Scene
         self._destroy_arc_solver()
         self.arc_origin, self.arc_axis = origin, axis / np.linalg.norm(axis)
         self.arc_solver_mode = solver_mode
@@ -202,25 +202,11 @@ class Worker:
         if not np.isfinite(self.arc_position_tolerance) or self.arc_position_tolerance<=0:
             raise ValueError('Arc position tolerance must be positive')
         self.arc_rng = np.random.default_rng(self.seed)
-        meshes = [];self.moving_mesh_name=None
-        if not hasattr(self, 'mesh_cache'):
-            self.mesh_cache = {}
-        mesh_pitches = {'stationary': float(mesh_pitch),
-                       'moving': float(moving_mesh_pitch if solver_mode == 'local_continuation' else mesh_pitch)}
-        for role, points in clouds.items():
-            if not len(points):continue
-            pitch = mesh_pitches[role]
-            digest = hashlib.sha256(np.ascontiguousarray(points).tobytes()).hexdigest()
-            key = (role, digest, pitch)
-            if key not in self.mesh_cache:
-                self.mesh_cache[key] = Mesh.from_pointcloud(points, pitch=pitch,
-                    name=role+'_'+digest[:16])
-            mesh = self.mesh_cache[key]
-            mesh.pose = [0., 0., 0., 1., 0., 0., 0.]
-            meshes.append(mesh)
-            if role == 'moving':
-                self.moving_mesh_name = mesh.name
-        scene = Scene(mesh=meshes)
+        # MC-VAMP owns environment collision checking for complete paths.
+        # IK supplies endpoint configurations; do not build a second mesh world
+        # that can veto them before the motion planner sees them.
+        self.moving_mesh_name=None
+        scene = Scene(mesh=[])
         model = copy.deepcopy(self.robot_config)
         model['kinematics'].update(tool_frames=['contact_point'],
             collision_link_names=list(collision_spheres), collision_spheres=collision_spheres,
@@ -238,38 +224,36 @@ class Worker:
         self.arc_model_signature = signature
         self.arc_counter = getattr(self, 'arc_counter', 0) + 1
         self.active_arc_id = self.arc_counter
-        # Limit CPU mesh retention; the active GPU scene owns its mesh handles.
-        if len(self.mesh_cache) > 4:
-            self.mesh_cache = {key: value for key, value in self.mesh_cache.items() if value in meshes}
         torch.cuda.synchronize()
         return {'backend': 'curobo_v2', 'scene_setup_seconds': time.perf_counter()-started,
                 'arc_id': self.active_arc_id, 'solver_mode': solver_mode,
                 'optimizer_generation': self.arc_optimizer_generation,
                 'optimizer_lifetime': 'one_arc' if solver_mode == 'local_continuation' else 'one_query',
-                'solver_recreated': True, 'mesh_pitch_m': mesh_pitch,
-                'mesh_pitch_by_role_m': mesh_pitches,
+                'solver_recreated': True, 'gpu_environment_collision_checked': False,
+                'collision_owner': 'native MC-VAMP sphere planner',
                 'current_moving_surface_only': True,
                 'local_optimization_dt_seconds': self.arc_local_dt if solver_mode == 'local_continuation' else None,
                 'local_seed_std_rad': self.arc_local_seed_std if solver_mode == 'local_continuation' else None,
                 'velocity_regularization_weight': (self.arc_local_velocity_weight if solver_mode == 'local_continuation'
                     else float(self.config.get('curobo_v2_arc_velocity_weight', 1.0))),
-                'seed_velocity_weight': 0. if solver_mode == 'local_continuation' else .01,
-                'seed_penalty_reference': 'disabled' if solver_mode == 'local_continuation' else 'zero_joint_prior_retained_from_global_baseline',
+                'seed_velocity_weight': 0.,
+                'seed_penalty_reference': 'disabled; no zero-joint posture prior',
                 'all_seeds_local': solver_mode == 'local_continuation',
                 'observed_points': {key: len(value) for key, value in clouds.items()},
-                'mesh_triangles': {mesh.name: len(mesh.faces)//3 for mesh in meshes},
+                'mesh_triangles': {},
                 'scene_arrays_sha256': scene_arrays_sha256, 'native_admission_required': True,
-                'map_method': 'upstream Mesh.from_pointcloud; GPU mesh SDF',
+                'map_method': 'no GPU environment; MC-VAMP owns the observed collision world',
                 'hidden_object_geometry_used': False}
 
     def create_arc_solver(self):
         local = self.arc_solver_mode == 'local_continuation'
+        # Load the shared robot spheres for FK calibration, with an empty GPU world.
         solver = self.create_solver(self.arc_robot_config, collision=True, scene_model=self.arc_scene,
             position_tolerance=float(getattr(self,'arc_position_tolerance',self.config.get('arc_position_tolerance_m', .006))),
             collision_cache={'mesh': 2}, orientation_tolerance=3.2,
             velocity_regularization_weight=(self.arc_local_velocity_weight if local
                 else float(self.config.get('curobo_v2_arc_velocity_weight', 1.0))),
-            seed_velocity_weight=0. if local else .01, optimizer_collision_activation_distance=.002,
+            seed_velocity_weight=0., optimizer_collision_activation_distance=.002,
             **({'optimization_dt': self.arc_local_dt} if local else {}))
         if local:
             # The pinned IK implementation reads these config fields. Local

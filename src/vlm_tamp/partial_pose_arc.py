@@ -239,15 +239,9 @@ def partial_goals(context,goal,*,proposals=160,maximum=8,seed=0,deadline=None):
 
 def full_arc_plan(context,goal,*,seconds=40.,proposals=160,beam_width=5,seed=0,goal_proposer=None):
     """Try global C-RRTC, then free-wrist arc waypoints with C-RRTC connectors."""
-    if goal_proposer is not None and getattr(goal_proposer,'solver_mode',None)=='local_continuation':
-        started=time.perf_counter()
+    if goal_proposer is not None:
         try:
-            path,result=goal_proposer.plan(goal,seconds=seconds)
-            remaining=seconds-(time.perf_counter()-started)
-            if (result['status'] in {'continuation_no_admissible_goal','continuation_connection_failed'}
-                    and getattr(goal_proposer,'global_fallback_enabled',False) and remaining>=3.):
-                return goal_proposer.global_fallback(result,deadline=started+seconds,started=started)
-            return path,result
+            return goal_proposer.plan(goal,seconds=seconds)
         finally:
             goal_proposer.close()
     before=time.perf_counter();start=context.reference_q

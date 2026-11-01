@@ -1155,7 +1155,7 @@ class RobotService:
         return self.issue(refs,gripper,plan_id)
 
     def execute_sequence(self,plan_id,close_steps=40,speed=.35,hold=6,manipulation_gripper=1,
-                         approach_speed=None,feedback_degrees=15.,calibrate_joint=True,open_steps=20):
+                         approach_speed=None,feedback_degrees=15.,calibrate_joint=False,open_steps=20):
         from vlm_tamp.sequence_execution import execute_sequence
         return execute_sequence(self,plan_id,close_steps=close_steps,speed=speed,hold=hold,
             manipulation_gripper=manipulation_gripper,approach_speed=approach_speed,feedback_degrees=feedback_degrees,calibrate_joint=calibrate_joint,open_steps=open_steps)

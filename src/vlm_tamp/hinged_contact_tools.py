@@ -38,8 +38,8 @@ COMMON_TOOL_DEFAULTS={
     'arc_orientation_tolerance_rad':float(np.radians(3.)),
     'max_wrist_reorientation_deg':None,'maximum_local_joint_step_rad':None,
     'maximum_grasp_ik_solutions':32,
-    'curobo_v2_arc_solver_mode':'local_continuation',
-    'curobo_v2_global_fallback':True,
+    'curobo_v2_arc_solver_mode':'global',
+    'curobo_v2_continuation_fallback':True,
     'arc_continuation_step_deg':3.,'arc_continuation_speed_deg_s':15.,
     'curobo_v2_moving_mesh_pitch_m':.002,
     'reconcile_handle_roles':True,
@@ -104,12 +104,12 @@ def tool_configuration(base=None):
 def tool_contract(config):
     return {'version':TOOL_STACK_VERSION,'settings':{k:config[k] for k in COMMON_TOOL_DEFAULTS},
         'geometry':'refined observed bar plus finite configured finger-pad support',
-        'arm_collision':'calibrated convex arm links',
-        'gripper_collision':'calibrated convex gripper with existing local contact policy',
+        'arm_collision':'upstream VAMP arm spheres and self-collision checker',
+        'gripper_collision':'upstream VAMP palm spheres; all fingers exempt from environment checks',
         'ik':f"cuRobo {config.get('curobo_backend','v1')} parallel proposals; graspgen_direct uses the closest robot-valid returned solution per learned pose",
         'grasp_selection':config.get('grasp_selection_method','graspgen_direct'),
         'additional_dense_path_validation':False,
-        'planner':('cuRobo v2 contact-point goals with native MC-VAMP constrained connections'
+        'planner':('MC-VAMP full requested arc first; cuRobo endpoint IK; continuation only after failure'
             if config.get('arc_goal_backend')=='curobo_v2' else 'MC-VAMP continuous partial-pose arc'),
         'task_names_or_state_indices_used':False,'simulator_object_geometry_used':False}
 

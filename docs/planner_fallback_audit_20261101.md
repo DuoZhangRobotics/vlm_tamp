@@ -1,5 +1,7 @@
 # Planner handoff and fallback audit — 2026-11-01
 
+Historical snapshot at commit `cb61646`. The subsequent user-directed simplification is documented in [VAMP spheres and full-arc planning](/common/users/dz323/vlm_tamp/docs/vamp_spheres_full_arc_20261101.md). In particular, convex collision checking, local-first arc planning and the GPU environment mesh described below are no longer the active design.
+
 This is an operator audit of the current Luna service, its reachable manipulation/perception helpers, and the completed 12-episode evaluation. It is not learning material supplied to Luna. It distinguishes automatic alternatives, caller-selected modes, ordinary search, and inactive historical code. It does not claim to enumerate every internal branch of third-party libraries.
 
 ## What changed in this revision

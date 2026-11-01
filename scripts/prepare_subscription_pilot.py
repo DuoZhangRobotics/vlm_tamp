@@ -222,7 +222,7 @@ Tool interfaces (all coordinate conventions are explicit):
   until real closure is observed. Both motion directions and requests above 90
   degrees are supported; physical reachability and the episode budget still apply.
 - execute_sequence(plan_id, close_steps=40, speed=0.35, approach_speed=null,
-  hold=6, manipulation_gripper=1, feedback_degrees=15, calibrate_joint=true, open_steps=20): approach with open
+  hold=6, manipulation_gripper=1, feedback_degrees=15, calibrate_joint=false, open_steps=20): approach with open
   fingers (opening and replanning first when needed), hold the approach reference
   while closing, then replan manipulation
   with the measured aperture and current robot geometry. speed controls

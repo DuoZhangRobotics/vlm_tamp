@@ -23,6 +23,24 @@ def selected_contact_points(scene):
 
 
 def current_collision_witness(scene,metadata,diagnostic):
+    if diagnostic.get('blocking_sphere_in_reference_cloud_m') is not None:
+        surface=int(diagnostic['last_rejected_surface'])
+        if surface==0:points=voxel_points(scene.static_points,.0075)
+        else:
+            selected=selected_contact_points(scene)
+            points=voxel_points(scene.moving_reference[selected if surface==2 else ~selected],.003 if surface==2 else .005)
+        sphere=np.asarray(diagnostic['blocking_sphere_in_reference_cloud_m'])
+        ids=cKDTree(points).query_ball_point(sphere[:3],sphere[3])
+        witnesses=points[ids];depths=(sphere[3]-np.linalg.norm(witnesses-sphere[:3],axis=1))*1000
+        return {'available':True,'robot_part':diagnostic['blocking_robot_part'],
+            'blocking_surface':diagnostic['blocking_surface'],'sphere_index':diagnostic['blocking_sphere_index'],
+            'sphere_world_m':diagnostic['blocking_sphere_world_m'],
+            'observed_points_inside_volume':len(ids),
+            'overlap_depth_mm_range':[float(depths.min()),float(depths.max())] if len(ids) else None,
+            'sample_points_in_reference_cloud_m':witnesses[:3].tolist(),
+            'added_collision_padding_m':0.,'physical_contact_measurement':False,
+            'source':'upstream VAMP collision sphere versus the reported observed-point partition',
+            'interpretation':'Sphere-model overlap; no extra convex check and no proof of physical penetration.'}
     name=diagnostic.get('blocking_robot_part')
     volumes=metadata.get('robot_collision_volumes_world',[])
     volume=next((v for v in volumes if v['robot_geom_name']==name),None)

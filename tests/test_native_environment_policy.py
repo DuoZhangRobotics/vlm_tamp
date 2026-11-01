@@ -14,7 +14,7 @@ def test_runtime_defaults_cannot_silently_clear_the_observed_world():
     config=tool_configuration(read_json(root/'configs/articulated_libero.json'))
     assert config['environment_collision_policy']=='veto'
     for operation,args in [('plan_grasp',{}),('plan_arc',{'degrees':10}),
-                           ('push',{'observation_id':1,'camera':'frontview','region_xyxy':[1,1,20,20]})]:
+                           ('push',{'observation_id':1,'camera':'frontview','region_xyxy':[1,1,20,20],'direction_world':[1,0,0]})]:
         validate_operation(operation,{**args,'collision_policy':'veto'})
         with pytest.raises(RequestValidationError):
             validate_operation(operation,{**args,'collision_policy':'advisory'})
@@ -64,7 +64,7 @@ def calibrated():
 ])
 @pytest.mark.parametrize('surface',['target','unrelated'])
 @pytest.mark.parametrize('mode',['fingertips','grasped_fingers'])
-def test_native_arm_palm_and_unrelated_surfaces_block_but_target_pad_contact_is_allowed(calibrated,part,allowed,surface,mode):
+def test_arm_and_palm_block_while_fingers_are_exempt_everywhere(calibrated,part,allowed,surface,mode):
     from vlm_tamp.coupled_scene import Scene
     from vlm_tamp.mcvamp_contact_numerical import NativeScene,clear_native_cache
     meta,record=calibrated
@@ -78,15 +78,15 @@ def test_native_arm_palm_and_unrelated_surfaces_block_but_target_pad_contact_is_
     scene.skill_contact_surface=mode
     with NativeScene(scene,record,meta,meta['joint_positions'],.05,articulated=False) as context:
         result=context.validate(meta['joint_positions'])
-        assert result['accepted']==(allowed and surface=='target'),result
+        assert result['accepted']==allowed,result
         hand=context.validate_hand_pose(meta['eef_pose_world_xyzw'])
-        assert hand['accepted']==(part=='robot0_link4_collision' or (allowed and surface=='target')),hand
+        assert hand['accepted']==(part=='robot0_link4_collision' or allowed),hand
         assert hand['arm_posture_checked'] is False
         assert context.record['environment_collision_policy']=='veto'
         assert not context.record['existing_palm_contact']['enabled']
         assert context.record['existing_palm_contact']['maximum_allowed_depth_m']==0.
-        assert context.record['proximal_fingers_checked']==(mode=='fingertips')
-        assert context.record['proximal_fingers_checked_against_other_surfaces']
+        assert not context.record['proximal_fingers_checked']
+        assert not context.record['proximal_fingers_checked_against_other_surfaces']
         assert context.record['static_points']+context.record['selected_contact_points']>0
     clear_native_cache()
 
@@ -108,9 +108,9 @@ def test_hand_filter_uses_requested_pose_without_solving_an_arm_posture(calibrat
     clear_native_cache()
 
 
-@pytest.mark.parametrize('mode,allowed',[('fingertips',False),('grasped_fingers',True)])
+@pytest.mark.parametrize('mode,allowed',[('fingertips',True),('grasped_fingers',True)])
 @pytest.mark.parametrize('surface',['target','unrelated'])
-def test_grasped_finger_body_contact_is_target_specific(calibrated,mode,allowed,surface):
+def test_finger_body_contact_is_exempt_for_all_surfaces(calibrated,mode,allowed,surface):
     from vlm_tamp.coupled_scene import Scene
     from vlm_tamp.mcvamp_contact_numerical import NativeScene,clear_native_cache
     from vlm_tamp.rekep_libero.geometry import pose_matrix,transform_points
@@ -124,7 +124,7 @@ def test_grasped_finger_body_contact_is_target_specific(calibrated,mode,allowed,
         else Scene.from_points(point,far,far,spec))
     scene.skill_contact_surface=mode
     with NativeScene(scene,record,meta,meta['joint_positions'],.05,articulated=False) as context:
-        assert context.validate(meta['joint_positions'])['accepted']==(allowed and surface=='target')
+        assert context.validate(meta['joint_positions'])['accepted']==allowed
         assert not context.record['palm_contact_allowed']
         assert context.record['finger_body_target_contact_allowed']==allowed
     clear_native_cache()
