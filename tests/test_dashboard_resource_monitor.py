@@ -71,3 +71,19 @@ def test_batch_continuation_requires_continuous_resource_monitoring():
     assert qualification_passed({'samples':30,'maximum_sample_gap_seconds':2.1})
     assert not qualification_passed({'samples':30,'maximum_sample_gap_seconds':174})
     assert not qualification_passed({'samples':1,'maximum_sample_gap_seconds':0})
+
+
+def test_older_kernel_without_peak_counter_still_reports_current_usage(tmp_path,monkeypatch):
+    import supervise_luna_dashboard_study as monitor
+    (tmp_path/'memory.current').write_text(str(2*1024**3))
+    (tmp_path/'memory.stat').write_text('anon 1073741824\nshmem 0\n')
+    (tmp_path/'memory.events').write_text('max 0\noom_kill 0\n')
+    (tmp_path/'memory.pressure').write_text('some avg10=0.00\nfull avg10=0.00\n')
+    value=monitor.sample(tmp_path)
+    assert value['job_memory_gib']==2
+    assert value['job_memory_peak_gib'] is None
+    assert value['job_memory_peak_source']=='sampled_every_2s'
+    assert value['job_memory_max_events']==0
+    (tmp_path/'memory.peak').write_text(str(3*1024**3))
+    value=monitor.sample(tmp_path)
+    assert value['job_memory_peak_gib']==3 and value['job_memory_peak_source']=='kernel'

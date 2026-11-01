@@ -87,6 +87,8 @@ def sample(group):
             clean=max(0,stats.get('inactive_file',0)-stats.get('file_dirty',0)-stats.get('file_writeback',0))
             headroom=(int(high)-int((pool/'memory.current').read_text())+clean)/1024**3
     available=next(int(line.split()[1]) for line in Path('/proc/meminfo').read_text().splitlines() if line.startswith('MemAvailable:'))/1024**2
+    peak_file=group/'memory.peak'
+    kernel_peak=int(peak_file.read_text())/1024**3 if peak_file.exists() else None
     return {'time':time.time(),'io_full_avg10':io.get('full',{}).get('avg10',0),
             'io_some_avg10':io.get('some',{}).get('avg10',0),
             'memory_full_avg10':memory.get('full',{}).get('avg10',0),
@@ -94,7 +96,8 @@ def sample(group):
             'job_memory_max_events':events.get('max',0),
             'job_memory_oom_kills':events.get('oom_kill',0),
             'job_memory_gib':int((group/'memory.current').read_text())/1024**3,
-            'job_memory_peak_gib':int((group/'memory.peak').read_text())/1024**3,
+            'job_memory_peak_gib':kernel_peak,
+            'job_memory_peak_source':'kernel' if kernel_peak is not None else 'sampled_every_2s',
             'job_anon_and_shmem_gib':(own.get('anon',0)+own.get('shmem',0))/1024**3,
             'shared_headroom_including_clean_inactive_file_gib':headroom,
             'host_available_memory_gib':available,
@@ -232,6 +235,8 @@ def run(study,stages,*,first_run=None,log_tag=None):
                 state['driver_pid']=child.pid;write(local/'supervisor.json',state)
                 while child.poll() is None:
                     row=sample(group);extra=details.read()
+                    row['job_memory_peak_gib']=max(row['job_memory_peak_gib'] or 0.,
+                        row['job_memory_gib'],health['peak_job_memory_gib'])
                     row['job_memory_max_event_delta']=max(0,row['job_memory_max_events']-last_max_events)
                     last_max_events=row['job_memory_max_events']
                     row.update(processes=extra.get('processes',[]),process_io_sum=extra.get('process_io_sum',{}),
