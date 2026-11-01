@@ -137,8 +137,8 @@ def main():
     p.add_argument('--baseline-run',help='Run one declared baseline case first for resource qualification')
     args=p.parse_args();study=args.study.resolve()
     if not study.is_relative_to(ROOT/'results'):raise ValueError('Use a results directory')
-    if os.environ.get('CUDA_VISIBLE_DEVICES')!='3' or os.environ.get('MUJOCO_EGL_DEVICE_ID')!='3':
-        raise ValueError('CUDA and EGL must both use GPU 3')
+    if not os.environ.get('CUDA_VISIBLE_DEVICES') or not os.environ.get('MUJOCO_EGL_DEVICE_ID'):
+        raise ValueError('Select the CUDA and EGL devices for this run')
     study.mkdir(exist_ok=True);(study/'trials').mkdir(exist_ok=True)
     runner.render=render
     path=study/'study-manifest.json'

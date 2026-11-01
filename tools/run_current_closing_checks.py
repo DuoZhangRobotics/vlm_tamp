@@ -62,6 +62,10 @@ def render(study,force=False):
 <h1>Current-code closing checks</h1><p>Fresh Luna/high, no inherited memory, 600 controls per episode. Two trials only.</p>
 <p><button onclick="location.reload()">Refresh overview</button> No automatic page reload.</p>'''
     text+=f'<p>{len(done)} / 2 completed; {sum(bool(r.get("official_task_success")) for r in done.values())} native successes.</p>'
+    devices=manifest.get('device_selection',{})
+    if devices:
+        renderer='Mesa software rendering' if devices.get('LIBGL_ALWAYS_SOFTWARE')=='1' else 'configured EGL renderer'
+        text+=f'<p>CUDA device: {html.escape(str(devices.get("CUDA_VISIBLE_DEVICES")))}; {renderer}. Rendering times depend on this backend.</p>'
     if manifest.get('phase')=='waiting_for_gpu':
         readiness=read_json(study/'gpu-readiness.json') if (study/'gpu-readiness.json').exists() else {}
         text+='<p>Waiting for GPU initialization. No Luna episode is running. Checks every five minutes; the two trials start automatically after CUDA and EGL initialize.</p>'
@@ -86,7 +90,8 @@ def main():
     manifest=read_json(study/'study-manifest.json') if existing else {'study_directory':str(study),'code_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
         'source_sha256':frozen,'phase':'baseline','completed_runs':[],'completed':False,
         'plan':{'baseline':entries,'transfer':[],'model':'gpt-6-luna','reasoning':'high',
-            'control_steps':600,'episode_seconds':1800,'clean_start':True,'prior_notebooks_supplied':False}}
+            'control_steps':600,'episode_seconds':1800,'clean_start':True,'prior_notebooks_supplied':False},
+        'device_selection':{key:os.environ.get(key) for key in ['CUDA_VISIBLE_DEVICES','CUDA_DEVICE_ORDER','MUJOCO_EGL_DEVICE_ID','__EGL_VENDOR_LIBRARY_FILENAMES','LIBGL_ALWAYS_SOFTWARE','LP_NUM_THREADS']}}
     if existing:
         if manifest.get('completed'):return
         if manifest['source_sha256']!=frozen:raise RuntimeError('Runtime changed before continuation')

@@ -289,3 +289,22 @@ can resume waiting after a user-service/server restart; a completed study exits
 without running again. Runtime source changes stop a queued study instead of
 silently testing different code. Interrupted physical trials are preserved.
 Page: `results/luna-simplified-pipeline-20261031/watch.html`.
+
+The user subsequently requested a different GPU. Numeric CUDA device 0 with
+`CUDA_DEVICE_ORDER=PCI_BUS_ID` initializes and identifies PCI `01:00.0`; numeric
+device 2 identifies `C2:00.0`, while device 3 returns CUDA error 100. Thus NVML
+indices and currently visible CUDA indices are not interchangeable. UUID-based
+initialization also stalled. The earlier blanket attribution to physical
+"GPU 3" was too broad.
+
+NVIDIA EGL initialization still stalled on device 0. A self-contained stack
+sample locates the stall in `eglQueryDevicesEXT`, before selecting the rendering
+device. Mesa's explicit software EGL device 4 initialized in 1.364 seconds.
+The requested trials now use CUDA 0 for numerical/perception work and Mesa
+llvmpipe for rendering (`LP_NUM_THREADS=2`). No driver reset or shared device
+permission change was made. The launchers accept the explicitly selected device
+instead of requiring the literal index 3. The new run records this rendering
+configuration; its observation/rendering times are not directly comparable to
+the earlier hardware-rendered timings.
+
+Current page: `results/luna-simplified-pipeline-gpu0-20261031/watch.html`.
