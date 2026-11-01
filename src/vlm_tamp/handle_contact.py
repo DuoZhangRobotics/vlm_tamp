@@ -17,6 +17,10 @@ from .robot_contracts import GROUND_FIELDS, RequestValidationError, observed_ima
 from .rigid_hinge_tracking import robot_mask
 
 
+class HandleFitError(ValueError):
+    """The selected contact does not fit a bar; door geometry may still be usable."""
+
+
 def upright_plane(points, camera_position, seed=0):
     """Fit a vertical face, explicitly excluding horizontal table/top surfaces."""
     points = np.asarray(points, float)
@@ -101,7 +105,54 @@ def require_direction_agreement(evidence):
     raise error
 
 
-def ground_handle(cameras, choices, previous_spec, metadata=None,*,fixed_joint=None):
+def selected_panel(camera, choices, panel_mask=None):
+    """Fit only the caller-selected upright surface and retain its measured extent."""
+    world = np.asarray(camera['world_points'])
+    yy, xx = np.indices(world.shape[:2])
+    x0, y0, x1, y1 = choices['moving_panel_box_xyxy']
+    box = (xx>=x0)&(xx<=x1)&(yy>=y0)&(yy<=y1)&np.isfinite(world).all(2)
+    if panel_mask is not None:
+        panel_mask = np.asarray(panel_mask, bool)
+        if panel_mask.shape != box.shape:
+            raise ValueError('Selected part mask must match its current camera image')
+        box &= panel_mask
+    excluded = int((box&robot_mask(camera)).sum())
+    box &= ~robot_mask(camera)
+    if box.sum()<100:
+        raise ValueError(f'Panel fit has only {int(box.sum())} non-robot depth samples after excluding {excluded} robot samples; inspect another visible view')
+    face = upright_plane(world[box], np.asarray(camera['camera_to_world'])[:3, 3])
+    mask = box & (np.abs((world-face['point'])@face['normal'])<.006)
+    # Use the existing upright-face height quantiles, measured on its inliers.
+    # A rectangle is a projection frustum: tabletop points below the door are
+    # not handle observations even when they project inside that rectangle.
+    face['height_bounds_m'] = np.quantile(world[box][face['inliers'], 2], [.05, .95])
+    return face, mask, excluded
+
+
+def projected_selection(points, camera, rectangle, selected_mask=None):
+    """Associate observed endpoints with a selected image region, without filling it."""
+    optical = transform_points(points, np.linalg.inv(np.asarray(camera['camera_to_world'])))
+    valid = optical[:, 2] > 0
+    pixels = np.full((len(points), 2), -1., float)
+    image = optical[valid]@np.asarray(camera['intrinsic']).T
+    pixels[valid] = image[:, :2]/image[:, 2:3]
+    x0, y0, x1, y1 = rectangle
+    valid &= ((pixels[:, 0]>=x0-3)&(pixels[:, 0]<=x1+3)
+              &(pixels[:, 1]>=y0-3)&(pixels[:, 1]<=y1+3))
+    if selected_mask is not None:
+        mask = np.asarray(selected_mask, bool)
+        if mask.shape != np.asarray(camera['world_points']).shape[:2]:
+            raise ValueError('Selected contact mask must match its current camera image')
+        xy = np.rint(pixels).astype(int)
+        valid &= ((xy[:, 0]>=0)&(xy[:, 0]<mask.shape[1])
+                  &(xy[:, 1]>=0)&(xy[:, 1]<mask.shape[0]))
+        indices = np.flatnonzero(valid)
+        valid[indices] &= mask[xy[indices, 1], xy[indices, 0]]
+    return valid
+
+
+def ground_handle(cameras, choices, previous_spec, metadata=None,*,fixed_joint=None,
+                  panel_mask=None, contact_mask=None):
     if fixed_joint is None:
         validate_ground_regions({key:choices[key] for key in GROUND_FIELDS if key in choices},
                                 image_sizes=observed_image_sizes(cameras))
@@ -114,42 +165,39 @@ def ground_handle(cameras, choices, previous_spec, metadata=None,*,fixed_joint=N
         raise RequestValidationError('ground','regions.initial_image_direction_xy','unresolved_direction',
             'The image direction is unresolved and adjacent stationary depth geometry is unavailable. Select another view or supply a supported image-motion hint.')
     camera = cameras[choices['camera']]
-    world = np.asarray(camera['world_points'])
-    yy, xx = np.indices(world.shape[:2])
-    x0, y0, x1, y1 = choices['moving_panel_box_xyxy']
-    box = (xx>=x0)&(xx<=x1)&(yy>=y0)&(yy<=y1)&np.isfinite(world).all(2)
-    excluded_panel_robot_points=int((box&robot_mask(camera)).sum())
-    box &= ~robot_mask(camera)
-    if box.sum()<100:
-        raise ValueError(f'Panel fit has only {int(box.sum())} non-robot depth samples after excluding {excluded_panel_robot_points} robot samples; inspect another visible view')
-    face = upright_plane(world[box], np.asarray(camera['camera_to_world'])[:3, 3])
+    face, mask, excluded_panel_robot_points = selected_panel(camera, choices, panel_mask)
     centre, normal = face['point'], face['normal']
-    mask = box & (np.abs((world-centre)@normal)<.006)
-    x0, y0, x1, y1 = choices['contact_box_xyxy']
+    selection_mask = contact_mask if contact_mask is not None else panel_mask
     clouds, opposite = [], []
     for view in cameras.values():
         points = np.asarray(view['world_points'])[~robot_mask(view)].reshape(-1, 3)
         points = points[np.isfinite(points).all(1)]
         signed = (points-centre)@normal
         points = points[(signed>-.09)&(signed<.075)]
-        pixels = project(points, camera)
-        keep = (pixels[:, 0]>=x0-3)&(pixels[:, 0]<=x1+3)&(pixels[:, 1]>=y0-3)&(pixels[:, 1]<=y1+3)
+        keep = projected_selection(points, camera, choices['contact_box_xyxy'], selection_mask)
         selected = points[keep]
         distances = (selected-centre)@normal
         clouds.append(selected[(distances>.008)&(distances<.075)])
         opposite.append(selected[(distances<-.035)&(distances>-.09)])
     cloud = voxel_points(np.vstack(clouds), .0015)
+    lo, hi = face['height_bounds_m']
+    before_height = len(cloud)
+    cloud = cloud[(cloud[:, 2]>=lo)&(cloud[:, 2]<=hi)]
     opposite_side = False
     if len(cloud)<100:
         cloud = voxel_points(np.vstack(opposite), .0015)
+        before_height = len(cloud)
+        cloud = cloud[(cloud[:, 2]>=lo)&(cloud[:, 2]<=hi)]
         normal = -normal
         opposite_side = True
     if len(cloud) < 100:
-        raise ValueError('Predicted handle region has insufficient protruding depth support')
+        raise HandleFitError('Selected handle region has insufficient protruding depth support within the observed door height')
     # Avoid the mounting brackets and lower panel/table boundary. A frontal
     # approach to the upper central handle also keeps the wrist above the table.
     low, high = np.quantile(cloud[:, 2], [.12, .92])
     middle = cloud[(cloud[:, 2]>=low+.25*(high-low))&(cloud[:, 2]<=high-.10*(high-low))]
+    if len(middle)<3:
+        raise HandleFitError('Selected contact has insufficient central vertical samples for a cylinder fit')
     centre_xy = np.median(middle[:, :2], axis=0)
     initial = np.r_[centre_xy, .01]
     fit = least_squares(lambda x: np.linalg.norm(middle[:, :2]-x[:2], axis=1)-x[2],
@@ -159,14 +207,17 @@ def ground_handle(cameras, choices, previous_spec, metadata=None,*,fixed_joint=N
     distances = np.abs(np.linalg.norm(cloud[:, :2]-fit.x[:2], axis=1)-radius)
     cylinder = cloud[distances<.004]
     if len(cylinder) < 75:
-        raise ValueError('Handle cylinder has insufficient observed support')
+        raise HandleFitError('Handle cylinder has insufficient observed support')
     occupied=None
     initial_cylinder_points=len(cylinder)
     if metadata is not None:
         occupied,_=observed_points(cameras,metadata,spacing=.002,robot_depth_tolerance=.0001)
         radial=np.abs(np.linalg.norm(occupied[:,:2]-fit.x[:2],axis=1)-radius)
         extension=((radial<.004)&(occupied[:,2]>cylinder[:,2].min()-.025)
-                   &(occupied[:,2]<cylinder[:,2].max()+.14))
+                   &(occupied[:,2]<cylinder[:,2].max()+.14)
+                   &(occupied[:,2]>=lo)&(occupied[:,2]<=hi))
+        if selection_mask is not None:
+            extension &= projected_selection(occupied, camera, choices['contact_box_xyxy'], selection_mask)
         cylinder=voxel_points(np.vstack([cylinder,occupied[extension]]),.0015)
     bins = np.floor((cylinder[:, 2]-cylinder[:, 2].min())/.004).astype(int)
     histogram = np.bincount(bins)
@@ -178,6 +229,58 @@ def ground_handle(cameras, choices, previous_spec, metadata=None,*,fixed_joint=N
         if selected.sum()>=75 and np.ptp(cylinder[selected, 2])>.035:
             cylinder = cylinder[selected]
     anchors = [np.r_[fit.x[:2], np.quantile(cylinder[:, 2], fraction)] for fraction in [.85, .70, .93]]
+    mechanism, direction_record, panel_band, panel_band_measured = door_model(
+        cameras, choices, previous_spec, metadata, camera, face, normal, mask,
+        cylinder, anchors, fixed_joint=fixed_joint, occupied=occupied)
+    return mechanism, cylinder, mask, anchors, {
+        'upright_face_normal': normal.tolist(), 'upright_face_rms_m': face['rms'],
+        'panel_robot_points_excluded':excluded_panel_robot_points,
+        'robot_depth_excluded_from_handle_fit':True,
+        'target_selection':{'panel_mask_used':panel_mask is not None,
+            'contact_mask_used':contact_mask is not None,
+            'observed_panel_height_bounds_m':[float(lo),float(hi)],
+            'projected_contact_points_before_height':before_height,
+            'selected_contact_points':len(cloud),
+            'outside_observed_panel_height_removed':before_height-len(cloud),
+            'source':'caller region/mask and measured upright-panel extent; no object geometry'},
+        'cylinder_radius_m': radius, 'cylinder_points': len(cylinder),
+        'initial_rgb_box_cylinder_points':initial_cylinder_points,
+        'metric_cylinder_extended_from_observed_depth':metadata is not None,
+        'continuous_cylinder_z_bounds_m':[float(cylinder[:,2].min()),float(cylinder[:,2].max())],
+        'cylinder_robust_residual_m': float(np.median(distances)),
+        'handle_z_bounds_m': [float(low), float(high)], 'anchors_world_m': [a.tolist() for a in anchors],
+        'handle_on_opposite_observed_face': opposite_side,
+        'motion_direction_check': direction_record,
+        'panel_surface_half_band_m':panel_band,'panel_surface_band_measured':panel_band_measured,
+        'simulator_geometry_used': False}
+
+
+def ground_panel(cameras, choices, previous_spec, metadata=None, *, fixed_joint=None, panel_mask=None):
+    """Retain a door/joint hypothesis independently of the availability of a handle."""
+    camera = cameras[choices['camera']]
+    face, mask, excluded = selected_panel(camera, choices, panel_mask)
+    cloud = voxel_points(np.asarray(camera['world_points'])[mask], .0015)
+    anchor = np.median(cloud, axis=0)
+    mechanism, direction, band, measured = door_model(
+        cameras, choices, previous_spec, metadata, camera, face, face['normal'], mask,
+        cloud, [anchor], fixed_joint=fixed_joint)
+    mechanism.spec.update(generic_part_joint_model=True,
+        geometry_source='selected observed upright door and annotated joint; no handle fit')
+    mechanism.spec.pop('observed_handle_radius_m', None)
+    return mechanism, cloud, mask, [anchor], {
+        'upright_face_normal':face['normal'].tolist(),'upright_face_rms_m':face['rms'],
+        'panel_robot_points_excluded':excluded,'motion_direction_check':direction,
+        'target_selection':{'panel_mask_used':panel_mask is not None,
+            'observed_panel_height_bounds_m':face['height_bounds_m'].tolist()},
+        'panel_surface_half_band_m':band,'panel_surface_band_measured':measured,
+        'handle_model_available':False,'simulator_geometry_used':False}
+
+
+def door_model(cameras, choices, previous_spec, metadata, camera, face, normal, mask,
+               cylinder, anchors, *, fixed_joint=None, occupied=None):
+    """Common joint/direction calculation; the anchor may be on a door or handle."""
+    centre = face['point']
+    hint = choices.get('initial_image_direction_xy')
     pivot=(np.asarray(fixed_joint['joint_origin_world_m'],float) if fixed_joint is not None else
         np.asarray([ray_plane(p,camera,centre,normal) for p in choices['hinge_pixels_xy']]).mean(0))
     axis=np.asarray(fixed_joint['joint_axis_world'],float) if fixed_joint is not None else None
@@ -197,6 +300,8 @@ def ground_handle(cameras, choices, previous_spec, metadata=None,*,fixed_joint=N
     panel_band=.032
     panel_band_measured=False
     if metadata is not None:
+        if occupied is None:
+            occupied,_=observed_points(cameras,metadata,spacing=.002,robot_depth_tolerance=.0001)
         height = np.quantile(cylinder[:, 2], [.05, .95])
         signed=(occupied-centre)@normal
         near=(np.linalg.norm(occupied-anchors[0],axis=1)<.12)&(np.abs(signed)<.04)
@@ -222,6 +327,8 @@ def ground_handle(cameras, choices, previous_spec, metadata=None,*,fixed_joint=N
                 task_direction_verified=False,
                 source=('caller image-motion hint; adjacent-depth prior is a separate check' if hint is not None else
                         'upright-door prior: close toward adjacent stationary depth geometry, open away'))
+    if axis is None:
+        raise ValueError('Current sensor geometry and image hint do not resolve the rotation direction')
     direction_record['selected_axis'] = axis.tolist()
     direction_record['image_hint_overridden_by_depth'] = bool(metadata is not None and
         direction_record['vlm_image_axis'] is not None and direction_record['vlm_image_axis'] != axis.tolist())
@@ -236,20 +343,7 @@ def ground_handle(cameras, choices, previous_spec, metadata=None,*,fixed_joint=N
                 panel_depth_association_m=.032,
                 measured_panel_surface_half_band_m=panel_band,
                 simulator_scene_state_used=False)
-    return Mechanism(spec), cylinder, mask, anchors, {
-        'upright_face_normal': normal.tolist(), 'upright_face_rms_m': face['rms'],
-        'panel_robot_points_excluded':excluded_panel_robot_points,
-        'robot_depth_excluded_from_handle_fit':True,
-        'cylinder_radius_m': radius, 'cylinder_points': len(cylinder),
-        'initial_rgb_box_cylinder_points':initial_cylinder_points,
-        'metric_cylinder_extended_from_observed_depth':metadata is not None,
-        'continuous_cylinder_z_bounds_m':[float(cylinder[:,2].min()),float(cylinder[:,2].max())],
-        'cylinder_robust_residual_m': float(np.median(distances)),
-        'handle_z_bounds_m': [float(low), float(high)], 'anchors_world_m': [a.tolist() for a in anchors],
-        'handle_on_opposite_observed_face': opposite_side,
-        'motion_direction_check': direction_record,
-        'panel_surface_half_band_m':panel_band,'panel_surface_band_measured':panel_band_measured,
-        'simulator_geometry_used': False}
+    return Mechanism(spec), direction_record, panel_band, panel_band_measured
 
 
 def frontal_poses(normal, anchors, pad_local):

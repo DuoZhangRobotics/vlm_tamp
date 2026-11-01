@@ -29,6 +29,10 @@ results rather than whole histories, point arrays or every camera diagnostic.
 
 Observe: reset, observe, episode_status
 Geometry: ground, refresh_contact, set_model, inspect_scene
+ground accepts moving_part_id/contact_part_id from current segment_parts masks.
+Omit regions.contact_box_xyxy for door-only grounding. A failed handle fit can
+preserve a usable door/joint model; read grounding_status and handle_fit.
+Door-only geometry supports tracking and joint-linked push/hook, not a pinch.
 Contact positioning: select_surface_contact, plan_contact_pose
 plan_contact_pose(point_world_m) converts an observed surface point into a
 calibrated fingertip/pad pose. plan_pose instead takes the TCP origin; never
@@ -250,6 +254,7 @@ def compact_response(response):
         'fixed_joint_preserved','historical_fixed_joint_reused','scene_reference_control_step','hinge_evidence',
         'observed_part_pose_applied','hinge_preserved','signed_direction_preserved','retained_observed_scene_reused',
         'joint_model_from_registered_part','handle_model_required',
+        'grounding_status','handle_fit','handle_model_available','selected_parts',
         'point_world_m', 'normal_toward_camera_world', 'radius_m', 'surface_fit_residual_m',
         'configured_pad_centers_in_tcp', 'contact_landmarks_in_tcp','contact_pose','contact_permission', 'object_motion_predicted',
         'grasp_or_attachment_required', 'palm_arm_and_other_surface_checks_retained',
@@ -261,7 +266,7 @@ def compact_response(response):
     if 'model' in value:
         result['model'] = pick(value['model'], ('camera', 'joint_family',
             'joint_origin_world_m', 'joint_axis_world', 'source_anchor_world_m',
-            'panel_normal_world', 'observed_handle_radius_m', 'constraint','motion'))
+            'panel_normal_world', 'observed_handle_radius_m', 'constraint','motion','generic_part_joint_model'))
     if isinstance(value.get('grounding_review'),dict):
         result['grounding_review']=pick(value['grounding_review'],('accepted','status','failed_checks',
             'measurements','observation_id','reason','calibration_source','semantic_identity_verified',
@@ -310,7 +315,7 @@ def compact_response(response):
         result['fit_diagnostics'] = pick(value['fit_diagnostics'],
             ('cylinder_radius_m', 'cylinder_robust_residual_m', 'upright_face_rms_m',
              'cylinder_points', 'handle_on_opposite_observed_face', 'simulator_geometry_used',
-             'geometry_source', 'source', 'reason'))
+             'geometry_source', 'source', 'reason','target_selection','handle_fit','selected_parts'))
         if isinstance(value['fit_diagnostics'].get('motion_direction_check'), dict):
             result['fit_diagnostics']['motion_direction_check'] = pick(value['fit_diagnostics']['motion_direction_check'],
                 ('source','image_hint_status','image_direction_xy','selected_axis','image_hint_overridden_by_depth',

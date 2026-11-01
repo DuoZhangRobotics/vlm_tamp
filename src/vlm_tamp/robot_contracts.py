@@ -8,12 +8,22 @@ import json
 import math
 from numbers import Real
 
-VERSION = 'robot-request-contract-v13'
+VERSION = 'robot-request-contract-v14'
 GROUND_FIELDS = ('camera', 'contact_box_xyxy', 'moving_panel_box_xyxy',
                  'hinge_pixels_xy', 'initial_image_direction_xy')
-GROUND_HELP = '''- ground(regions): fit an upright door and vertical handle from current RGB-D.
-  Pass ONE regions object with camera, contact_box_xyxy, moving_panel_box_xyxy,
-  hinge_pixels_xy, and initial_image_direction_xy; all five fields are required.
+GROUND_HELP = '''- ground(regions, moving_part_id=null, contact_part_id=null): fit a current upright door/joint hypothesis and optional vertical handle.
+  Pass ONE regions object with camera, moving_panel_box_xyxy, hinge_pixels_xy,
+  and initial_image_direction_xy. Add contact_box_xyxy to fit a handle; omit it
+  or use null for a door-only model. Door-only models support tracking and
+  joint-linked push/hook; they do not provide pinch-grasp geometry.
+  Reuse segment_parts IDs with moving_part_id and/or contact_part_id. Their
+  masks must be from the current physical state and the same selected camera.
+  The selected masks constrain fitting; their boxes do not replace their shapes.
+  A contact_part_id supplies its own box when contact_box_xyxy is omitted.
+  A failed handle fit can still return grounding_status=door_only when the
+  door/joint fit succeeds. Read handle_fit for its reason. refresh_contact can
+  add handle geometry later while preserving the joint. No different feature
+  is silently substituted for the requested contact.
   Coordinates use ORIGINAL image pixels: origin top-left, x right, y down.
   See image_sizes in the observation. For width W and height H, use
   0 <= x < W and 0 <= y < H. Normalized 0..1 or 0..1000 coordinates are not accepted
@@ -185,17 +195,20 @@ def ground_parameters(image_sizes=None):
         camera['enum'] = sorted(image_sizes)
     regions = parameters({
         'camera': camera,
-        'contact_box_xyxy': array(4, pixel, description='Handle box [left,top,right,bottom], ORIGINAL image pixels.'),
+        'contact_box_xyxy': nullable(array(4, pixel, description='Optional handle box [left,top,right,bottom], ORIGINAL pixels. Omit/null for a door-only model unless contact_part_id is supplied.')),
         'moving_panel_box_xyxy': array(4, pixel, description='Moving door box [left,top,right,bottom], ORIGINAL image pixels.'),
         'hinge_pixels_xy': array(2, point, description='Two distinct original-pixel points along the same hypothesized hinge edge.'),
         'initial_image_direction_xy': {**nullable(array(2, number(), **{'not': {'const': [0, 0]}})),
-            'description': 'Intended initial CONTACT-POINT motion in image axes (x right, y down), not camera orientation. Finite nonzero vector, or null if unresolved. Adjacent stationary depth geometry chooses the final direction when available.'},
-    }, GROUND_FIELDS)
-    return parameters({'regions': regions}, ['regions'])
+            'description': 'Intended initial CONTACT-POINT motion in image axes (x right, y down), not camera orientation. Finite nonzero vector, or null if unresolved. Adjacent stationary depth supplies a hypothesis when the image hint is unresolved; conflicting evidence is reported.'},
+    }, [key for key in GROUND_FIELDS if key!='contact_box_xyxy'])
+    part_id=nullable({'type':'string','minLength':1})
+    return parameters({'regions': regions,'moving_part_id':part_id,'contact_part_id':part_id}, ['regions'])
 
 
 def multiview_ground_parameters(image_sizes=None):
     region=ground_parameters(image_sizes)['properties']['regions']
+    region['properties']['contact_box_xyxy']=region['properties']['contact_box_xyxy']['anyOf'][0]
+    region['required']=list(GROUND_FIELDS)
     check=parameters({k:region['properties'][k] for k in ['camera','hinge_pixels_xy']},
                      ['camera','hinge_pixels_xy'])
     return parameters({'observation_id':{'type':'integer','minimum':0},
@@ -251,9 +264,10 @@ def operation_schemas(image_sizes=None):
         'motion_settings': ('Read effective motion, collision, numerical and control-budget settings without motion.',parameters()),
         'episode_status': ('Read current success and time/control budgets without motion.', parameters()),
         'await_request': ('Retrieve an existing pending request; never resubmit its action.', parameters({'request_id': {'type': 'string', 'pattern': '^[0-9a-f]{32}$'}}, ['request_id'])),
-        'ground': ('Fit observed handle/door geometry from your original-pixel annotations. No motion.', ground_parameters(image_sizes)),
+        'ground': ('Fit observed door/joint geometry, optionally with a handle. Reuse current segment_parts masks through moving_part_id/contact_part_id. A handle failure preserves a usable door-only model. No motion.', ground_parameters(image_sizes)),
         'refresh_contact': ('Refresh current handle/panel geometry while retaining the fixed-world hinge and signed direction. No motion.',parameters({
-            'camera':text,'contact_box_xyxy':box,'moving_panel_box_xyxy':box},['camera','contact_box_xyxy','moving_panel_box_xyxy'])),
+            'camera':text,'contact_box_xyxy':box,'moving_panel_box_xyxy':box,
+            'moving_part_id':nullable(text),'contact_part_id':nullable(text)},['camera','contact_box_xyxy','moving_panel_box_xyxy'])),
         'ground_multiview': ('Check your three-view upright-door hypothesis using calibration and depth; install only a consistent fit. No motion.', multiview_ground_parameters(image_sizes)),
         'segment_parts': ('Propose RGB part masks from your coarse clicks/box; no hinge guess or motion.', parameters({
             'observation_id':integer(0,2**31-1),'camera':text,
@@ -413,6 +427,7 @@ def validate_ground_regions(regions, *, image_sizes=None, schema_checked=False):
         validate_operation('ground', {'regions': regions}, image_sizes)
         return regions
     for key in ['contact_box_xyxy', 'moving_panel_box_xyxy']:
+        if regions.get(key) is None:continue
         left, top, right, bottom = regions[key]
         if not (left < right and top < bottom):
             raise RequestValidationError('ground', 'regions.'+key, 'inverted_or_empty_box', 'Use [left,top,right,bottom] with positive width and height.')
@@ -423,7 +438,7 @@ def validate_ground_regions(regions, *, image_sizes=None, schema_checked=False):
         raise RequestValidationError('ground', 'regions.initial_image_direction_xy', 'unresolved_direction', 'Use a nonzero intended contact-point motion vector, or null when unresolved.')
     if image_sizes:
         size = image_sizes[regions['camera']]
-        points = [regions[key][i:i+2] for key in ['contact_box_xyxy', 'moving_panel_box_xyxy'] for i in [0, 2]] + regions['hinge_pixels_xy']
+        points = [regions[key][i:i+2] for key in ['contact_box_xyxy', 'moving_panel_box_xyxy'] if regions.get(key) is not None for i in [0, 2]] + regions['hinge_pixels_xy']
         if any(not (0 <= x < size['width'] and 0 <= y < size['height']) for x, y in points):
             raise RequestValidationError('ground', 'regions', 'pixel_out_of_bounds', f"Use original pixels inside the selected {size['width']}x{size['height']} image; no automatic rescaling occurs.")
     return regions

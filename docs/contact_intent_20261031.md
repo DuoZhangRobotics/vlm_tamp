@@ -186,3 +186,41 @@ analysis. Both actors exited normally and passed resource qualification; peak
 job memory was 8.06 GiB. Together with the prior smoke test, current-code state49
 is 1/2, not consistently solved. Its failed repeat initially opened the door
 farther, then stopped producing door rotation over the final 109 controls.
+
+## Grounding target selection repair
+
+The failed closing49 repeat selected a visible handle with a rectangle extending
+below the door. Projecting all observed camera endpoints into that rectangle
+produced 9,440 points, including 4,524 at tabletop height. The cylinder residual
+was evaluated on this mixed cloud and reached 10.810 mm. No new model was installed.
+
+Handle fitting now bounds those points by the measured upright panel's existing
+5th/95th height quantiles, including any later cylinder extension. These are
+observed part extents, not a hardcoded table height or a collision margin. The
+original unchanged request retains 4,444 points and fits at 0.491 mm residual.
+Closing17's original anchor, hinge and axis are unchanged to 1e-12.
+
+`ground` and `refresh_contact` accept current `moving_part_id`/`contact_part_id`
+from `segment_parts` in the selected camera. The masks constrain fitting and
+the selected panel mask remains a mask in scene association, including holes.
+With the existing saved door mask, closing49 fits at 0.481 mm residual. No new
+segmentation model, successful coordinates, task sequence or simulator object
+geometry was supplied to the actor.
+
+`ground` can omit `regions.contact_box_xyxy` to request a door-only model, or
+derive the handle box from an explicit `contact_part_id`. A typed handle-fit
+failure also preserves a separately successful door/joint fit. Replies identify
+`grounding_status`, `handle_fit` and `handle_model_available`; the compact view
+and dashboard retain the distinction. Door-only models support tracking and
+joint-linked contact motion, but do not provide pinch-grasp geometry. Direction
+conflicts remain distinct from handle errors, and no different vertical feature
+is silently installed as a handle. Closing direction remains an explicitly
+reported hypothesis; this patch does not certify its semantic correctness.
+
+Reproduce the recorded-input checks with `scripts/validate_grounding_selection.py
+--output <new-directory>`. The existing report is
+`results/grounding-selection-validation-20261031/index.html`; it uses saved RGB-D
+and issues zero controls. Synthetic geometry tests cover a coarse region with
+dense tabletop contamination, part-mask holes, stale masks, door-only recovery,
+and preservation of direction failures. These are geometry regressions, not
+fresh-policy task-success measurements.

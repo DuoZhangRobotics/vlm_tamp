@@ -48,6 +48,9 @@ def _live_process(active):
 def issue_explanation(diagnostic):
     """Keep the failed module and cause visible without opening a large JSON log."""
     if not isinstance(diagnostic,dict):return None
+    if diagnostic.get('grounding_status')=='door_only' and diagnostic.get('handle_fit',{}).get('reason'):
+        return ('Handle fitting: '+diagnostic['handle_fit']['reason']+
+            ' The door/joint model was retained for tracking and joint-linked contact motion; pinch-grasp geometry remains unavailable.')
     tracking=diagnostic.get('endpoint_tracking')
     if tracking:
         return (f"Controller endpoint tracking: the hand finished {1000*tracking['position_error_m']:.1f} mm "
@@ -131,6 +134,8 @@ def _run_data(study,run,entry,active):
                 'preview_reused':value.get('preview_reused'),'full_scene_builds':value.get('full_scene_builds'),
                 'contact_searches':value.get('contact_searches')})
         reason=response.get('error') if response.get('ok') is False else value.get('stop_reason')
+        partial_handle=(value.get('grounding_status')=='door_only' and value.get('handle_fit',{}).get('status')=='unresolved')
+        if not reason and partial_handle:reason='handle_fit_unresolved_door_model_available'
         addendum=addenda.get(str(event['sequence']))
         tracking=value.get('execution',{}).get('endpoint_tracking')
         if not reason and op=='execute' and tracking and not value.get('task_success') and tracking.get('within_controller_reporting_tolerance') is False:
@@ -139,6 +144,7 @@ def _run_data(study,run,entry,active):
         if reason and reason not in {'preview_only','requested_progress_reached','requested_stroke_complete',
                 'stroke_executed','requested_reference_motion_complete','native_task_success','bounded_release_stroke_complete'}:
             diagnostic=response.get('planning_diagnostic',value.get('diagnostic'))
+            if partial_handle:diagnostic={'grounding_status':'door_only','handle_fit':value['handle_fit']}
             if reason=='reference_endpoint_not_reached' and tracking:diagnostic={'endpoint_tracking':tracking}
             issues.append({'event':event['sequence'],'operation':op,'reason':str(reason)[:1800],
                            'diagnostic':brief_evidence(diagnostic),'explanation':issue_explanation(diagnostic),

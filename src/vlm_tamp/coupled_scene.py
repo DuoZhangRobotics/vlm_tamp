@@ -260,7 +260,8 @@ def moving_mask(points, camera, spec, handle_cloud, panel_mask, choices=None, co
     pixel = np.full((len(points), 2), -1., float)
     valid = optical[:, 2] > 1e-8
     pixel[valid] = projected[valid, :2] / projected[valid, 2:3]
-    if choices is not None and 'moving_panel_box_xyxy' in choices:
+    explicit_mask = choices is not None and choices.get('panel_mask_selected',False)
+    if choices is not None and 'moving_panel_box_xyxy' in choices and not explicit_mask:
         x0, y0, x1, y1 = choices['moving_panel_box_xyxy']
         selected = (valid & (pixel[:, 0] >= x0) & (pixel[:, 0] <= x1)
                     & (pixel[:, 1] >= y0) & (pixel[:, 1] <= y1))
@@ -271,11 +272,14 @@ def moving_mask(points, camera, spec, handle_cloud, panel_mask, choices=None, co
         selected = np.zeros(len(points), bool)
         selected[valid] = mask[xy[valid, 1], xy[valid, 0]]
     primary = bounded & selected
+    if spec.get('generic_part_joint_model'):
+        # A door surface is not a cylindrical handle or an attached gripper.
+        return primary
     # Cached RGB boxes can contain only a thin portion of the upright face.
     # Extend over connected *observed* planar support between the grounded
     # hinge and handle, with height bounded by the observed handle. This does
     # not fill image holes or classify a whole cabinet as moving.
-    if config.get('extend_observed_panel', True):
+    if config.get('extend_observed_panel', True) and not explicit_mask:
         hinge = np.asarray(spec['joint_origin_world_m'], float)
         side_ends = np.r_[(hinge-origin)@side, (handle-origin)@side]
         side_padding = float(config.get('hinge_handle_panel_padding_m', .02))

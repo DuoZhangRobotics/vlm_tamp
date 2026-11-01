@@ -4,24 +4,23 @@ import numpy as np
 from scipy import ndimage
 from scipy.optimize import least_squares
 from scipy.spatial import cKDTree
-from .handle_contact import ground_handle as original_ground_handle,upright_plane
+from .handle_contact import ground_handle as original_ground_handle,selected_panel,HandleFitError
 from .rigid_hinge_tracking import robot_mask
 from .rekep_libero.mechanism_geometry import project
 from .rekep_libero.scene_state_v7 import observed_points,voxel_points
 
 
-def ground_handle(cameras,choices,template,metadata=None,*,fixed_joint=None):
-    original=original_ground_handle(cameras,choices,template,metadata,fixed_joint=fixed_joint)
+def ground_handle(cameras,choices,template,metadata=None,*,fixed_joint=None,panel_mask=None,contact_mask=None):
+    original=original_ground_handle(cameras,choices,template,metadata,fixed_joint=fixed_joint,
+                                   panel_mask=panel_mask,contact_mask=contact_mask)
     mech,cloud,mask,anchors,evidence=original
     adequate=np.ptp(cloud[:,2])>.065 and evidence['cylinder_robust_residual_m']<.0035
     if adequate:return refine_bar(original)
     camera=cameras[choices['camera']];world=np.asarray(camera['world_points'])
-    box=np.asarray(choices['moving_panel_box_xyxy']);yy,xx=np.indices(world.shape[:2])
-    region=(xx>=box[0])&(xx<=box[2])&(yy>=box[1])&(yy<=box[3])&np.isfinite(world).all(2)
-    region &= ~robot_mask(camera)
-    face=upright_plane(world[region],np.asarray(camera['camera_to_world'])[:3,3]);center,normal=face['point'],face['normal']
-    zlo,zhi=np.quantile(world[region][face['inliers'],2],[.05,.95])
-    occupied,_=observed_points(cameras,metadata,spacing=.0015,robot_depth_tolerance=.0001)
+    box=np.asarray(choices['moving_panel_box_xyxy'])
+    face,_,_=selected_panel(camera,choices,panel_mask);center,normal=face['point'],face['normal']
+    zlo,zhi=face['height_bounds_m']
+    occupied,_=observed_points(cameras,metadata or {},spacing=.0015,robot_depth_tolerance=.0001)
     pixel=project(occupied,camera)
     bounded=(pixel[:,0]>=box[0]-15)&(pixel[:,0]<=box[2]+15)&(pixel[:,1]>=box[1]-15)&(pixel[:,1]<=box[3]+15)
     signed=(occupied-center)@normal
@@ -52,7 +51,7 @@ def ground_handle(cameras,choices,template,metadata=None,*,fixed_joint=None):
             coverage=float(np.mean(hist>=4))
             if coverage<.75:continue
             candidates.append((np.ptp(cylinder[:,2])*coverage,len(cylinder),sign,fit.x,cylinder,float(np.median(error))))
-    if not candidates:raise ValueError('RGB handle fit invalid and no supported vertical bar in observed door region')
+    if not candidates:raise HandleFitError('RGB handle fit invalid and no supported vertical bar in observed door region')
     # A cylinder elsewhere in the door box may be a hinge or cabinet edge.
     # Geometric regularity cannot authorize changing the selected semantic part.
     proposals=[]
@@ -60,7 +59,7 @@ def ground_handle(cameras,choices,template,metadata=None,*,fixed_joint=None):
         pixels=project(cylinder,camera);lo,hi=np.quantile(pixels,[.01,.99],axis=0)
         proposals.append({'camera':choices['camera'],'box_xyxy':np.r_[lo,hi].tolist(),
             'cylinder_residual_m':error,'semantic_identity_verified':False})
-    failure=ValueError('Selected contact region does not support the vertical-handle model. '
+    failure=HandleFitError('Selected contact region does not support the vertical-handle model. '
         'No replacement region was installed. Inspect another view and explicitly select the intended contact.')
     failure.planning_diagnostic={'status':'contact_region_unresolved','module':'reliable_handle.contact_identity',
         'selected_region':choices['contact_box_xyxy'],'height_m':float(np.ptp(cloud[:,2])),
@@ -75,11 +74,12 @@ def refine_bar(result):
     """Refit the central bar after excluding mounts and noncylindrical endpoints."""
     mechanism,cloud,mask,anchors,evidence=result
     lo,hi=np.quantile(cloud[:,2],[.2,.8]);points=cloud[(cloud[:,2]>=lo)&(cloud[:,2]<=hi)]
+    if len(points)<3:raise HandleFitError('Central handle surface has insufficient samples for a cylinder fit')
     old=np.asarray(anchors[0][:2]);fit=least_squares(lambda x:np.linalg.norm(points[:,:2]-x[:2],axis=1)-x[2],
         np.r_[old,evidence['cylinder_radius_m']],bounds=(np.r_[old-.02,.005],np.r_[old+.02,.018]),
         loss='soft_l1',f_scale=.0005,max_nfev=150)
     residual=float(np.median(np.abs(fit.fun)))
-    if residual>.0025:raise ValueError('Central handle surface is inconsistent with a cylinder')
+    if residual>.0025:raise HandleFitError('Central handle surface is inconsistent with a cylinder')
     evidence['central_bar_refinement']={'old_axis_xy':old.tolist(),'new_axis_xy':fit.x[:2].tolist(),
         'radial_residual_m':residual,'excluded_height_quantiles':[.2,.8],'simulator_geometry_used':False}
     evidence['cylinder_radius_m']=float(fit.x[2])

@@ -351,25 +351,47 @@ class RobotService:
     def check_completion(self,evidence,interpretation):
         return self.completion.check(evidence,int(self.state['control_steps']),interpretation)
 
-    def ground(self, regions):
-        return self._ground_observed_geometry(regions)
+    def ground(self, regions, moving_part_id=None, contact_part_id=None):
+        return self._ground_observed_geometry(regions,moving_part_id=moving_part_id,contact_part_id=contact_part_id)
 
-    def refresh_contact(self,camera,contact_box_xyxy,moving_panel_box_xyxy):
+    def refresh_contact(self,camera,contact_box_xyxy,moving_panel_box_xyxy,moving_part_id=None,contact_part_id=None):
         fixed=self.spec if getattr(self,'contact_scene_kind','articulated')=='articulated' else getattr(self,'retained_articulated_model',None)
         if fixed is None:
             raise ValueError('Establish an articulated joint model before refreshing its contact geometry')
         regions={'camera':camera,'contact_box_xyxy':contact_box_xyxy,'moving_panel_box_xyxy':moving_panel_box_xyxy}
         validate_operation('refresh_contact',regions,observed_image_sizes(self.cameras))
-        result=self._ground_observed_geometry(regions,fixed_joint=copy.deepcopy(fixed))
+        result=self._ground_observed_geometry(regions,fixed_joint=copy.deepcopy(fixed),
+            moving_part_id=moving_part_id,contact_part_id=contact_part_id)
         result.update(fixed_joint_preserved=True,
             note='Current contact/panel geometry was refitted. The previous fixed-world hinge and signed direction remain hypotheses; no new hinge annotation or estimate was substituted.')
         return result
 
-    def _ground_observed_geometry(self,regions,*,fixed_joint=None):
+    def _grounding_mask(self,part_id,camera):
+        if part_id is None:return None
+        engine=getattr(self,'_perception_tools',None)
+        if engine is None or part_id not in engine.parts:
+            raise ValueError('Use a part_id returned by segment_parts in this episode')
+        part=engine.parts[part_id];record=engine._record(part['observation_id'])
+        if record['control_steps']!=self.state['control_steps']:
+            raise ValueError('Selected part mask is stale; use a mask from the current physical state')
+        if part['camera']!=camera:
+            raise ValueError('Selected part mask and grounding regions must use the same camera')
+        mask=np.asarray(part['mask'],bool)
+        if mask.shape!=self.cameras[camera]['world_points'].shape[:2] or not mask.any():
+            raise ValueError('Selected part mask has no usable pixels in this camera')
+        return mask
+
+    def _ground_observed_geometry(self,regions,*,fixed_joint=None,moving_part_id=None,contact_part_id=None):
         if not self.sim:
             raise ValueError('Call reset first')
         if fixed_joint is None:validate_ground_regions(regions,image_sizes=observed_image_sizes(self.cameras))
         choices = copy.deepcopy(regions)
+        panel_mask=self._grounding_mask(moving_part_id,choices['camera'])
+        contact_mask=self._grounding_mask(contact_part_id,choices['camera'])
+        if contact_mask is not None and choices.get('contact_box_xyxy') is None:
+            from vlm_tamp.part_perception import box_of
+            choices['contact_box_xyxy']=box_of(contact_mask)
+        choices['panel_mask_selected']=panel_mask is not None
         task = getattr(self, 'task_spec', task_spec())
         choices.update(motion=task['motion'], joint_family='revolute', axis_source='vertical_hinge')
         template = dict(schema_version='articulated-spec-1.0', task_type='articulated',
@@ -378,9 +400,24 @@ class RobotService:
             target_progress=float(np.pi/2), progress_units='radians',
             axis_prior='upright door', contact_policy='selected functional finger contact',
             constraint={'type':'point_on_circle_with_coupled_orientation'})
-        mechanism, cloud, mask, anchors, evidence = ground_handle(
-            self.cameras, choices,template if fixed_joint is None else {**template,**fixed_joint,'camera':choices['camera']},
-            self.state['metadata'],**({'fixed_joint':fixed_joint} if fixed_joint is not None else {}))
+        from vlm_tamp.handle_contact import HandleFitError,ground_panel,require_direction_agreement
+        template=template if fixed_joint is None else {**template,**fixed_joint,'camera':choices['camera']}
+        options={key:value for key,value in [('fixed_joint',fixed_joint),('panel_mask',panel_mask),('contact_mask',contact_mask)] if value is not None}
+        handle_fit={'accepted':False,'status':'not_requested'}
+        if choices.get('contact_box_xyxy') is not None:
+            try:
+                mechanism, cloud, mask, anchors, evidence = ground_handle(
+                    self.cameras,choices,template,self.state['metadata'],**options)
+                handle_fit={'accepted':True,'status':'fitted'}
+            except HandleFitError as error:
+                handle_fit={'accepted':False,'status':'unresolved','reason':str(error),
+                    'diagnostic':getattr(error,'planning_diagnostic',{})}
+        if not handle_fit['accepted']:
+            mechanism,cloud,mask,anchors,evidence=ground_panel(
+                self.cameras,choices,template,self.state['metadata'],fixed_joint=fixed_joint,panel_mask=panel_mask)
+            require_direction_agreement(evidence)
+        evidence.update(handle_fit=handle_fit,
+            selected_parts={'moving_part_id':moving_part_id,'contact_part_id':contact_part_id})
         names=['spec','cloud','mask','anchors','contact_scene_kind','choices','epoch','scene','tracker']
         previous={key:getattr(self,key,None) for key in names}
         self.spec, self.cloud, self.mask, self.anchors = mechanism.spec, cloud, mask, anchors
@@ -388,10 +425,10 @@ class RobotService:
             self.spec['hinge_evidence']={'status':'single_view_annotation_not_independently_verified',
                 'note':'Plane/cylinder residuals do not measure hinge accuracy. Check another calibrated view or independent observed motion.'}
         self.contact_scene_kind='articulated'
-        self.spec['observed_handle_radius_m'] = evidence['cylinder_radius_m']
+        if handle_fit['accepted']:self.spec['observed_handle_radius_m'] = evidence['cylinder_radius_m']
         # A successful current handle fit adds grasp geometry to a part-only
         # joint model. Preserve the fixed joint, but update its capabilities.
-        self.spec.pop('generic_part_joint_model',None)
+        if handle_fit['accepted']:self.spec.pop('generic_part_joint_model',None)
         self.choices = choices
         self.epoch += 1
         self.scene = None
@@ -405,7 +442,10 @@ class RobotService:
         write_json(folder/'agent-regions.json', choices)
         write_json(folder/'geometry.json', evidence)
         write_json(folder/'model.json', self.spec)
-        return self.export_geometry(evidence)
+        return {**self.export_geometry(evidence),
+            'grounding_status':'door_and_handle' if handle_fit['accepted'] else 'door_only',
+            'handle_fit':handle_fit,'handle_model_available':handle_fit['accepted'],
+            'selected_parts':evidence['selected_parts'],'planner_model_updated':True,'robot_motion_executed':False}
 
     def export_geometry(self, evidence=None):
         dest = self.public/f'attempt{self.attempt:02d}'/f'geometry{self.calls:03d}'

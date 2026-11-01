@@ -11,6 +11,10 @@ The perception tools connect through returned IDs:
    the proposed masks and choose a part_id. No hinge annotation is required.
 2. associate_views: optionally examine that observed surface in other cameras
    from the same capture. Occlusion and disagreement are different outcomes.
+   For grounding, pass a current selected part_id as ground's moving_part_id
+   or contact_part_id in the same camera. This reuses the mask, including its
+   holes. Omit regions.contact_box_xyxy when only door/joint geometry is needed.
+   A failed handle fit can still return a door-only model; inspect handle_fit.
 3. track_part_motion: follow the selected part through saved observations.
    A clear reference can come from any included frame; keep observations ordered.
    For live agentview recordings, track_video_motion uses extra RGB frames while

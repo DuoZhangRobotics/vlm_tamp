@@ -21,9 +21,12 @@ def test_current_handle_fit_upgrades_generic_joint_without_losing_axis(tmp_path,
     robot.cameras={'view':{'rgb':np.zeros((100,100,3),np.uint8)}}
     robot.sim=SimpleNamespace(fk=lambda *a,**k:{'robot_collision_volumes_world':[]})
     robot.ik=SimpleNamespace(chain=object(),events=[])
-    robot.resources=SimpleNamespace(grasps=lambda *a:{})
+    robot.resources=SimpleNamespace(grasps=lambda *a,**k:{})
     robot.episode_status=lambda:{'remaining_wall_seconds':300.}
     robot.rebuild=lambda:setattr(robot,'scene',SimpleNamespace(robot=object()))
+    # This fixture tests the handle upgrade, not the independently tested
+    # current-robot point filter; its scene has no collision clouds.
+    robot._query_scene=lambda policy:robot.scene
     robot.export_geometry=lambda evidence:{'model':copy.deepcopy(robot.spec)}
     def fit(cameras,choices,template,metadata,*,fixed_joint):
         assert fixed_joint['joint_axis_world']==fixed['joint_axis_world']

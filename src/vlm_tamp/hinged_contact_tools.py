@@ -113,8 +113,10 @@ def tool_contract(config):
         'task_names_or_state_indices_used':False,'simulator_object_geometry_used':False}
 
 
-def ground_handle(cameras,choices,template,metadata,*,allow_direction_conflict=False,fixed_joint=None):
-    mechanism,cloud,mask,anchors,evidence=fit_observed_handle(cameras,choices,template,metadata,fixed_joint=fixed_joint)
+def ground_handle(cameras,choices,template,metadata,*,allow_direction_conflict=False,fixed_joint=None,
+                  panel_mask=None,contact_mask=None):
+    options={key:value for key,value in [('panel_mask',panel_mask),('contact_mask',contact_mask)] if value is not None}
+    mechanism,cloud,mask,anchors,evidence=fit_observed_handle(cameras,choices,template,metadata,fixed_joint=fixed_joint,**options)
     if not allow_direction_conflict:
         from .handle_contact import require_direction_agreement
         require_direction_agreement(evidence)

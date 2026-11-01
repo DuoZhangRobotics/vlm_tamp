@@ -1,5 +1,6 @@
 """Run exactly two current-code trials through the existing monitored runner."""
 import json
+import argparse
 import html
 import os
 from pathlib import Path
@@ -47,7 +48,9 @@ def render(study,force=False):
 
 
 def main():
-    study=ROOT/'results/luna-current-closing-checks-20261031'
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--study',type=Path,default=ROOT/'results/luna-current-closing-checks-20261031')
+    study=parser.parse_args().study.resolve()
     existing=study.exists()
     study.mkdir(exist_ok=True);(study/'trials').mkdir(exist_ok=True)
     cases=[(17,1),(49,2)]
