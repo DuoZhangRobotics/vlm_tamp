@@ -47,3 +47,25 @@ Run states 17 and 49 sequentially with Luna/high, no inherited memory, 600
 controls and 1800 wall seconds per episode. Use the existing 16 GiB/no-swap
 watchdog, GPU monitoring and once-per-minute dashboard mirror. Read the study
 manifest for the actual result; numerical regression alone is not task success.
+
+## Completed fresh reruns
+
+Both single-attempt evaluations succeeded on source `9d24089`. Frozen-source
+and clean-memory input audits passed. State 49 encountered a physical stall near
+6.6 degrees open, then Luna selected a fresh contact and completed the task.
+
+| State | Native success | Controls | Simulated seconds | Video seconds | Run wall seconds | Robot-tool seconds | Outside tools |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 17 | yes | 456 | 22.8 | 22.85 | 286.50 | 92.02 | 194.48 |
+| 49 | yes | 556 | 27.8 | 27.85 | 328.13 | 101.69 | 226.44 |
+
+Both MP4s decoded at 20 FPS with exactly controls + 1 frames (457 and 557).
+The extra frame is the initial image. The two encoder/retention tests also
+passed on the 4090's actual FFmpeg installation before launching.
+
+Peak job RAM was 7.43 GiB; peak sampled GPU memory was 1,983 MiB. Maximum
+sampled full I/O pressure was 0.37%, memory pressure was zero, and neither
+trial had a resource interruption. These are two successful reruns, not a
+multi-seed reliability estimate. The longer wall times than the earlier failed
+state49 run include additional Luna decisions, observations and recovery;
+the old failure spent its remaining controls on one incorrect trajectory.
