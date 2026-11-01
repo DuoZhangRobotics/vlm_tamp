@@ -69,7 +69,6 @@ def permission_arguments(*, readonly_paths=()):
     binary = Path(shutil.which('codex') or '/usr/bin/codex').resolve()
     home = Path(os.environ.get('CODEX_HOME', str(Path.home()/'.codex')))
     fs = {':minimal': 'read', ':workspace_roots': 'write',
-          '/home/duo/.codex': 'deny',
           str(Path(__file__).resolve().parents[2]): 'deny',
           str(binary.parent): 'read', str(home/'tmp/arg0-linux'): 'read'}
     # Codex's platform-minimal reads can include its own home. Exclude each
