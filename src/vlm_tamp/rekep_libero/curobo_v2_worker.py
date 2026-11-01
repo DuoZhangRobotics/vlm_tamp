@@ -96,9 +96,10 @@ class Worker:
     def create_solver(self, robot, *, collision=False, **kwargs):
         from curobo.inverse_kinematics import InverseKinematics, InverseKinematicsCfg
         torch.manual_seed(self.seed)
+        count = int(kwargs.pop('num_seeds', self.count))
         cfg = InverseKinematicsCfg.create(robot=copy.deepcopy(robot), device_cfg=self.device,
             optimizer_configs=ik_optimizer_configs(),
-            num_seeds=self.count, seed_solver_num_seeds=self.count,
+            num_seeds=count, seed_solver_num_seeds=count,
             self_collision_check=False, load_collision_spheres=collision,
             position_tolerance=kwargs.pop('position_tolerance', float(self.config.get('ik_position_tolerance_m', .003))),
             orientation_tolerance=kwargs.pop('orientation_tolerance', float(self.config.get('ik_orientation_tolerance_rad', .01))),
@@ -112,6 +113,49 @@ class Worker:
             if rollout.cost_cfg is None or rollout.cost_cfg.tool_pose_cfg is None:
                 raise ValueError('Every cuRobo IK optimizer stage requires a tool-pose objective')
         return InverseKinematics(cfg)
+
+    def solve_contact(self, point, contact_local, reference_quaternion_xyzw, seed):
+        """Continue one contact point from the previous posture; wrist pose is soft.
+
+        A physical push needs a point trajectory. Global full-pose IK can change
+        posture families between adjacent points, producing a large hand sweep
+        under joint interpolation. Use one current-state seed for this solver.
+        """
+        from curobo.motion_retargeter import ToolPoseCriteria
+        from curobo.types import GoalToolPose, Pose
+        point, offset, quat, initial = [np.asarray(x, float) for x in
+            (point, contact_local, reference_quaternion_xyzw, seed)]
+        started = time.perf_counter()
+        signature = tuple(np.round(offset, 10))
+        if getattr(self, 'contact_solver_signature', None) != signature:
+            previous = getattr(self, 'contact_solver', None)
+            if previous is not None:
+                previous.destroy()
+            model = copy.deepcopy(self.robot_config)
+            model['kinematics'].update(tool_frames=['contact_point'], extra_links={
+                'contact_point': {'parent_link_name': 'tcp', 'link_name': 'contact_point',
+                    'joint_name': 'contact_point_fixed', 'joint_type': 'FIXED',
+                    'fixed_transform': [*offset.tolist(), 1., 0., 0., 0.]}})
+            solver = self.create_solver(model, num_seeds=1, orientation_tolerance=3.2,
+                velocity_regularization_weight=.001, seed_velocity_weight=0., optimization_dt=.05)
+            solver.config.use_lm_seed = False
+            solver.config.exit_early = False
+            solver.update_tool_pose_criteria({'contact_point': ToolPoseCriteria(
+                terminal_pose_axes_weight_factor=[1., 1., 1., .002, .002, .002],
+                project_distance_to_goal=False, device_cfg=self.device)})
+            self.contact_solver, self.contact_solver_signature = solver, signature
+        goal = GoalToolPose.from_poses({'contact_point': Pose(
+            position=self.device.to_device(point[None]),
+            quaternion=self.device.to_device(quat[[3, 0, 1, 2]][None]))})
+        result = self.contact_solver.solve_pose(goal,
+            current_state=self.joint_state(initial[None]),
+            seed_config=self.device.to_device(initial.reshape(1, 1, 7)), return_seeds=1)
+        torch.cuda.synchronize()
+        return {'solutions': result.solution.detach().cpu().reshape(-1, 7).tolist(),
+                'success': result.success.detach().cpu().reshape(-1).tolist(),
+                'elapsed_seconds': time.perf_counter()-started,
+                'backend': 'curobo_v2_contact_continuation', 'seed_count': 1,
+                'orientation_is_soft_preference': True}
 
     def configure_arc(self, collision_spheres, pad_local, scene_arrays_path,
                       scene_arrays_sha256, origin, axis, mesh_pitch=.005,
@@ -386,7 +430,7 @@ def main():
                 request_id = request.pop('id', None)
                 if op == 'close':
                     result = {}
-                elif op in {'initialize', 'fk', 'solve', 'configure_arc', 'arc_forward', 'solve_arc', 'end_arc'}:
+                elif op in {'initialize', 'fk', 'solve', 'solve_contact', 'configure_arc', 'arc_forward', 'solve_arc', 'end_arc'}:
                     result = getattr(worker, op)(**request)
                 else:
                     raise ValueError(f'Unknown cuRobo v2 operation: {op}')

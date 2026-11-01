@@ -390,6 +390,7 @@ def cartesian_path(ik,scene,record,metadata,start,target_pose,budget,*,displacem
     rotation=Rotation.from_matrix(target[:3,:3]@begin[:3,:3].T).as_rotvec()
     count=max(1,int(np.ceil(distance/.003)),int(np.ceil(np.linalg.norm(rotation)/.04)))
     path=[np.asarray(start)]
+    local_contact=allow_partial and getattr(scene,'skill_collision_policy','veto')=='advisory'
     def prefix(reason):
         scene.skill_partial_plan={'reason':reason,'completed_waypoints':len(path)-1,'requested_waypoints':count,
             'global_infeasibility_proved':False}
@@ -403,13 +404,19 @@ def cartesian_path(ik,scene,record,metadata,start,target_pose,budget,*,displacem
             first=begin[:3,3]+begin[:3,:3]@contact_local
             last=target[:3,3]+target[:3,:3]@contact_local
             pose[:3,3]=first+fraction*(last-first)-pose[:3,:3]@contact_local
-        began=time.perf_counter();solutions=ik.solve_many(matrix_pose(pose),path[-1],maximum=8)
+        began=time.perf_counter()
+        if local_contact:
+            local=np.zeros(3) if contact_local is None else np.asarray(contact_local)
+            solution=ik.solve_contact(pose[:3,3]+pose[:3,:3]@local,local,path[-1],begin[:3,:3])
+            solutions=[] if solution is None else [solution]
+        else:
+            solutions=ik.solve_many(matrix_pose(pose),path[-1],maximum=8)
         timing['ik_seconds']+=time.perf_counter()-began
         if allow_partial and len(path)>1 and budget.remaining<=0:return prefix('planning_time_limit')
         budget.check()
         valid=None;rejects=[]
         solutions=sorted(solutions,key=lambda s:np.linalg.norm(np.asarray(s['joints'])-path[-1]))
-        if allow_partial and getattr(scene,'skill_collision_policy','veto')=='advisory' and solutions:
+        if local_contact and solutions:
             # Physical push execution trusts the robot-valid IK references.
             # Do not add a second dense interpolation/admission pass; actual
             # contact and directional stalling are measured during execution.
@@ -464,8 +471,9 @@ def plan_contact_stroke(ik,scene,record,metadata,contact_local,delta,budget,*,an
     point=tcp[:3,3]+tcp[:3,:3]@contact_local;direction=unit(delta)
     transverse=np.cross(direction,np.eye(3)[np.argmin(abs(direction))]);transverse=unit(transverse)
     rotations=[tcp[:3,:3]]
-    for axis,degrees in [(direction,15),(transverse,10),(direction,30)]:
-        for sign in [-1,1]:rotations.append(Rotation.from_rotvec(axis*np.radians(degrees)*sign).as_matrix()@tcp[:3,:3])
+    if not physical_feedback:
+        for axis,degrees in [(direction,15),(transverse,10),(direction,30)]:
+            for sign in [-1,1]:rotations.append(Rotation.from_rotvec(axis*np.radians(degrees)*sign).as_matrix()@tcp[:3,:3])
     attempts=[]
     for index,rotation in enumerate(rotations):
         budget.check();goal=tcp.copy();goal[:3,:3]=rotation;goal[:3,3]=point+delta-rotation@contact_local
@@ -474,7 +482,8 @@ def plan_contact_stroke(ik,scene,record,metadata,contact_local,delta,budget,*,an
             path=cartesian_path(ik,scene,record,metadata,start,matrix_pose(goal),budget,
                 displacement=delta,angle=angle,timing=timing,contact_local=contact_local,allow_partial=physical_feedback)
             return path,{'orientation_candidate':index,'earlier_attempts':attempts,
-                'reachable_prefix':scene.skill_partial_plan,'physical_feedback':physical_feedback}
+                'reachable_prefix':scene.skill_partial_plan,'physical_feedback':physical_feedback,
+                'orientation_is_soft_preference':physical_feedback}
         except SkillStop as error:
             attempts.append({'orientation_candidate':index,'reason':error.reason,**error.evidence})
             if error.reason=='budget_exhausted':raise SkillStop('stroke_planning_budget_exhausted',orientation_attempts=attempts,search_complete=False)

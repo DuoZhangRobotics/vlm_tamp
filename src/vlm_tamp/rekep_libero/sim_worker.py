@@ -324,23 +324,8 @@ class SimulatorWorker:
             self.video_path = None
             return
         try:
-            with (self.episode_dir / "video_encoder.log").open("w") as log:
-                video = subprocess.Popen([
-                    encoder, "-y", "-loglevel", "error", "-f", "rawvideo", "-pixel_format", "rgb24",
-                    "-video_size", f"{IMAGE_SIZE}x{IMAGE_SIZE}", "-framerate", "4", "-i", "pipe:0",
-                    "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(self.video_path),
-                ], stdin=subprocess.PIPE, stderr=log, stdout=log)
-                try:
-                    for frame in self.frame_paths:
-                        with Image.open(frame) as image:
-                            video.stdin.write(image.convert("RGB").tobytes())
-                    video.stdin.close()
-                    if video.wait(timeout=60) != 0:
-                        raise RuntimeError("Video encoder failed; see video_encoder.log")
-                finally:
-                    if video.poll() is None:
-                        video.kill()
-                        video.wait(timeout=10)
+            from vlm_tamp.control_video import encode_control_video
+            encode_control_video(self.frame_paths, self.video_path, encoder=encoder)
         except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
             (self.episode_dir / "video_error.txt").write_text(str(exc) + "\n")
             self.video_path = None

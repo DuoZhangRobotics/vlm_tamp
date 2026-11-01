@@ -30,7 +30,9 @@ function addVideo(row,item){
  outcome.className='muted';const play=node('button','Play'),inspect=node('button','Inspect this run');
  play.dataset.play=item.path;inspect.dataset.inspect=row.id;
  const video=node('video');video.controls=true;video.preload='none';video.hidden=true;
- const note=node('p','Video loads only when requested.');note.className='muted';
+ const note=node('p',typeof item.simulated_seconds==='number'
+  ?num(item.simulated_seconds)+' s simulated; '+num(item.playback_seconds)+' s playback, including the initial frame. Video loads when requested.'
+  :'Video loads only when requested.');note.className='muted';
  const remembered=saved.video?.[item.path]||0;
  if(remembered>0)play.textContent='Resume at '+remembered.toFixed(1)+' s';
  play.onclick=async()=>{

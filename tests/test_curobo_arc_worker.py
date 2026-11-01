@@ -115,6 +115,23 @@ def solve(worker, arc_id=None):
                             seed=[-.99, .99, 0., .1, .2, .3, .4], angle=.05, arc_id=arc_id)
 
 
+def test_contact_continuation_reuses_one_current_posture_seed(worker_scene):
+    worker, _, meshes, solvers = worker_scene
+    args=dict(point=[.5,.1,.2],contact_local=[.04,0.,0.],
+        reference_quaternion_xyzw=[0.,0.,0.,1.],seed=[.1,.2,.3,.4,.5,.6,.7])
+    worker.solve_contact(**args)
+    second={**args,'seed':[.11,.21,.31,.41,.51,.61,.71]}
+    result=worker.solve_contact(**second)
+    assert len(solvers)==1 and not meshes
+    assert solvers[0].options['num_seeds']==1
+    assert not solvers[0].config.use_lm_seed and not solvers[0].config.exit_early
+    for supplied,call in zip([args,second],solvers[0].calls):
+        np.testing.assert_array_equal(call['seed_config'].numpy(),np.array(supplied['seed']).reshape(1,1,7))
+        np.testing.assert_array_equal(call['current_state'].position.numpy(),[supplied['seed']])
+    assert result['orientation_is_soft_preference']
+    assert worker.solver.grasp_solver_untouched
+
+
 def test_local_optimizer_is_reused_only_within_one_arc_and_rng_resets(worker_scene):
     worker, config, meshes, solvers = worker_scene
     setup = worker.configure_arc(**config)

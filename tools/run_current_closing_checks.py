@@ -51,7 +51,9 @@ def render(study,force=False):
             'Interrupted' if state.get('status_text')=='Infrastructure interruption' else
             'Running' if state.get('running') else 'Not started' if manifest.get('problem') else 'Queued')
         fmt=lambda v:f'{v:.1f}' if isinstance(v,(float,int)) else '—'
-        rows.append(f'<tr><td>Closing {index}</td><td>{outcome}</td><td>{result.get("control_steps",episode.get("control_steps","—"))}</td>'
+        controls=result.get('control_steps',episode.get('control_steps'))
+        sim_seconds=controls/20. if isinstance(controls,(int,float)) else None
+        rows.append(f'<tr><td>Closing {index}</td><td>{outcome}</td><td>{controls if controls is not None else "—"}</td><td>{fmt(sim_seconds)}</td>'
             f'<td>{fmt(timing.get("actor_wall_seconds"))}</td><td>{fmt(timing.get("service_wall_seconds"))}</td>'
             f'<td>{fmt(timing.get("outside_service_seconds"))}</td><td><a href="{prefix}/watch.html">Live details and full profiling</a></td></tr>')
         movie=run/'attempt01/initial/rollout.mp4'
@@ -63,6 +65,7 @@ def render(study,force=False):
     text='''<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Current closing checks</title>
 <style>body{font:16px system-ui;max-width:1100px;margin:28px auto;padding:0 16px;color:#203249}table{border-collapse:collapse;width:100%}td,th{padding:10px;border-bottom:1px solid #ddd;text-align:left}video{max-width:100%;width:512px}.scroll{overflow:auto}button{font:inherit;padding:8px}</style>
 <h1>Current-code closing checks</h1><p>Fresh Luna/high, no inherited memory, 600 controls per episode. Two trials only.</p>
+<p>One control is 0.05 simulated seconds. New recordings follow that clock; run time also includes Luna, planning and observations.</p>
 <p><button onclick="location.reload()">Refresh overview</button> No automatic page reload.</p>'''
     text+=f'<p>{len(done)} / 2 completed; {sum(bool(r.get("official_task_success")) for r in done.values())} native successes.</p>'
     if manifest.get('phase')=='waiting_for_gpu':
@@ -70,7 +73,7 @@ def render(study,force=False):
         text+='<p>Waiting for GPU initialization. No Luna episode is running. Checks every five minutes; the two trials start automatically after CUDA and EGL initialize.</p>'
         if readiness.get('reason'):text+='<p>Last result: '+html.escape(readiness['reason'])+'</p>'
     if manifest.get('problem'):text+='<p>Stopped: '+html.escape(manifest['problem']['reason'])+'</p>'
-    text+='<div class="scroll"><table><tr><th>Case</th><th>Outcome</th><th>Controls</th><th>Total seconds</th><th>Robot tools</th><th>Luna/transport/analysis</th><th>Inspect</th></tr>'+''.join(rows)+'</table></div>'
+    text+='<div class="scroll"><table><tr><th>Case</th><th>Outcome</th><th>Controls</th><th>Simulated seconds</th><th>Run seconds</th><th>Robot tools</th><th>Luna/transport/analysis</th><th>Inspect</th></tr>'+''.join(rows)+'</table></div>'
     text+=''.join(health)+''.join(videos)
     (study/'watch.html').write_text(text+'\n');_last_publish=time.monotonic()
 

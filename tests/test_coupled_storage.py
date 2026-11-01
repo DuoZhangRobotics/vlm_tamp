@@ -96,6 +96,27 @@ def test_video_survives_cleanup_with_exact_control_step_index(tmp_path):
     assert recovered[-1][1].getpixel((8, 8))[2] > 200
 
 
+def test_mixed_sparse_and_dense_captures_keep_simulator_time_after_cleanup(tmp_path):
+    import cv2
+    folder=episode(tmp_path);initial=snapshot(folder,'initial',0)
+    frames=initial/'frames';frames.mkdir()
+    for step,color in [(0,'red'),(5,'green'),(6,'blue'),(7,'yellow'),(10,'white')]:
+        Image.new('RGB',(16,16),color).save(frames/f'step{step:04d}.jpg')
+    storage.compact_episode(folder,allowed_root=tmp_path)
+    index=storage.read_json(initial/'video-frames.json')
+    assert index['frames_per_second']==20
+    assert index['control_steps']==[0,0,0,0,0,5,6,7,7,7,10]
+    capture=cv2.VideoCapture(str(initial/'rollout.mp4'))
+    try:
+        assert capture.get(cv2.CAP_PROP_FRAME_COUNT)/capture.get(cv2.CAP_PROP_FPS)==pytest.approx(.55)
+        assert index['simulated_elapsed_seconds']==.5
+        for _ in range(5):
+            ok,frame=capture.read();assert ok and frame[8,8,2]>200
+    finally:capture.release()
+    # Repeated playback frames must not become fabricated new observations.
+    assert [step for step,_ in storage.video_frames(folder)]==[0,5,6,7,10]
+
+
 def test_cleanup_never_follows_a_link_to_another_run(tmp_path):
     folder = episode(tmp_path)
     outside = tmp_path/'separate-run'

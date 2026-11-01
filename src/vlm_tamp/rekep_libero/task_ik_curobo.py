@@ -142,6 +142,32 @@ class TaskIK(BaseIK):
         # preserve the selected branch instead of trading motion for reserve.
         return min(solutions, key=lambda row: np.linalg.norm(np.asarray(row['joints'])-seed)) if solutions else None
 
+    def solve_contact(self, target_world, contact_local, seed, orientation_reference):
+        """cuRobo point continuation, with the existing robot validity criteria."""
+        began = time.perf_counter()
+        seed, point, offset = [np.asarray(x, float) for x in (seed, target_world, contact_local)]
+        result = self.client.request('solve_contact', point=point.tolist(),
+            contact_local=offset.tolist(), seed=seed.tolist(),
+            reference_quaternion_xyzw=Rotation.from_matrix(orientation_reference).as_quat().tolist())
+        candidates = []
+        for values, success in zip(result['solutions'], result['success']):
+            q = np.asarray(values, float)
+            if not np.isfinite(q).all():
+                continue
+            q = np.clip(q, self.chain.limits[:, 0]+self.reserve, self.chain.limits[:, 1]-self.reserve)
+            pose = self.chain.forward(q); transform = pose_matrix(pose)
+            error = float(np.linalg.norm(transform[:3, 3]+transform[:3, :3]@offset-point))
+            if error > self.config['ik_position_tolerance_m'] or not self.self_valid(q):
+                continue
+            candidates.append({'joints': q.tolist(), 'pose_world_xyzw': pose.tolist(),
+                'position_error_m': error, 'solver_reported_success': bool(success),
+                'orientation_is_soft_preference': True, 'backend': result['backend']})
+        self.events.append({'query': len(self.events), 'backend': result['backend'],
+            'seed_count': 1, 'returned': len(result['solutions']),
+            'distinct_robot_valid': len(candidates), 'elapsed_seconds': result['elapsed_seconds'],
+            'wall_seconds': time.perf_counter()-began})
+        return candidates[0] if candidates else None
+
     def approach(self, initial_joints, grasp_solution):
         target = np.asarray(grasp_solution['pose_world_xyzw'])
         target_q = np.asarray(grasp_solution['joints'])

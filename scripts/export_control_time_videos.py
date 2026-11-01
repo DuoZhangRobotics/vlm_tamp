@@ -30,7 +30,8 @@ def export(relative):
     if destination.exists():
         assert json.loads(record.read_text())['source_sha256']==digest
         return str(destination)
-    steps=json.loads(index.read_text())['control_steps']
+    clock=json.loads(index.read_text())
+    steps=clock.get('presentation_control_steps',clock['control_steps'])
     assert steps and all(b>a for a,b in zip(steps,steps[1:]))
     cap=cv2.VideoCapture(str(source))
     assert round(cap.get(cv2.CAP_PROP_FRAME_COUNT))==len(steps)

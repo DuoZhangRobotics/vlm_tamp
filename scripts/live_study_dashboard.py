@@ -208,8 +208,11 @@ def _run_data(study,run,entry,active):
         attempt_name=movie.parent.parent.name
         number=int(attempt_name.removeprefix('attempt'))
         completed=any(a.get('attempt')==number for a in attempts)
+        clock=read(movie.parent/'video-frames.json') if (movie.parent/'video-frames.json').exists() else {}
         videos.append({'label':attempt_name+(' · partial recording' if not completed else ''),
-                       'path':_relative(movie,study),'partial':not completed})
+                       'path':_relative(movie,study),'partial':not completed,
+                       'simulated_seconds':clock.get('simulated_elapsed_seconds'),
+                       'playback_seconds':clock.get('encoded_duration_seconds')})
     links={label:_relative(run/path,study) for label,path in
            [('Tool log','tool-events.jsonl'),('Luna input/output','agent-events.jsonl'),('Prompt','agent-prompt.txt'),
             ('Episode report','report/index.html'),('Findings','agent-workspace/findings.txt'),

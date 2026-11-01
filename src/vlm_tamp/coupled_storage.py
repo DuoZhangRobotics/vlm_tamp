@@ -172,18 +172,22 @@ def preserve_scene(scene, output):
 def _movie_index(folder):
     """Only discard JPEGs once the corresponding movie is readable and complete."""
     import cv2
+    from .control_video import frame_timeline, encode_control_video
     frames = sorted((folder/'initial/frames').glob('step*.jpg'))
     index_path = folder/'initial/video-frames.json'
     if not frames:
         return []
     movie = folder/'initial/rollout.mp4'
+    _, _, record = frame_timeline(frames)
     def complete(path):
         capture = cv2.VideoCapture(str(path))
         try:
-            if not capture.isOpened() or round(capture.get(cv2.CAP_PROP_FRAME_COUNT)) != len(frames):
+            if (not capture.isOpened()
+                    or round(capture.get(cv2.CAP_PROP_FRAME_COUNT)) != record['frame_count_verified']
+                    or abs(capture.get(cv2.CAP_PROP_FPS)-record['frames_per_second']) > .01):
                 return False
             first, _ = capture.read()
-            capture.set(cv2.CAP_PROP_POS_FRAMES, len(frames)-1)
+            capture.set(cv2.CAP_PROP_POS_FRAMES, record['frame_count_verified']-1)
             last, _ = capture.read()
             return first and last
         finally:
@@ -191,18 +195,13 @@ def _movie_index(folder):
     if not complete(movie):
         temporary = movie.with_name('rollout-retention.tmp.mp4')
         try:
-            subprocess.run(['ffmpeg', '-nostdin', '-y', '-loglevel', 'error', '-framerate', '4',
-                '-pattern_type', 'glob', '-i', str(folder/'initial/frames/step*.jpg'),
-                '-c:v', 'libx264', '-threads', '2', '-crf', '18', '-pix_fmt', 'yuv420p',
-                '-movflags', '+faststart', str(temporary)], check=True, timeout=120,
-                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+            encode_control_video(frames, temporary)
             if not complete(temporary):
                 raise RuntimeError('Movie verification failed; raw frames were retained')
             os.replace(temporary, movie)
         finally:
             temporary.unlink(missing_ok=True)
-    write_json(index_path, {'movie': 'rollout.mp4', 'control_steps': [int(p.stem[4:]) for p in frames],
-                            'frame_count_verified': len(frames), 'frames_per_second': 4})
+    write_json(index_path, record)
     return frames
 
 
@@ -223,11 +222,14 @@ def video_frames(folder):
     record = read_json(index)
     capture = cv2.VideoCapture(str(folder/'initial'/record['movie']))
     try:
+        previous = None
         for step in record['control_steps']:
             ok, frame = capture.read()
             if not ok:
                 raise RuntimeError('Retained movie misses a recorded control frame')
-            yield step, Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            if step != previous:
+                yield step, Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                previous = step
     finally:
         capture.release()
 

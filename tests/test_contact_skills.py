@@ -71,7 +71,7 @@ def test_physical_push_planner_does_not_consult_environment_predictions(monkeypa
     monkeypatch.setattr(module,'skill_native_scene',forbidden)
     scene=SimpleNamespace(skill_collision_policy='veto')
     ik=SimpleNamespace(chain=LinearChain(),self_valid=lambda q:True,
-        solve_many=lambda pose,seed,**kwargs:[{'joints':np.r_[pose[:3],np.zeros(4)]}])
+        solve_contact=lambda point,local,seed,rotation:{'joints':np.r_[point,np.zeros(4)]})
     meta={'joint_positions':[0.]*7}
     path,report=module.plan_contact_stroke(ik,scene,{},meta,np.zeros(3),np.array([.1,0,0]),Budget(5),physical_feedback=True)
     assert path[-1,0]==pytest.approx(.1) and report['physical_feedback']
@@ -81,9 +81,27 @@ def test_physical_push_keeps_a_reachable_prefix_when_the_next_ik_fails(monkeypat
     import vlm_tamp.contact_skills as module
     scene=SimpleNamespace(skill_collision_policy='veto')
     ik=SimpleNamespace(chain=LinearChain(),self_valid=lambda q:True,
-        solve_many=lambda pose,seed,**kwargs:[] if pose[0]>.02 else [{'joints':np.r_[pose[:3],np.zeros(4)]}])
+        solve_contact=lambda point,local,seed,rotation:None if point[0]>.02 else {'joints':np.r_[point,np.zeros(4)]})
     path,report=module.plan_contact_stroke(ik,scene,{}, {'joint_positions':[0.]*7},np.zeros(3),np.array([.1,0,0]),Budget(5),physical_feedback=True)
     assert .015<path[-1,0]<=.02 and report['reachable_prefix']['reason']=='no_next_kinematic_increment'
+
+
+def test_push_continuation_tracks_the_contact_offset_from_each_previous_posture():
+    from scipy.spatial.transform import Rotation
+    import vlm_tamp.contact_skills as module
+    rotation=Rotation.from_euler('z',90).as_matrix();quat=Rotation.from_matrix(rotation).as_quat()
+    chain=SimpleNamespace(forward=lambda q:np.r_[np.asarray(q)[:3],quat])
+    contact=np.array([.04,0,0]);calls=[]
+    def solve(point,local,seed,preferred):
+        calls.append((point.copy(),seed.copy()))
+        assert np.allclose(local,contact) and np.allclose(preferred,rotation)
+        return {'joints':np.r_[point-rotation@local,np.zeros(4)]}
+    ik=SimpleNamespace(chain=chain,solve_contact=solve)
+    path,report=module.plan_contact_stroke(ik,SimpleNamespace(skill_collision_policy='veto'),{},
+        {'joint_positions':[0.]*7},contact,np.array([.023,0,0]),Budget(5),physical_feedback=True)
+    np.testing.assert_allclose(path[-1,:3],[.023,0,0],atol=1e-12)
+    for i,(_,seed) in enumerate(calls):np.testing.assert_array_equal(seed,path[i])
+    assert report['orientation_is_soft_preference'] and not report['earlier_attempts']
 
 
 def test_projected_contact_roles_include_other_views_without_widening_the_region():
