@@ -1,4 +1,5 @@
 {
   "livePreview.autoRefreshPreview": "Never",
+  "livePreview.useIntegratedBrowser": false,
   "livePreview.defaultPreviewPath": "results/luna-4090-closing-20261101/watch.html"
 }
