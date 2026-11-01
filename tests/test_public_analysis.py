@@ -73,3 +73,13 @@ def test_metadata_symlink_cannot_write_outside_workspace(tmp_path):
     with pytest.raises(ValueError, match='metadata must not be a symlink'):
         prepare_workspace(work, bundle)
     assert not outside.exists()
+
+
+def test_bundle_abi_tracks_actor_python_not_backend_python(monkeypatch):
+    import vlm_tamp.public_analysis as module
+    try:
+        for minor in [10,12]:
+            module.default_bundle.cache_clear()
+            monkeypatch.setattr(module.subprocess,'check_output',lambda command,**kwargs:json.dumps([3,minor]))
+            assert module.default_bundle().name==f'public-analysis-cp3{minor}-v1'
+    finally:module.default_bundle.cache_clear()

@@ -7,11 +7,23 @@ import hashlib
 import json
 from pathlib import Path, PurePosixPath
 import shutil
+import subprocess
+from functools import lru_cache
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_BUNDLE = ROOT / '.runtime/public-analysis-cp312-v1'
-DIRECTORIES = ('numpy', 'numpy.libs', 'numpy-1.26.4.dist-info',
-               'scipy', 'scipy.libs', 'scipy-1.14.1.dist-info')
+NUMERICAL_DIRECTORIES = ('numpy', 'numpy.libs', 'numpy-1.26.4.dist-info',
+                        'scipy', 'scipy.libs', 'scipy-1.14.1.dist-info')
+IMAGE_DIRECTORIES = ('PIL','pillow.libs','pillow-10.2.0.dist-info')
+DIRECTORIES = NUMERICAL_DIRECTORIES + IMAGE_DIRECTORIES
+
+
+@lru_cache(maxsize=1)
+def default_bundle():
+    """Match the actor's system interpreter, not the backend's Python ABI."""
+    major,minor=json.loads(subprocess.check_output(
+        ['/usr/bin/python3','-c','import json,sys; print(json.dumps(list(sys.version_info[:2])))'],text=True))
+    return ROOT/f'.runtime/public-analysis-cp{major}{minor}-v1'
 
 
 def digest(path):
@@ -32,19 +44,21 @@ def inventory(folder):
     return result
 
 
-def register_bundle(bundle, install_report):
+def register_bundle(bundle, install_report, *, python_major_minor=(3,12)):
     """Freeze installed, pinned wheels; this function performs no downloads."""
     bundle = Path(bundle).resolve()
     report = json.loads(Path(install_report).read_text())
     packages = {entry['metadata']['name'].lower(): entry['metadata']['version'] for entry in report['install']}
-    if packages != {'numpy': '1.26.4', 'scipy': '1.14.1'}:
+    numerical={'numpy': '1.26.4', 'scipy': '1.14.1'}
+    if packages not in (numerical,{**numerical,'pillow':'10.2.0'}):
         raise ValueError('Unexpected public analysis package versions')
     target = bundle / 'payload'
     target.mkdir(exist_ok=False)
-    for name in DIRECTORIES:
+    directories=NUMERICAL_DIRECTORIES+(IMAGE_DIRECTORIES if 'pillow' in packages else ())
+    for name in directories:
         shutil.copytree(bundle / 'packages' / name, target / name)
     files = inventory(target)
-    value = {'schema_version': 1, 'python_major_minor': [3, 12], 'packages': packages,
+    value = {'schema_version': 1, 'python_major_minor': list(python_major_minor), 'packages': packages,
              'files_sha256': files, 'install_report_sha256': digest(install_report)}
     (bundle / 'manifest.json').write_text(json.dumps(value, indent=2) + '\n')
     shutil.copyfile(install_report, bundle / 'install-report.json')
@@ -67,7 +81,8 @@ def load_manifest(bundle):
     return manifest
 
 
-def prepare_workspace(workspace, bundle=DEFAULT_BUNDLE):
+def prepare_workspace(workspace, bundle=None):
+    if bundle is None:bundle=default_bundle()
     workspace, bundle = Path(workspace).resolve(), Path(bundle).resolve()
     manifest = load_manifest(bundle)
     site = workspace / '.analysis_site'
@@ -123,6 +138,8 @@ expected = json.loads(Path('analysis-environment.json').read_text())
 assert list(sys.version_info[:2]) == expected['python_major_minor']
 assert np.__version__ == expected['packages']['numpy']
 assert scipy.__version__ == expected['packages']['scipy']
+if 'pillow' in expected['packages']:
+    assert Image.__version__ == expected['packages']['pillow']
 a = np.array([[2., 1.], [1., 3.]])
 assert np.allclose(a @ np.linalg.solve(a, np.array([1., 2.])), [1., 2.])
 assert np.allclose(Rotation.from_euler('z', 90, degrees=True).apply([1., 0., 0.]), [0., 1., 0.])
