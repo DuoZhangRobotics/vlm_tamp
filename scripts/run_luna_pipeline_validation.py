@@ -39,6 +39,27 @@ def plan():
         'evaluation_notebooks_fed_forward':False,'teacher_or_reflection_model':False}
 
 
+def evaluation_plan(path):
+    """A declared case panel uses the same fresh-actor execution protocol."""
+    from collections import Counter
+    from vlm_tamp.subscription_tasks import TASKS
+    document=read_json(Path(path));cases=document['cases'];counts=Counter();entries=[]
+    if not isinstance(cases,list) or not cases:raise ValueError('Declare at least one evaluation case')
+    for case in cases:
+        task,state=case['task'],case['state_index']
+        if task not in TASKS or type(state) is not int or not 0<=state<50:
+            raise ValueError('Use a supported task and official initial-state index 0..49')
+        counts[task,state]+=1;repeat=counts[task,state]
+        entries.append({'task':task,'state_index':state,'repeat':repeat,
+            'run':f'baseline-r{repeat}-{task}-state{state:03d}-600',
+            'evaluation_group':case.get('evaluation_group','additional_cases')})
+    return {'model':'gpt-6-luna','reasoning':'high','control_steps':600,'episode_seconds':1800,
+        'baseline':entries,'practice_attempts':0,'practice_cases':[],'transfer':[],
+        'evaluation_only':True,'clean_start':True,'prior_notebooks_supplied':False,
+        'evaluation_notebooks_fed_forward':False,'teacher_or_reflection_model':False,
+        'selection':document.get('selection',{}),'description':document.get('description','')}
+
+
 def binary_pins():
     paths=[ROOT/'.runtime/mcvamp-contact-numerical/libmcvamp_contact_numerical.so',
         ROOT/'.runtime/mcvamp-contact-numerical/build.json']
@@ -58,6 +79,7 @@ def collect(study,entry,stage,out):
     result={'stage':stage,'run':out.name,'actor_wall_seconds':agent['wall_seconds'],
         'attempts':attempts,'memory_condition':entry.get('memory_condition','none')}
     if len(attempts)==1:result.update(attempts[0])
+    if entry.get('evaluation_group'):result['evaluation_group']=entry['evaluation_group']
     return result
 
 
@@ -135,7 +157,10 @@ def main():
     p.add_argument('--stage',choices=['baseline','practice','transfer'],required=True)
     p.add_argument('--limit',type=int,help='Complete at most this many additional runs in this invocation')
     p.add_argument('--baseline-run',help='Run one declared baseline case first for resource qualification')
+    p.add_argument('--cases-file',type=Path,help='Explicit frozen evaluation-only case panel; every actor starts without memory')
     args=p.parse_args();study=args.study.resolve()
+    if args.cases_file and args.stage!='baseline':raise ValueError('--cases-file is evaluation-only')
+    expected_plan=evaluation_plan(args.cases_file) if args.cases_file else plan()
     if not study.is_relative_to(ROOT/'results'):raise ValueError('Use a results directory')
     gpu=os.environ.get('VLM_TAMP_GPU','3')
     if os.environ.get('CUDA_VISIBLE_DEVICES')!=gpu or os.environ.get('MUJOCO_EGL_DEVICE_ID')!=gpu:
@@ -144,10 +169,11 @@ def main():
     runner.render=render
     path=study/'study-manifest.json'
     if not path.exists():
-        declared=plan();write_json(study/'plan.json',declared);write_json(study/'practice-cases.json',declared['practice_cases'])
+        declared=expected_plan;write_json(study/'plan.json',declared);write_json(study/'practice-cases.json',declared['practice_cases'])
         manifest={'study_directory':str(study),'plan':declared,'source_sha256':source_hashes(),'native_binary_sha256':binary_pins(),
             'code_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
             'started_at':time.time(),'phase':'preflight','completed_runs':[],'completed':False}
+        if args.cases_file:manifest['scheduled_stages']=['baseline']
         write_json(path,manifest)
         write_json(study/'implementation-status.json',{'title':'Luna full-task validation — frozen tools, 600 controls',
             'steps':[{'id':'tool_contracts_and_memory_isolation','status':'validated before study'}]})
@@ -162,7 +188,7 @@ def main():
         if previous and previous!=args.baseline_run:raise ValueError('Qualification case already declared')
         manifest['resource_qualification_first_run']=args.baseline_run
         write_json(path,manifest)
-    if declared!=plan() or read_json(study/'plan.json')!=declared or read_json(study/'practice-cases.json')!=declared['practice_cases']:
+    if declared!=expected_plan or read_json(study/'plan.json')!=declared or read_json(study/'practice-cases.json')!=declared['practice_cases']:
         raise RuntimeError('The declared case schedule changed')
     done={r.get('scheduled_run',r['run']) for r in manifest['completed_runs']}
     active=read_json(study/'active-process.json') if (study/'active-process.json').exists() else {}
@@ -175,6 +201,8 @@ def main():
                 run_entry(study,manifest,entry,'baseline',['--task',entry['task'],'--state',str(entry['state_index']),
                     '--attempts','1','--agent-seconds','1800','--evaluation-case','--clean-start'],1)
             manifest['baseline_completed']=not pending_baselines(manifest)
+            if declared.get('evaluation_only') and manifest['baseline_completed']:
+                manifest.update(completed=True,phase='complete',finished_at=time.time())
         elif args.stage=='practice':
             if not manifest.get('baseline_completed'):raise RuntimeError('Complete the frozen regression first')
             if 'clean-practice' not in done:

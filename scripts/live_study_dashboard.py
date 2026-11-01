@@ -267,6 +267,15 @@ def publish(study,*,force=False,now=None):
     scored=[attempt for row in completed if not scheduled or row.get('stage') in scheduled
             for attempt in row.get('attempts',[])]
     task_outcomes={'completed':len(scored),'successes':sum(bool(a.get('official_task_success')) for a in scored)}
+    groups={}
+    for entry in plan.get('baseline',[]):
+        group=entry.get('evaluation_group')
+        if group:groups.setdefault(group,{'planned':0,'finished':0,'successes':0})['planned']+=1
+    for row in completed:
+        group=row.get('evaluation_group')
+        if group in groups:
+            groups[group]['finished']+=1
+            groups[group]['successes']+=int(bool(row.get('official_task_success')))
     phase=manifest.get('phase','preflight')
     message=manifest.get('stop_reason','') if stopped else manifest.get('problem',{}).get('reason','')
     if not message:message=f"{plan.get('model','Luna')} / {plan.get('reasoning','high')} · {plan.get('control_steps',600)} controls per episode. Only public observations are supplied to the actor."
@@ -303,6 +312,7 @@ def publish(study,*,force=False,now=None):
         links['Memory and I/O measurements']='resource-summary.json'
     payload={'checked_at':time.time(),'running':running,'status_text':status+' · '+phase,
              'message':message,'totals':totals,'task_outcomes':task_outcomes,'runs':runs,'active_run':active.get('run') if running else None,
+             'evaluation_groups':groups,
              'links':links,'health_text':health,'publish_interval_seconds':INTERVAL_SECONDS}
     written+=_json(study/'watch-status.json',payload)
     result={'published':True,'html_bytes_written':html_bytes,'client_bytes_written':client_bytes,'bytes_written':written,

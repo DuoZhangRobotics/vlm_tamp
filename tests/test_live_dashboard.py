@@ -111,6 +111,19 @@ def test_video_index_contains_every_saved_episode(tmp_path,monkeypatch):
     assert [v['partial'] for v in videos]==[False,False,True]
 
 
+def test_evaluation_groups_keep_new_cases_and_repeats_separate(tmp_path,monkeypatch):
+    study,run,manifest=fixture(tmp_path,monkeypatch)
+    manifest['plan']['baseline']=[{'evaluation_group':name} for name in
+        ['additional_closing','additional_opening','repeat_closing','repeat_closing']]
+    manifest['completed_runs']=[{'run':'case','stage':'baseline','evaluation_group':'repeat_closing',
+        'official_task_success':True,'attempts':[{'official_task_success':True}]}]
+    (study/'study-manifest.json').write_text(json.dumps(manifest))
+    dashboard.publish(study,force=True)
+    groups=json.loads((study/'watch-status.json').read_text())['evaluation_groups']
+    assert groups['repeat_closing']=={'planned':2,'finished':1,'successes':1}
+    assert groups['additional_closing']==groups['additional_opening']=={'planned':1,'finished':0,'successes':0}
+
+
 def test_failure_cause_and_evaluator_recheck_stay_separate_from_actor_log(tmp_path,monkeypatch):
     study,run,_=fixture(tmp_path,monkeypatch)
     event={'sequence':50,'request':{'operation':'plan_arc','arguments':{}},'wall_seconds':1,

@@ -202,7 +202,7 @@ def mark_interruption(study,reason):
         write(status_path,status)
 
 
-def run(study,stages,*,first_run=None,log_tag=None):
+def run(study,stages,*,first_run=None,log_tag=None,cases_file=None):
     group=cgroup_path();limit=require_memory_limit(group)
     local=Path(tempfile.mkdtemp(prefix='vlm-luna-resource-monitor-'));details=ProcessSampler(group)
     state={'pid':os.getpid(),'started_at':time.time(),'status':'running','local_directory':str(local),
@@ -226,6 +226,7 @@ def run(study,stages,*,first_run=None,log_tag=None):
             if log_tag:label+='-'+log_tag
             state['driver_log']=str(study/(label+'-driver.log'))
             command=[sys.executable,str(ROOT/'scripts/run_luna_pipeline_validation.py'),'--study',str(study),'--stage',stage]
+            if cases_file:command+=['--cases-file',str(cases_file)]
             if limit:command+=['--limit',str(limit)]
             if stage=='baseline' and limit==1 and first_run:command+=['--baseline-run',first_run]
             with (study/(label+'-driver.log')).open('x') as stream:
@@ -298,6 +299,7 @@ def main():
     p.add_argument('--stage',choices=['first','remaining','transfer','qualify-and-continue','baseline-rerun'],default='first')
     p.add_argument('--first-run',help='Declared baseline run to use for the first resource qualification')
     p.add_argument('--log-tag',help='Distinct orchestration log name for an investigated continuation')
+    p.add_argument('--cases-file',type=Path,help='Explicit frozen evaluation panel; no practice phase')
     a=p.parse_args();study=a.study.resolve()
     if not study.is_relative_to(ROOT/'results'):raise ValueError('Use a study under results/')
     study.mkdir(parents=True,exist_ok=True)
@@ -309,7 +311,9 @@ def main():
             'transfer':[('transfer',None)],'qualify-and-continue':[('baseline',1),('baseline',None),('practice',None)]}[a.stage]
     if a.first_run and a.stage not in {'first','qualify-and-continue','baseline-rerun'}:raise ValueError('--first-run requires an initial qualification stage')
     if a.log_tag and (not a.log_tag.replace('-','').replace('_','').isalnum()):raise ValueError('Use a simple log tag')
-    raise SystemExit(run(study,stages,first_run=a.first_run,log_tag=a.log_tag))
+    if a.cases_file and any(stage!='baseline' for stage,_ in stages):raise ValueError('Explicit case panels are evaluation-only')
+    raise SystemExit(run(study,stages,first_run=a.first_run,log_tag=a.log_tag,
+        cases_file=a.cases_file.resolve() if a.cases_file else None))
 
 
 if __name__=='__main__':main()

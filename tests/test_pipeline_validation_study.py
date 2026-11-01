@@ -1,10 +1,29 @@
 import inspect
+import json
 import re
 from pathlib import Path
 
 import run_luna_pipeline_validation as study
 import prepare_subscription_pilot as prepare
 from serve_subscription_robot import RobotService
+
+
+def test_explicit_evaluation_panel_preserves_new_states_repeats_and_clean_actors(tmp_path):
+    path=tmp_path/'cases.json';rows=[
+        {'task':'close_microwave','state_index':30,'evaluation_group':'additional_closing'},
+        {'task':'open_microwave','state_index':36,'evaluation_group':'additional_opening'},
+        {'task':'close_microwave','state_index':30,'evaluation_group':'repeat'}]
+    path.write_text(json.dumps({'cases':rows,'selection':{'seed':20261101}}))
+    panel=study.evaluation_plan(path)
+    assert [(r['task'],r['state_index']) for r in panel['baseline']]==[(r['task'],r['state_index']) for r in rows]
+    assert [r['repeat'] for r in panel['baseline']]==[1,1,2]
+    assert len({r['run'] for r in panel['baseline']})==3
+    assert [r['evaluation_group'] for r in panel['baseline']]==[r['evaluation_group'] for r in rows]
+    assert panel['evaluation_only'] and panel['clean_start']
+    assert panel['practice_cases']==panel['transfer']==[] and panel['practice_attempts']==0
+    assert not panel['evaluation_notebooks_fed_forward'] and not panel['prior_notebooks_supplied']
+    manifest={'plan':panel,'completed_runs':[{'run':panel['baseline'][0]['run']}]}
+    assert study.pending_baselines(manifest)==panel['baseline'][1:]
 
 
 def test_three_fresh_regressions_each_begin_with_open37():
