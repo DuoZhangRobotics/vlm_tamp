@@ -125,7 +125,7 @@ def test_sequence_replans_from_actual_closure_and_returns_slip_recovery(tmp_path
         robot.state['control_steps']+=len(refs);robot.state['metadata']['joint_positions']=refs[-1].tolist()
         if label.endswith('closure'):robot.state['metadata']['gripper_qpos']=[.012,-.009]
         slip=lose_contact and label.endswith('manipulation')
-        return {'task_success':False,'episode_done':False,'observation':{},
+        return {'task_success':False,'episode_done':False,'observation':{},'execution':{'arrival':{'goal_reached':True}},
             'grasp_evidence':{'status':'gripper_gap_collapsed_during_manipulation' if slip else 'grasp_not_verified'},
             'motion_effect':{'observed_region_rotation_deg':15.,'status':'measured_part_motion'}}
     robot.issue=issue
@@ -168,7 +168,7 @@ def test_explicit_joint_calibration_uses_longer_baseline_and_third_check(tmp_pat
             count[0]+=1;n=count[0]
             robot.motion_feedback.append({'label':label,'reference_observation_id':n+1,'current_observation_id':n+2,
                 'first':moved(n-1),'second':moved(n),'tracker':Tracker(n-1)})
-        return {'task_success':False,'episode_done':False,'observation':{},'grasp_evidence':{},
+        return {'task_success':False,'episode_done':False,'observation':{},'execution':{'arrival':{'goal_reached':True}},'grasp_evidence':{},
             'motion_effect':{'observed_region_rotation_deg':planned[-1] if planned else 0.}}
     robot.issue=issue
     result=robot.execute_sequence('test',close_steps=3,hold=0,calibrate_joint=True)

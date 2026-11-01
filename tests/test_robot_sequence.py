@@ -37,7 +37,7 @@ def test_sequence_native_success_stops_before_postclosure_planning(tmp_path):
         calls.append((label,gripper))
         robot.epoch+=1;robot.state['control_steps']+=len(refs)
         success=len(calls)==2
-        return {'task_success':success,'episode_done':success,'observation':{}}
+        return {'task_success':success,'episode_done':success,'observation':{},'execution':{'arrival':{'goal_reached':True}}}
     robot.issue=issue
     result=robot.execute_sequence('test',close_steps=3,hold=0)
     assert len(calls)==2 and result['task_success']
@@ -58,7 +58,7 @@ def test_unresolved_tracking_does_not_cancel_requested_closure(tmp_path):
     robot.scene_reference_control_step=0
     def issue(refs,gripper,label,**kwargs):
         calls.append(label);robot.state['control_steps']+=len(refs)
-        return {'task_success':len(calls)==2,'episode_done':len(calls)==2,'observation':{'control_steps':robot.state['control_steps']},
+        return {'task_success':len(calls)==2,'episode_done':len(calls)==2,'observation':{'control_steps':robot.state['control_steps']},'execution':{'arrival':{'goal_reached':True}},
             'scene_pose_observation':{'source':'unresolved_rgbd_motion','fit':{'reason':'insufficient_moving_landmarks'}}}
     robot.issue=issue
     result=robot.execute_sequence('test',close_steps=40,hold=0)
@@ -75,7 +75,8 @@ def test_neutral_and_closing_arc_commands_both_synchronize_geometry(tmp_path,mon
     robot.stop_on_success=False;robot.capture=lambda:{'control_steps':5}
     def execute(*a,**k):
         return {'control_steps':5,'metadata':{'joint_positions':[0.]*7,'eef_pose_world_xyzw':[0,0,0,0,0,0,1]}},{
-            'issued_commands':5,'planned_commands':5,'all_commands_issued':True}
+            'issued_commands':5,'planned_commands':5,'all_commands_issued':True,
+            'events':[{'reference_joints':[0.]*7} for _ in range(5)]}
     monkeypatch.setattr(module,'execute_batch',execute)
     monkeypatch.setattr(module,'hand_motion',lambda *a,**k:(np.eye(4),.1))
     monkeypatch.setattr(module,'transport_scene',lambda *a,**k:SimpleNamespace(

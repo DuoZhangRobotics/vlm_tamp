@@ -244,8 +244,10 @@ commands during an arc. The neutral command does not disable scene updates.
 - finish(): end the current physical attempt and retain the experiment evidence.
 
 The planners check the observed point cloud. Intended finger contact with the
-selected part is allowed; arm/palm and other surfaces are checked. Every issued
-trajectory executes fully. Observation/model revisions occur BETWEEN trajectories.
+selected part is allowed; arm/palm and other surfaces are checked. The executor follows the original references. Free approaches and IK pushes
+wait on measured tracking lag and return an unreached-reference report when
+blocked; every physics step counts. The approach must arrive before an automatic
+push or closure. Observation/model revisions occur BETWEEN trajectories.
 Grasped manipulation permits finger bodies and pads against all environment
 surfaces; arm/palm remain checked. The planner's own checked
 path is used without an extra dense validation pass.

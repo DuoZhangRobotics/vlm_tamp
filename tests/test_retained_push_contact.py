@@ -83,7 +83,7 @@ def contact_service(tmp_path,monkeypatch):
             self.state['metadata']['eef_pose_world_xyzw']=self.ik.chain.forward(actual).tolist()
             self.state['control_steps']+=len(refs)
             self.events.extend({'measured_joints':q.tolist()} for q in refs)
-            return {'execution':{'issued_commands':len(refs),'all_commands_issued':True},
+            return {'execution':{'issued_commands':len(refs),'all_commands_issued':True,**({'arrival':{'goal_reached':True}} if kwargs.get('arrival') else {})},
                 'observation':self.capture(),'episode_done':False,'task_success':False}
     svc=Service()
     return svc,counts,raw

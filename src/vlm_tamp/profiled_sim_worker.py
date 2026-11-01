@@ -92,7 +92,7 @@ class ProfiledWorker(CoupledWorker):
             return {'observation_dir':str(output),'metadata_file':str(output/'metadata.json'),
                 'evaluation':{'task_success':bool(self.env.check_success())},'control_steps':self.control_steps,
                 'maximum_control_steps':self.maximum_control_steps,'step_limit_reached':self.control_steps>=self.maximum_control_steps}
-    def joint_trajectory(self,references,gripper=1,stop_on_success=False,push_feedback=None):
+    def joint_trajectory(self,references,gripper=1,stop_on_success=False,push_feedback=None,arrival=None):
         self._require_env();refs=np.asarray(references,float)
         if refs.ndim!=2 or refs.shape[1]!=7 or not np.isfinite(refs).all():raise ValueError('Finite seven-joint trajectory required')
         if len(refs)>self.maximum_control_steps-self.control_steps:raise ValueError('Complete trajectory exceeds remaining budget')
@@ -100,7 +100,20 @@ class ProfiledWorker(CoupledWorker):
         if gripper not in (-1,0,1):raise ValueError('Invalid gripper command')
         stop_on_success=bool(stop_on_success or getattr(self,'stop_on_success',False))
         terminal=bool(stop_on_success and self.env.check_success())
-        feedback=None;stalled=False
+        feedback=None;stalled=False;tracking=None;tracking_failure=False
+        if arrival is not None:
+            from .timed_execution import pose_arrival
+            if not len(refs):raise ValueError('Arrival tracking requires a nonempty trajectory')
+            wait_steps=arrival.get('maximum_wait_steps',20)
+            if type(wait_steps) is not int or wait_steps<0:raise ValueError('Use nonnegative maximum_wait_steps')
+            tracked_offset=arrival.get('contact_local_m')
+            if tracked_offset is not None:
+                tracked_offset=np.asarray(tracked_offset,float)
+                if tracked_offset.shape!=(3,) or not np.isfinite(tracked_offset).all():raise ValueError('Finite contact offset required')
+            tracking={'mode':'bounded_reference_lead_then_measured_arrival','maximum_wait_steps_per_reference':wait_steps,
+                'maximum_joint_lead_rad':1./20.,'lead_bound_source':'existing 1 rad/s reference limit at 20 Hz',
+                'extra_controls':0,'references_advanced':0,'native_collision_rechecks':0}
+            goal_pose=self.ik_solver.fk(refs[-1])
         if push_feedback is not None:
             from .push_execution_feedback import PushProgress
             feedback=PushProgress(push_feedback,self._eef_pose())
@@ -108,25 +121,50 @@ class ProfiledWorker(CoupledWorker):
         before=time.perf_counter();events=[];self.in_batch=True
         try:
             for i,q in enumerate(refs):
-                if terminal:break
-                # Reuse the unchanged target normalization, official controller,
-                # physics stepping and per-command diagnostics from the baseline.
-                state=super().joint_action(q,gripper=gripper,max_steps=1)
-                measured=np.asarray(state['metadata']['joint_positions'])
-                events.append({'control_step':state['control_steps'],'reference_index':i,
-                    'reference_joints':q.tolist(),'measured_joints':measured.tolist(),
-                    'joint_reference_error_rad':float(np.max(np.abs(measured-q))),
-                    'command_issued':True,'execution_veto_checks':0})
-                terminal=bool(stop_on_success and self.action_log[-1]['evaluation_task_success'])
-                if feedback is not None:
-                    stalled=feedback.update(state['metadata']['eef_pose_world_xyzw'],i)
-                    if terminal:break
+                if terminal or self.control_steps>=self.maximum_control_steps:break
+                expected=self.ik_solver.fk(q) if tracking is not None else None
+                repeats=0
+                while True:
+                    # Hold the same reference while the physical arm catches up.
+                    # No IK correction, path replacement or simulator state edit.
+                    state=super().joint_action(q,gripper=gripper,max_steps=1)
+                    measured=np.asarray(state['metadata']['joint_positions'])
+                    events.append({'control_step':state['control_steps'],'reference_index':i,
+                        'reference_joints':q.tolist(),'measured_joints':measured.tolist(),
+                        'joint_reference_error_rad':float(np.max(np.abs(measured-q))),
+                        'command_issued':True,'execution_veto_checks':0,
+                        **({'reference_repeat':repeats>0} if tracking is not None else {})})
+                    terminal=bool(stop_on_success and self.action_log[-1]['evaluation_task_success'])
+                    if feedback is not None:stalled=feedback.update(state['metadata']['eef_pose_world_xyzw'],i)
+                    if tracking is None or terminal:break
+                    measured_arrival=pose_arrival(expected,state['metadata']['eef_pose_world_xyzw'],tracked_offset)
+                    joint_lead=float(np.max(np.abs(measured-q)))
+                    ready=(measured_arrival['reached'] if i==len(refs)-1 else joint_lead<=tracking['maximum_joint_lead_rad'])
+                    tracking['last_reference']={'index':i,**measured_arrival,'joint_lead_rad':joint_lead,
+                        'ready_for_next_reference':ready,'criterion':'final_pose_arrival' if i==len(refs)-1 else 'one_control_joint_lead'}
+                    if ready:
+                        tracking['references_advanced']+=1;break
+                    if repeats>=wait_steps or self.control_steps>=self.maximum_control_steps:
+                        tracking_failure=True;break
+                    repeats+=1;tracking['extra_controls']+=1
+                if tracking_failure:break
+            if tracking is not None:
+                complete=tracking['references_advanced']==len(refs)
+                tracking['goal']={**pose_arrival(goal_pose,self._eef_pose(),tracked_offset),'reference_path_completed':complete}
+                tracking['goal_reached']=bool(complete and tracking['goal']['reached'])
+                tracking['physical_infeasibility_proved']=False
         finally:self.in_batch=False;self._write_action_log()
         state=self._response_state()
-        return {**state,'trajectory':{'all_commands_issued':len(events)==len(refs),'planned_commands':len(refs),'issued_commands':len(events),
+        issued_path=0 if not events else events[-1]['reference_index']+1
+        complete=(issued_path==len(refs) and (tracking is None or tracking['goal_reached']))
+        return {**state,'trajectory':{'all_commands_issued':complete,'nominal_path_commands':len(refs),
+            'planned_commands':len(refs)+(tracking['extra_controls'] if tracking is not None else 0),'issued_commands':len(events),
             'terminated_on_simulator_success':terminal,
-            'termination_reason':'simulator_success' if terminal else 'trajectory_complete',
+            'termination_reason':'simulator_success' if terminal else
+                'reference_not_reached' if tracking_failure else 'trajectory_complete',
+            'terminated_on_tracking_error':bool(tracking_failure and not terminal),
             'physical_stall_is_execution_gate':False,
+            **({'arrival':tracking} if tracking is not None else {}),
             **({'push_feedback':feedback.result()} if feedback is not None else {}),
             'worker_seconds':time.perf_counter()-before,'execution_veto_checks':0,
             'maximum_joint_reference_error_rad':max((r['joint_reference_error_rad'] for r in events),default=0.),'events':events}}

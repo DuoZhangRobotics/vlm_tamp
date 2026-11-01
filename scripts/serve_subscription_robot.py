@@ -1101,7 +1101,7 @@ class RobotService:
              distance_m=.03,joint_degrees=None,joint_model_epoch=None,mode='controlled',
              contact_speed_m_s=.03,contact_surface='fingertips',preview=False,budget_seconds=120.,collision_policy='veto',
              approach_speed_rad_s=.6,stroke_length_m=None,search_seconds=None,stroke_plan_seconds=None,max_ineffective_strokes=2,withdrawal_distance_m=.015,
-             moving_part_id=None,contact_part_id=None):
+             moving_part_id=None,contact_part_id=None,approach_wait_steps=20):
         from vlm_tamp.contact_skill_service import run_skill
         arguments={key:value for key,value in locals().items() if key not in {'self','run_skill'}}
         return run_skill(self,'push',**arguments)
@@ -1110,7 +1110,7 @@ class RobotService:
                   distance_m=.03,joint_degrees=None,joint_model_epoch=None,
                   contact_speed_m_s=.03,preview=False,budget_seconds=120.,collision_policy='veto',
                   approach_speed_rad_s=.6,stroke_length_m=None,search_seconds=None,stroke_plan_seconds=None,max_ineffective_strokes=2,
-                  moving_part_id=None,contact_part_id=None):
+                  moving_part_id=None,contact_part_id=None,approach_wait_steps=20):
         from vlm_tamp.contact_skill_service import run_skill
         arguments={key:value for key,value in locals().items() if key not in {'self','run_skill'}}
         return run_skill(self,'hook_pull',**arguments)
@@ -1140,7 +1140,8 @@ class RobotService:
             raise ValueError('Invalid gripper, speed, or hold')
         if plan['kind']=='approach':self.active_grasp_contact_offset_m=float((plan.get('extra') or {}).get('contact_depth_offset_m',0.))
         refs = schedule(plan['path'],maximum_joint_speed=float(speed),endpoint_hold_steps=int(hold))
-        return self.issue(refs,gripper,plan_id)
+        return self.issue(refs,gripper,plan_id,
+            **({'arrival':{'maximum_wait_steps':20}} if plan['kind'] in {'free','approach'} else {}))
 
     def execute_sequence(self,plan_id,close_steps=40,speed=.35,hold=6,manipulation_gripper=1,
                          approach_speed=None,feedback_degrees=15.,calibrate_joint=False,open_steps=20):
@@ -1160,7 +1161,7 @@ class RobotService:
             'joints': target.tolist(), 'automatic_arm_recovery': False}
         return result
 
-    def issue(self, refs, gripper, label, *, articulated=False,camera_names=None,track_scene=True,push_feedback=None):
+    def issue(self, refs, gripper, label, *, articulated=False,camera_names=None,track_scene=True,push_feedback=None,arrival=None):
         if len(refs)>control_limit(self.state)-self.state['control_steps']:
             raise ValueError('Complete requested trajectory exceeds remaining physical-step budget')
         if len(refs):
@@ -1189,13 +1190,15 @@ class RobotService:
         np.save(self.episode/f'{self.calls:03d}-requested-{label}.npy',refs)
         self.state, result = execute_batch(self.sim,self.state,refs,gripper=gripper,event_sink=self.events.append,
                                           stop_on_success=self.stop_on_success,maximum_control_steps=getattr(self,'maximum_control_steps',control_limit(self.state)),
-                                          **({'push_feedback':push_feedback} if push_feedback is not None else {}))
+                                          **({'push_feedback':push_feedback} if push_feedback is not None else {}),
+                                          **({'arrival':arrival} if arrival is not None else {}))
         if result['issued_commands'] and gripper!=0:self.last_gripper_command=gripper
-        np.save(self.episode/f'{self.calls:03d}-issued-{label}.npy',refs[:result['issued_commands']])
+        issued_refs=np.asarray([event['reference_joints'] for event in result['events']],float).reshape(-1,7)
+        np.save(self.episode/f'{self.calls:03d}-issued-{label}.npy',issued_refs)
         compact = {k:v for k,v in result.items() if k!='events'}
         if result['issued_commands']:
             from vlm_tamp.timed_execution import endpoint_tracking
-            compact['endpoint_tracking']=endpoint_tracking(self.ik.chain,refs[result['issued_commands']-1],self.state['metadata'])
+            compact['endpoint_tracking']=endpoint_tracking(self.ik.chain,issued_refs[-1],self.state['metadata'])
         self.executions.append({'label':label,**compact})
         write_json(self.episode/'executions.json',self.executions)
         timing['trajectory_and_records_seconds']=time.perf_counter()-stage;stage=time.perf_counter()
@@ -1352,7 +1355,8 @@ class RobotService:
         summary.update(stop_on_simulator_success=self.stop_on_success,
             success_terminated_trajectories=sum(bool(x.get('terminated_on_simulator_success')) for x in self.executions),
             all_trajectories_completed_or_success_terminated=all(x.get('all_commands_issued',False) or x.get('terminated_on_simulator_success',False) for x in self.executions))
-        feedback_stops=[bool(x.get('termination_reason')=='measured_push_stall' and x.get('push_feedback',{}).get('stalled')) for x in self.executions]
+        feedback_stops=[bool((x.get('termination_reason')=='measured_push_stall' and x.get('push_feedback',{}).get('stalled'))
+            or x.get('terminated_on_tracking_error')) for x in self.executions]
         summary.update(feedback_terminated_trajectories=sum(feedback_stops),
             all_trajectories_completed_or_feedback_terminated=all(x.get('all_commands_issued',False)
                 or x.get('terminated_on_simulator_success',False) or stopped for x,stopped in zip(self.executions,feedback_stops)))

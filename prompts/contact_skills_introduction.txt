@@ -8,15 +8,27 @@ execute timed references. They supply no task-specific action sequence.
   region_xyxy=null, target_region_xyxy=null, direction_world=null,
   distance_m=0.03, joint_degrees=null, joint_model_epoch=null,
   mode="controlled", contact_speed_m_s=0.03, contact_surface="fingertips",
-  preview=false, budget_seconds=120): use the exact original-image integer
+  preview=false, budget_seconds=120, approach_wait_steps=20): use the exact original-image integer
   pixel and a contact_name from reset's contact_landmarks_in_tcp. Select the
   observed part with a region or current part mask. No nearby pixel, wrist
-  menu, stand-off or replacement contact is chosen. Without a supplied hand
-  quaternion, cuRobo solves the chosen contact point with free wrist orientation.
+  menu, stand-off or replacement contact is chosen. This operation uses point
+  IK with free wrist orientation. For an explicit orientation, use
+  plan_contact_pose with quaternion_xyzw and execute its approach.
   VAMP plans the free-space approach, checking arm/palm and allowing all finger
   contacts. Planning and execution use the same aperture. preview issues no motion.
-  After approach, the requested straight stroke starts at the actual measured
-  hand pose. It uses Cartesian waypoints and cuRobo IK, with no push path planner,
+  Approach execution waits when measured joint lag exceeds the existing
+  one-control increment (0.05 rad at 1 rad/s, 20 Hz). At the final goal it uses
+  the existing measured-arrival tolerance: 4 mm and 0.05 rad orientation.
+  Each reference can wait up to approach_wait_steps additional physics steps
+  (default 20 = one second), ending early when it catches up. Every step counts
+  against the episode. No target or IK solution is changed.
+  approach_not_reached means the physical approach was attempted but did not
+  arrive: the following push was NOT issued, and no contact is retained.
+  Inspect the measured error and current observation before choosing a new
+  explicit contact or orientation. A preview does not establish physical arrival.
+  After measured approach arrival, the requested straight stroke starts at
+  the actual hand pose. Arrival at the old target does not prove that the part
+  stayed still or that contact was acquired. It uses Cartesian waypoints and cuRobo IK, with no push path planner,
   CPU IK refinement or extra dense collision pass. Physics resolves contact.
   Requested, commanded and measured motion are different; inspect each result.
 
@@ -49,8 +61,11 @@ opening or closing. Geometry and motion measurements remain hypotheses/evidence.
 Controlled direction pushes attempt the full requested hand distance (including
 10 cm). stroke_length_m can explicitly divide it. Timing respects requested
 contact speed and the existing 1 rad/s joint reference limit. Tracking failures
-and measured stalls are reported; they do not silently trigger new views,
-corrective insertion or repeated strokes. No force/tactile sensing is assumed.
+are reported. The stroke also waits for measured joint lag, and reports
+push_reference_not_reached if it cannot follow a reference after one second.
+Its final completion measures the selected contact point, leaving orientation
+free as requested by point IK. This is physical feedback after attempting the
+motion, not a scene-based rejection or a different motion plan. No force/tactile sensing is assumed.
 
 push_and_release establishes slow contact, issues a bounded pulse and withdraws.
 Requested speed may differ from achieved speed, and final object motion/rebound

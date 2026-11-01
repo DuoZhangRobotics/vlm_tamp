@@ -45,10 +45,16 @@ def execute_sequence(service,plan_id,*,close_steps=40,speed=.35,approach_speed=N
 
     def issue(references,name,gripper):
         nonlocal last
-        last=service.issue(references,gripper,f'{plan_id}-{name}',articulated=name=='manipulation')
+        last=service.issue(references,gripper,f'{plan_id}-{name}',articulated=name=='manipulation',
+            **({'arrival':{'maximum_wait_steps':20}} if name=='approach' else {}))
         records.append({'stage':name,'artifact_id':service.calls,**last})
         result.update(task_success=bool(last.get('task_success')),episode_done=bool(last.get('episode_done')),
             observation=last.get('observation'),grasp_evidence=last.get('grasp_evidence'))
+        if name=='approach' and not result['episode_done'] and not result['task_success']:
+            result['approach_arrival']=last['execution']['arrival']
+            if not result['approach_arrival']['goal_reached']:
+                result.update(stop_reason='approach_not_reached',recovery_required=True,closure_issued=False)
+                return True
         return result['episode_done'] or result['task_success']
 
     try:
@@ -74,6 +80,9 @@ def execute_sequence(service,plan_id,*,close_steps=40,speed=.35,approach_speed=N
             if len(refs)+close_steps>remaining_controls(service.state):
                 result.update(stop_reason='approach_and_closure_exceed_remaining_controls',recovery_required=True);return result
         if issue(refs,'approach',-1):return result
+        if close_steps>remaining_controls(service.state):
+            result.update(stop_reason='closure_exceeds_remaining_controls',closure_issued=False,recovery_required=True)
+            return result
         service.calls+=1
         # Continue holding the intended approach reference during closure; the
         # arm may still be settling. Replanning uses the measured end state.

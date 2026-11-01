@@ -4,6 +4,28 @@ import time
 import numpy as np
 from .execution_limits import control_limit
 
+ARRIVAL_POSITION_TOLERANCE_M = .004
+ARRIVAL_ORIENTATION_TOLERANCE_RAD = .05
+
+
+def pose_arrival(target_pose, actual_pose, contact_local=None):
+    """Measured controller completion, using the existing reporting tolerance."""
+    from scipy.spatial.transform import Rotation
+    from .rekep_libero.geometry import pose_matrix
+    target,actual=pose_matrix(target_pose),pose_matrix(actual_pose)
+    offset=np.zeros(3) if contact_local is None else np.asarray(contact_local,float)
+    target_point=target[:3,3]+target[:3,:3]@offset
+    actual_point=actual[:3,3]+actual[:3,:3]@offset
+    position=float(np.linalg.norm(actual_point-target_point))
+    angle=float(Rotation.from_matrix(target[:3,:3].T@actual[:3,:3]).magnitude())
+    return {'reached':position<=ARRIVAL_POSITION_TOLERANCE_M and (contact_local is not None or angle<=ARRIVAL_ORIENTATION_TOLERANCE_RAD),
+        'position_error_m':position,'orientation_error_rad':angle,
+        'tracked_point':'TCP' if contact_local is None else 'selected_robot_contact',
+        'orientation_constrained':contact_local is None,
+        'position_tolerance_m':ARRIVAL_POSITION_TOLERANCE_M,
+        'orientation_tolerance_rad':ARRIVAL_ORIENTATION_TOLERANCE_RAD,
+        'source':'measured end-effector pose; no collision or IK recheck'}
+
 
 def endpoint_tracking(chain,reference,metadata):
     """Report measured arrival; never veto, extend or repeat a trajectory."""
@@ -15,8 +37,8 @@ def endpoint_tracking(chain,reference,metadata):
     angle=float(Rotation.from_matrix(desired[:3,:3].T@actual[:3,:3]).magnitude())
     return {'position_error_m':position,'orientation_error_deg':float(np.degrees(angle)),
         'maximum_joint_error_rad':float(np.max(np.abs(np.asarray(metadata['joint_positions'])-reference))),
-        'within_controller_reporting_tolerance':bool(position<.004 and angle<.05),
-        'reporting_tolerances':{'position_m':.004,'orientation_rad':.05},
+        'within_controller_reporting_tolerance':bool(position<=ARRIVAL_POSITION_TOLERANCE_M and angle<=ARRIVAL_ORIENTATION_TOLERANCE_RAD),
+        'reporting_tolerances':{'position_m':ARRIVAL_POSITION_TOLERANCE_M,'orientation_rad':ARRIVAL_ORIENTATION_TOLERANCE_RAD},
         'tolerance_source':'existing controller completion reporting; not a planning or execution gate',
         'reference':'last issued joint reference versus measured robot pose',
         'command_completion_is_not_arrival':True,'execution_veto_applied':False}

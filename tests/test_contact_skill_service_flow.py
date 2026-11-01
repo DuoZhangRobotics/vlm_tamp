@@ -85,7 +85,7 @@ def test_advisory_release_flow_and_native_success_termination(tmp_path,monkeypat
             self.state['metadata']['eef_pose_world_xyzw']=chain.forward(refs[-1]).tolist()
             success=native_success and label.startswith('push-stroke')
             if success:self.sim=None;self.ik=None
-            return {'execution':{'issued_commands':len(refs),'all_commands_issued':True},
+            return {'execution':{'issued_commands':len(refs),'all_commands_issued':True,**({'arrival':{'goal_reached':True}} if kwargs.get('arrival') else {})},
                 'observation':{'control_steps':self.state['control_steps'],'observation_id':self.calls},
                 'task_success':success,'episode_done':success}
         def capture(self):raise AssertionError('Advisory scene warnings must not force a perception recovery gate')

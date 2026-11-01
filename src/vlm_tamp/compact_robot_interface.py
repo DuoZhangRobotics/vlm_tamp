@@ -56,6 +56,9 @@ For arcs, point mode constrains only the grip point and leaves wrist orientation
 free. It does not carry the whole hand rigidly with the door. Choose rigid to
 request that attachment relation, or jaw_axis to retain only the closing axis.
 The planner's returned path is used without an extra dense validation pass.
+Free approaches use measured progress and report execution.arrival.goal_reached.
+Sending all nominal commands does not establish arrival. A targeted push or
+sequence closure starts only after its approach has physically reached its goal.
 Contact skills when enabled: push_stroke, push, continue_push, hook_pull.
 push_stroke(direction_world, distance_m) moves the current hand directly in
 simulation, holding its aperture. No object model, prior contact or search is
@@ -76,8 +79,9 @@ Other arm/gripper motion clears target association; push_stroke remains availabl
 push modes: controlled; push_and_release. Controlled push insertion and strokes
 use physical execution feedback: observed scene collisions and uncertain object
 tracking do not veto them. World distance requests command hand travel as one
-stroke by default. A measured physical stall is reported without shortening the requested stroke; retain the
-contact reference. Free approaches, hooks and grasped planning retain their scene
+stroke by default. Measured tracking lag holds the same reference; an unreached reference returns
+physical feedback without issuing the rest blindly. The final point goal must
+be reached for completion. No extra collision check is added. Free approaches, hooks and grasped planning retain their scene
 collision policy. Wrist RGB-D is included in push feedback. No extra dense validation.
 For observed-scene planners, points inside the measured current robot geometry are removed
 from the collision map with zero padding. Future candidate poses cannot clear points.
@@ -225,11 +229,11 @@ def compact_response(response):
             'scene_refresh_required','next_geometry_interfaces','retained_scene_reference_control_step','feedback_cameras',
             'budget_feasibility_scope','nominal_requested_motion_controls','nominal_cost_assumption','preview_artifacts','robot_valid_plan_available','control_budget_feasible','minimum_following_control_steps',
             'collision_policy','environment_collision_predictions','cartesian_path_deviation','simulator_physical_contacts_enabled','current_robot_point_filter',
-            'perception_recoveries','recovery_options','physical_infeasibility_proved','release_evidence','motion_settings','retained_joint_estimate_id','motion_warnings','contact_warnings','release_motion_observed','release_motion_reference')))
+            'perception_recoveries','recovery_options','physical_infeasibility_proved','release_evidence','approach_arrival','motion_arrival','motion_settings','retained_joint_estimate_id','motion_warnings','contact_warnings','release_motion_observed','release_motion_reference')))
         result['stage_count']=len(value.get('stages',[]))
         result['feedback_count']=sum('object_motion' in s for s in value.get('stages',[]))
         result['stages']=[pick(s,('stage','artifact_id','control_steps','measured_contact_speed',
-            'robot_reference_tracking',
+            'robot_reference_tracking','arrival',
             'requested_motion_m','requested_contact_speed_m_s','observed_contact_progress_m','engagement','object_motion',
             'planning_timing_seconds','scene_update','material_point_offset_m','physical_motion','control_budget_truncated')) for s in value.get('stages',[])[-3:]]
         diagnostic=value.get('diagnostic',{})
@@ -332,7 +336,8 @@ def compact_response(response):
     if 'execution' in value:
         result['execution'] = pick(value['execution'], ('planned_commands', 'issued_commands',
             'all_commands_issued', 'terminated_on_simulator_success', 'termination_reason',
-            'worker_seconds', 'wall_seconds', 'maximum_joint_reference_error_rad','endpoint_tracking'))
+            'worker_seconds', 'wall_seconds', 'maximum_joint_reference_error_rad','endpoint_tracking',
+            'arrival','terminated_on_tracking_error','nominal_path_commands'))
     if 'motion_effect' in value:result['motion_effect']=value['motion_effect']
     if 'scene_observation_support' in value:result['scene_observation_support']=evidence(value['scene_observation_support'])
     if isinstance(value.get('result'), dict):

@@ -8,7 +8,7 @@ import json
 import math
 from numbers import Real
 
-VERSION = 'robot-request-contract-v17'
+VERSION = 'robot-request-contract-v18'
 GROUND_FIELDS = ('camera', 'contact_box_xyxy', 'moving_panel_box_xyxy',
                  'hinge_pixels_xy', 'initial_image_direction_xy','contact_pixel_xy')
 GROUND_HELP = '''- ground(regions, moving_part_id=null, contact_part_id=null): lift your current
@@ -213,6 +213,7 @@ def operation_schemas(image_sizes=None):
         'joint_degrees':nullable(angle),
         'joint_model_epoch':nullable(integer(0,2**31-1)),
         'contact_speed_m_s':number(exclusiveMinimum=0),
+        'approach_wait_steps':{'type':'integer','minimum':0,'description':'Maximum extra 20 Hz controls to wait for each approach reference; default 20 (one second). Ends early on measured arrival; all steps count toward the episode.'},
         'approach_speed_rad_s':speed,'stroke_length_m':nullable(number(exclusiveMinimum=0)),
         'search_seconds':{**nullable(number(exclusiveMinimum=0)),
             'description':'Initial contact-search allowance; default 30 seconds, capped by remaining skill/episode time.'},

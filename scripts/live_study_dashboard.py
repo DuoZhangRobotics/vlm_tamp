@@ -48,6 +48,16 @@ def _live_process(active):
 def issue_explanation(diagnostic):
     """Keep the failed module and cause visible without opening a large JSON log."""
     if not isinstance(diagnostic,dict):return None
+    arrival=diagnostic.get('arrival')
+    if arrival and not arrival.get('goal_reached'):
+        current=arrival.get('last_reference',{});goal=arrival.get('goal',{})
+        return (f"Physical tracking stopped at reference {current.get('index','?')}. "
+            f"Current-reference position error: {1000*current.get('position_error_m',0):.1f} mm; "
+            f"final-goal error: {1000*goal.get('position_error_m',0):.1f} mm. "
+            f"Extra controls used: {arrival.get('extra_controls',0)}. "+
+            ('A following targeted push was not started. ' if diagnostic.get('push_stroke_issued') is False else
+             'Remaining motion references were not issued. ')+
+            'No IK or path recheck was applied.')
     if diagnostic.get('grounding_status')=='door_only' and diagnostic.get('handle_fit',{}).get('reason'):
         return ('Handle fitting: '+diagnostic['handle_fit']['reason']+
             ' The door/joint model was retained for tracking and joint-linked contact motion; pinch-grasp geometry remains unavailable.')
@@ -179,6 +189,12 @@ def _run_data(study,run,entry,active):
             'Retained reference cameras':result.get('tracking_reference_camera_count'),
             'Commanded contact travel (m)':result.get('commanded_contact_distance_m'),
             'Measured contact progress (m)':result.get('measured_contact_progress_m')})
+    arrival=result.get('approach_arrival') or result.get('motion_arrival') or result.get('execution',{}).get('arrival')
+    if arrival:
+        skill.update({'Requested robot goal reached':arrival.get('goal_reached'),
+            'Final robot goal error (mm)':1000*arrival.get('goal',{}).get('position_error_m',0),
+            'Extra tracking controls':arrival.get('extra_controls'),
+            'Tracking policy':arrival.get('mode')})
     cleared=result.get('current_robot_point_filter')
     if cleared:
         skill.update({'Last current-pose points cleared':cleared.get('last_removed_points',cleared.get('total_removed_points')),
