@@ -29,7 +29,9 @@ def render(study,force=False):
         timing=read_json(run/'timing-breakdown.json') if (run/'timing-breakdown.json').exists() else {}
         episode=read_json(run/'live-episode-status.json') if (run/'live-episode-status.json').exists() else {}
         result=done.get(entry['run'],{})
-        outcome=('Success' if result.get('official_task_success') else 'Failed') if result else 'Running' if state.get('running') else 'Queued'
+        outcome=(('Success' if result.get('official_task_success') else 'Failed') if result else
+            'Interrupted' if state.get('status_text')=='Infrastructure interruption' else
+            'Running' if state.get('running') else 'Not started' if manifest.get('problem') else 'Queued')
         fmt=lambda v:f'{v:.1f}' if isinstance(v,(float,int)) else '—'
         rows.append(f'<tr><td>Closing {index}</td><td>{outcome}</td><td>{result.get("control_steps",episode.get("control_steps","—"))}</td>'
             f'<td>{fmt(timing.get("actor_wall_seconds"))}</td><td>{fmt(timing.get("service_wall_seconds"))}</td>'
@@ -42,6 +44,7 @@ def render(study,force=False):
 <h1>Current-code closing checks</h1><p>Fresh Luna/high, no inherited memory, 600 controls per episode. Two trials only.</p>
 <p><button onclick="location.reload()">Refresh overview</button> No automatic page reload.</p>'''
     text+=f'<p>{len(done)} / 2 completed; {sum(bool(r.get("official_task_success")) for r in done.values())} native successes.</p>'
+    if manifest.get('problem'):text+='<p>Stopped: '+html.escape(manifest['problem']['reason'])+'</p>'
     text+='<div class="scroll"><table><tr><th>Case</th><th>Outcome</th><th>Controls</th><th>Total seconds</th><th>Robot tools</th><th>Luna/transport/analysis</th><th>Inspect</th></tr>'+''.join(rows)+'</table></div>'
     text+=''.join(health)+''.join(videos)
     (study/'watch.html').write_text(text+'\n');_last_publish=time.monotonic()

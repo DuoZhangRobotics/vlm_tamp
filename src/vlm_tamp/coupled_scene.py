@@ -274,6 +274,8 @@ def moving_mask(points, camera, spec, handle_cloud, panel_mask, choices=None, co
     primary = bounded & selected
     if spec.get('generic_part_joint_model'):
         # A door surface is not a cylindrical handle or an attached gripper.
+        if explicit_mask:
+            primary |= cKDTree(handle).query(points,distance_upper_bound=.004)[0]<.004
         return primary
     # Cached RGB boxes can contain only a thin portion of the upright face.
     # Extend over connected *observed* planar support between the grounded

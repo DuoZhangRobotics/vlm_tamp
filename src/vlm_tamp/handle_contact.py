@@ -121,6 +121,7 @@ def selected_panel(camera, choices, panel_mask=None):
     if box.sum()<100:
         raise ValueError(f'Panel fit has only {int(box.sum())} non-robot depth samples after excluding {excluded} robot samples; inspect another visible view')
     face = upright_plane(world[box], np.asarray(camera['camera_to_world'])[:3, 3])
+    face['selected_mask'] = box
     mask = box & (np.abs((world-face['point'])@face['normal'])<.006)
     # Use the existing upright-face height quantiles, measured on its inliers.
     # A rectangle is a projection frustum: tabletop points below the door are
@@ -259,6 +260,10 @@ def ground_panel(cameras, choices, previous_spec, metadata=None, *, fixed_joint=
     """Retain a door/joint hypothesis independently of the availability of a handle."""
     camera = cameras[choices['camera']]
     face, mask, excluded = selected_panel(camera, choices, panel_mask)
+    if panel_mask is not None:
+        # Keep nonplanar observed pieces of the explicitly selected part too.
+        # The plane describes the joint geometry, not the entire moving shape.
+        mask = face['selected_mask']
     cloud = voxel_points(np.asarray(camera['world_points'])[mask], .0015)
     anchor = np.median(cloud, axis=0)
     mechanism, direction, band, measured = door_model(

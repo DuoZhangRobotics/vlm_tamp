@@ -66,6 +66,19 @@ def test_door_only_fit_does_not_require_bar_or_claim_a_grasp():
     assert len(cloud)>100 and mask.sum()>100
 
 
+def test_door_only_mask_keeps_observed_protrusions_as_moving_geometry():
+    from vlm_tamp.coupled_scene import moving_mask
+    cameras,regions=observed_scene();camera=cameras['view'];world=camera['world_points']
+    part=np.isfinite(world).all(2)&(world[:,:,2]>.94)
+    regions.pop('contact_box_xyxy');regions['panel_mask_selected']=True
+    model,cloud,mask,_,_=ground_panel(cameras,regions,{'joint_family':'revolute','target_progress':1.5},panel_mask=part)
+    assert np.any(cloud[:,1]<-.02)
+    bar=cloud[cloud[:,1]<-.02][::10]
+    points=np.vstack([bar,[.25,0.,.9]])
+    ownership=moving_mask(points,camera,model.spec,cloud,mask,regions)
+    assert ownership[:-1].all() and not ownership[-1]
+
+
 def test_selected_mask_holes_and_camera_visibility_constrain_projection():
     camera={'world_points':np.zeros((8,8,3)),'intrinsic':np.eye(3),'camera_to_world':np.eye(4)}
     mask=np.zeros((8,8),bool);mask[1,1]=True;mask[3,3]=True

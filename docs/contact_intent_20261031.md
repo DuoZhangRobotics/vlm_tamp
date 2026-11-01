@@ -224,3 +224,24 @@ and issues zero controls. Synthetic geometry tests cover a coarse region with
 dense tabletop contamination, part-mask holes, stale masks, door-only recovery,
 and preservation of direction failures. These are geometry regressions, not
 fresh-policy task-success measurements.
+
+Final validation: 143 tests passed, three archived-fixture skips; the unrelated
+OS-isolation integration test was deselected. Door-only mask models also retain
+observed nonplanar pieces of the selected part as moving geometry, without
+treating the whole part as a cylindrical handle.
+
+The attempted fresh run in `results/luna-grounding-selection-20261031` stopped
+before its first observation. Reset spent 152.60 seconds in renderer startup and
+failed to initialize EGL; no robot controls were issued. The experiment was
+stopped and marked as an infrastructure interruption, excluded from task outcomes.
+State49 was not started. Peak monitored job memory was approximately 1.02 GiB,
+with zero observed memory/full-I/O pressure and no memory-limit events.
+
+A separate small CUDA initialization probe with device 3 returned error 100,
+`CUDA_ERROR_NO_DEVICE`, despite NVML listing the GPU. Kernel and loaded CUDA
+driver versions both report 580.178.04. Explicit NVIDIA EGL selection also hung;
+recent kernel logs contain NVIDIA bad-register-read and full-chip-reset-related
+assertions. Some NVML/proc driver queries stalled as well. This is an unresolved
+GPU/driver environment problem, not a new measured manipulation failure. No GPU
+reset, device permission change, or interruption of other users' jobs was made.
+Do not infer fresh-policy improvement from the recorded-input fitting repair.
