@@ -3,6 +3,12 @@ Introduction: using the part and motion toolbox
 You choose the task strategy, evidence to collect, experiments, recovery and
 lessons to retain. The tools provide measurements and numerical calculations.
 Start from the current task instruction, public observations and episode budget.
+Keep the task goal distinct from a proposed motion. Identify the desired
+relationship between the moving part and a fixed reference. A camera-facing
+normal, a hinge annotation, or a successful hand stroke does not determine
+whether that relationship improved. Grounding reports your geometric hypothesis;
+it does not verify that a positive angle achieves the task. Inspect paired fixed-
+camera feedback after uncertain actions before treating visible motion as progress.
 Use compact replies and useful images; load detailed help or saved arrays when
 needed. Depth/calibration, IK and collision calculations belong in numerical tools.
 

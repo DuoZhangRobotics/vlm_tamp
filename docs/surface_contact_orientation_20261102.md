@@ -341,6 +341,55 @@ whether the deeper cause is the actor's visual interpretation or the way public
 goal/progress evidence is communicated. The next focused diagnostic should test
 that interpretation without supplying successful coordinates or action sequences.
 
+## Communication audit and recorded-video access
+
+The user requested an audit of actual inputs/feedback before another 17/49
+evaluation. The earlier actors received the correct task instruction. State 17
+requested six visual inspections, including three before/after comparisons, six
+overviews and one history lookup. State 49 did not call that local comparison
+helper. Neither called `track_video_motion`; no direct RGB video-inspection command
+was exposed then. These facts do not establish that the model cannot recognize
+opening/closing. State 17 did receive past images, but some feedback captures had
+shrunk to agentview/wrist and its interpretation of the visible movement was wrong.
+
+Confirmed communication defects and repairs:
+
+- Per-operation push help described only point IK even though the schema/index
+  offered the surface-normal model. Help now documents both and distinguishes
+  contact orientation from desired task motion.
+- The compact grounding reply dropped the measured 52 mm plane-fit residual and
+  literal hinge depth samples. Those fields are now retained. Public geometry
+  reports task intent separately and does not echo "close" as the meaning of an
+  unverified positive joint angle. A positive contact tangent is calculated only
+  from the caller's declared geometry, with no task sign inferred.
+- Motion replies now lead with separate hand execution, object-motion status and
+  task-progress status. A large hand displacement cannot become a goal-progress
+  claim. Stale object measurements carry their original control step.
+- Feedback keeps the requested view, fixed agentview/frontview context and wrist
+  within the existing four-view cap. Each physical action supplies a paired
+  fixed-camera before/after sheet from existing captures. No joint angle or
+  semantic opening/closing label is added to those images.
+- `inspect_video(start_control_step, end_control_step, max_frames=8,
+  region_xyxy=null)` exposes bounded chronological recorded agentview RGB. It
+  reads live JPEGs or the completed MP4; it does not step physics, render new
+  sensors, interpolate depth or read private object state. Exact-step requests
+  return a frame only if recorded. Maximum 12 frames per reply; original images
+  and control timestamps remain available. A motion comparison provides a ready
+  interval for optional video lookup.
+
+Generic guidance asks the actor to identify the desired moving-part/fixed-reference
+relationship, distinguish motion toward a pivot from rotation about it, and inspect
+evidence before extrapolating an uncertain direction. It supplies no world-axis
+choice, successful pixel, hinge location, state-dependent trigger or action script.
+No IK, planner, collision permission, controller tolerance or budget was changed.
+
+Validation before evaluation: 139 targeted tests passed, plus the real isolation
+test in the same host environment used by Luna. The physical preflight in
+`results/communication-preflight-20261102` completed the previously tested short
+stroke, generated a fixed agentview/frontview comparison and returned eight
+requested video frames with no additional controls. This preflight was an operator
+test; its coordinates and results are excluded from the fresh actor inputs.
+
 All diagnostic pixels/settings above were operator inputs, excluded from Luna
 prompts and memory. Native object angles/contacts are evaluation-only evidence.
 

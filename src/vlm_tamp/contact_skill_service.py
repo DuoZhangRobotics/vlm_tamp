@@ -141,8 +141,10 @@ def feedback_camera_names(tracker,requested,available,previous=()):
     counts=getattr(tracker,'last_view_counts',{})
     ranked=sorted((name for name in references if name in available),
         key=lambda name:-counts.get(name,len(references[name]['pixels'])))
+    # Preserve context for goal assessment, including strokes without a target
+    # tracker. The existing four-view cap also retains wrist/contact feedback.
     names=list(dict.fromkeys(([requested] if requested in available else [])+
-        (['wrist'] if 'wrist' in available else [])+ranked))[:4]
+        [name for name in ('agentview','frontview','wrist') if name in available]+ranked))[:4]
     # Keep ordering stable when the captured set itself has not changed.
     return list(previous) if set(names)==set(previous) else names
 
@@ -439,6 +441,9 @@ def run_skill(
         def refresh_feedback_views(reference_tracker):
             nonlocal view_names
             available=set(service.cameras)|set(reference_tracker.tracker.references)
+            for record in getattr(service,'observation_records',{}).values():
+                if record.get('attempt')==getattr(service,'attempt',None):
+                    available.update(record.get('cameras',[]))
             selected_views=feedback_camera_names(reference_tracker,camera,available,view_names)
             if selected_views!=view_names:
                 result.setdefault('feedback_camera_changes',[]).append({
@@ -486,6 +491,7 @@ def run_skill(
             reply=service.issue(refs,0,label,camera_names=view_names,track_scene=False,
                 **({'push_feedback':feedback} if feedback is not None else {}),
                 **({'arrival':arrival} if arrival is not None else {}))
+            if 'visual_comparison' in reply:result['visual_comparison']=reply['visual_comparison']
             if feedback is not None:
                 feedback_history=reply['execution'].get('push_feedback',{}).pop('_continuation_history',[])
             if reply['execution']['issued_commands']:geometry_current=False

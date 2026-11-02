@@ -31,7 +31,8 @@ def setup(tmp_path, monkeypatch, *, accepted):
                         SimpleNamespace(observe=lambda *a, **k: fit))
     monkeypatch.setattr(module, 'execute_batch', lambda *a, **k:
                         ({'control_steps': 5, 'metadata': {'joint_positions': [0.] * 7,'eef_pose_world_xyzw':[0,0,0,0,0,0,1]}},
-                         {'issued_commands': 5, 'planned_commands': 5, 'all_commands_issued': True}))
+                         {'issued_commands': 5, 'planned_commands': 5, 'all_commands_issued': True,
+                          'events':[{'reference_joints':[0.]*7} for _ in range(5)]}))
     return module, robot, scene, transform
 
 

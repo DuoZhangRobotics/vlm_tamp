@@ -107,6 +107,62 @@ def test_phase_instructions_and_real_budget_are_preserved():
     assert compact_response(value)['result'] == value['result']
 
 
+def test_hand_travel_and_stale_object_evidence_are_not_task_progress():
+    value={'skill':'continue_push','task_instruction':'Move the part to its target',
+        'task_success':False,'robot_motion_executed':True,'stop_reason':'stroke_executed',
+        'measured_contact_progress_m':.12,'object_motion_status':'unresolved',
+        'observation':{'control_steps':200},'part_motion_evidence':{
+            'latest':{'accepted':False,'reason':'insufficient_visible_matches','control_step':100}},
+        'motion_arrival':{'goal_reached':True},'visual_comparison':{'comparison_image':'paired.png'}}
+    original=copy.deepcopy(value)
+    result=compact_response({'ok':True,'result':value})
+    assert list(result).index('feedback')<list(result).index('result')
+    feedback=result['feedback']
+    assert feedback['task_progress_assessment']=='not_measured_by_motion_tool'
+    assert feedback['measured_hand_travel_along_request_m']==.12
+    assert not feedback['object_measurement_is_current']
+    assert feedback['visual_comparison']['comparison_image']=='paired.png'
+    assert value==original
+
+
+def test_normal_contact_option_is_in_generated_push_help(tmp_path):
+    text=(ROOT/'prompts/contact_skills_introduction.txt').read_text()
+    install(tmp_path,text,attempts=1,initial_attempts=1,practice_mode=False)
+    help_text=(tmp_path/'tools/push.txt').read_text()
+    assert 'contact_constraint="surface_normal"' in help_text and 'surface_normal_world' in help_text
+
+
+def test_compact_grounding_keeps_plane_residual_and_literal_depth_samples():
+    fit={'surface_plane_rms_m':.052,'hinge_depth_samples_world_m':[[1,2,3],[1,2,4]],
+        'moving_observed_points':8000,'simulator_geometry_used':False}
+    response={'ok':True,'result':{'model':{'task_motion_intent':'close','task_direction_verified':False},
+        'direction_contract':{'requested_task_motion':'close','grounding_positive_direction_intent':None},
+        'fit_diagnostics':fit}}
+    output=compact_response(response)
+    assert output['result']['fit_diagnostics']==fit
+    assert output['feedback']['surface_plane_rms_m']==.052
+    assert not output['feedback']['task_direction_verified']
+
+
+@pytest.mark.parametrize('intent',['open','close'])
+def test_exported_axis_sign_does_not_inherit_task_intent(tmp_path,intent):
+    from types import SimpleNamespace
+    import serve_subscription_robot as module
+    robot=module.RobotService.__new__(module.RobotService)
+    robot.workspace=tmp_path;robot.public=tmp_path/'robot_data';robot.attempt=1;robot.calls=1;robot.epoch=1
+    robot.spec={'motion':intent,'joint_axis_world':[0,0,1],'joint_origin_world_m':[0,0,0],
+        'source_anchor_world_m':[1,0,0],'direction_source':{'task_direction_status':'caller_specified'}}
+    robot.cloud=np.zeros((1,3));robot.scene=SimpleNamespace(moving_reference=robot.cloud,static_points=robot.cloud)
+    original=copy.deepcopy(robot.spec)
+    response=robot.export_geometry({'surface_plane_rms_m':.01})
+    contract=response['direction_contract']
+    assert contract['grounding_positive_direction_intent'] is None
+    assert contract['task_direction_status']=='unverified'
+    assert contract['positive_contact_tangent_world']==[0.,1.,0.]
+    assert response['model']['task_motion_intent']==intent and 'motion' not in response['model']
+    assert robot.spec==original
+
+
 def test_arc_description_matches_the_unchanged_numeric_query(tmp_path, monkeypatch):
     service = module_at('compact_service_for_test', ROOT / 'scripts/serve_subscription_robot.py')
     robot = service.RobotService.__new__(service.RobotService)

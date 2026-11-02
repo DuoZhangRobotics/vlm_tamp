@@ -3,17 +3,25 @@ Contact tools: caller choices and numerical execution
 You choose the target, contact pixel, robot contact point and desired motion.
 The tools convert calibrated RGB-D and robot offsets, solve cuRobo IK, and
 execute timed references. They supply no task-specific action sequence.
+Describe the desired part/reference relationship separately from the robot's
+contact and motion. A surface normal gives a face orientation, not the direction
+that achieves the task. A pivot locates a rotation axis, not a destination.
+For an uncertain direction, a short probe followed by a fixed-view before/after
+comparison is more informative than assuming a long hand stroke is task progress.
 
 - push(observation_id, camera, contact_pixel_xy, contact_name,
   region_xyxy=null, target_region_xyxy=null, direction_world=null,
   distance_m=0.03, joint_degrees=null, joint_model_epoch=null,
   mode="controlled", contact_speed_m_s=0.03, contact_surface="fingertips",
-  preview=false, budget_seconds=120, approach_wait_steps=20): use the exact original-image integer
+  preview=false, budget_seconds=120, approach_wait_steps=20,
+  contact_constraint="point", surface_normal_world=null): use the exact original-image integer
   pixel and a contact_name from reset's contact_landmarks_in_tcp. Select the
   observed part with a region or current part mask. No nearby pixel, wrist
-  menu, stand-off or replacement contact is chosen. This operation uses point
-  IK with free wrist orientation. For an explicit orientation, use
-  plan_contact_pose with quaternion_xyzw and execute its approach.
+  menu, stand-off or replacement contact is chosen. Point IK leaves wrist
+  orientation free. For a selected observed face, contact_constraint="surface_normal"
+  with its signed outward surface_normal_world aligns the chosen robot pad against
+  that face while leaving twist free. This does not set direction_world or the goal.
+  plan_contact_pose also accepts a full quaternion_xyzw when you choose one.
   VAMP plans the free-space approach, checking arm/palm and allowing all finger
   contacts. Planning and execution use the same aperture. preview issues no motion.
   Approach execution waits when measured joint lag exceeds the existing
@@ -42,16 +50,28 @@ execute timed references. They supply no task-specific action sequence.
   direction and distance are needed. No target, hinge or contact is assumed;
   object motion is unmeasured. Hold the existing gripper aperture.
 
+- inspect_video(start_control_step, end_control_step, max_frames=8,
+  region_xyxy=null): inspect recorded agentview RGB over an executed interval.
+  Returns a chronological contact sheet and individual original-resolution frames
+  with control steps and simulated timestamps. Equal start/end requests one
+  recorded frame; max_frames is 2..12 for interval sampling. A crop uses original
+  image pixels. This reads existing live frames or the completed recording; it
+  does not advance physics, capture new images, estimate a hinge or choose a
+  task direction. Intermediate video frames have no new depth. Use current
+  RGB-D observations, not resized video thumbnails, when selecting geometry.
+
 - hook_pull uses the same explicit pixel/contact fields and an inward-facing
   pad on a visible retaining feature, without pinching. A flat selection has
   no retaining thickness. A small test motion measures engagement; unknown
   tracking is not evidence that a hook has engaged. Hook evidence is distinct
   from pinch-grasp evidence.
 
-- plan_contact_pose(point_world_m, contact_name, quaternion_xyzw=null) converts
+- plan_contact_pose(point_world_m, contact_name, quaternion_xyzw=null,
+  contact_constraint="point", surface_normal_world=null) converts
   a measured point and chosen robot contact offset into cuRobo IK and a VAMP
   approach. An optional quaternion requests that orientation explicitly.
   Execute the returned plan with gripper=0 to keep the planned aperture.
+  The surface-normal model and a full quaternion are alternative constraints.
 
 Supply either direction_world or a signed increment of an explicitly associated
 joint, including for previews. A surface normal does not determine task intent.
@@ -63,8 +83,8 @@ Controlled direction pushes attempt the full requested hand distance (including
 contact speed and the existing 1 rad/s joint reference limit. Tracking failures
 are reported. The stroke also waits for measured joint lag, and reports
 push_reference_not_reached if it cannot follow a reference after one second.
-Its final completion measures the selected contact point, leaving orientation
-free as requested by point IK. This is physical feedback after attempting the
+Its final completion measures the selected contact point and, when requested,
+the selected face normal; point-only IK leaves orientation free. This is physical feedback after attempting the
 motion, not a scene-based rejection or a different motion plan. No force/tactile sensing is assumed.
 
 push_and_release establishes slow contact, issues a bounded pulse and withdraws.
@@ -77,3 +97,10 @@ may execute if a whole physical push cannot be solved. Read reachable_prefix and
 stop_reason. Fresh attempts re-estimate geometry; no successful coordinates or
 state-specific triggers are supplied. Record your own successes, failures and
 uncertainty separately from this tool description.
+
+Motion replies separate hand travel, object-motion evidence and native task
+success. Open feedback.visual_comparison.comparison_image: it pairs existing
+before/after images from the same fixed cameras. Inspect the moving part relative
+to the fixed task reference. A smaller projected silhouette alone is ambiguous,
+and unknown object tracking does not validate a direction. These are evidence
+tools, not required action sequences or motion gates.

@@ -9,7 +9,6 @@ from vlm_tamp.compact_robot_interface import compact_response
 from vlm_tamp.rigid_hinge_tracking import RGBDHingeTracker
 from vlm_tamp.subscription_tasks import task_spec
 from test_scene_motion_observation import setup
-from test_robot_sequence import service
 
 
 def empty_tracker():
@@ -101,19 +100,17 @@ def test_task_selection_changes_instruction_and_motion_without_geometry():
         task_spec('drawer')
 
 
-def test_closing_grounding_uses_task_direction_and_selected_sensor_regions(tmp_path, monkeypatch):
-    module, robot = service(tmp_path)
-    robot.task_spec = task_spec('close_microwave')
-    robot.sim = object(); robot.cameras = {'frontview': {'rgb': np.zeros((512, 512, 3), dtype=np.uint8)}}
-    robot.rebuild = lambda: None
-    robot.export_geometry = lambda evidence: robot.spec
-    seen = []
-    def fit(cameras, choices, template, metadata):
-        seen.append(choices)
-        return SimpleNamespace(spec=template), np.zeros((10, 3)), None, [], {'cylinder_radius_m': .01}
-    monkeypatch.setattr(module, 'ground_handle', fit)
-    result = robot.ground({'camera': 'frontview', 'contact_box_xyxy': [70, 20, 80, 80],
-        'moving_panel_box_xyxy': [10, 10, 90, 90], 'hinge_pixels_xy': [[10, 10], [10, 90]],
-        'initial_image_direction_xy': None})
-    assert seen[0]['motion'] == result['motion'] == 'close'
-    assert result['instruction'] == 'close the microwave'
+def test_task_intent_does_not_change_literal_grounding_inputs(tmp_path, monkeypatch):
+    from test_grounding_selection import service as grounding_service
+    import vlm_tamp.explicit_grounding as explicit
+    _,robot,regions=grounding_service(tmp_path,monkeypatch)
+    original=explicit.ground_pixels;seen=[]
+    def fit(cameras,metadata,choices,**kwargs):
+        seen.append(copy.deepcopy(choices))
+        return original(cameras,metadata,choices,**kwargs)
+    monkeypatch.setattr(explicit,'ground_pixels',fit)
+    request={k:v for k,v in regions.items() if k!='motion'}
+    robot.ground(request)
+    assert 'motion' not in seen[0]
+    assert seen[0]['hinge_pixels_xy']==request['hinge_pixels_xy']
+    assert seen[0]['contact_pixel_xy']==request['contact_pixel_xy']

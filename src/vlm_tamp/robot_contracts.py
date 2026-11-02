@@ -242,6 +242,9 @@ def operation_schemas(image_sizes=None):
             parameters(contact_arguments,['observation_id','camera','contact_pixel_xy','contact_name'])),
         'reset': ('Reset the supplied episode and return current sensor observations.', parameters()),
         'observe': ('Read current RGB-D and robot state without motion.', parameters()),
+        'inspect_video': ('Inspect a bounded interval of already recorded agentview RGB frames; no motion or new capture.', parameters({
+            'start_control_step':integer(0,2**31-1),'end_control_step':integer(0,2**31-1),
+            'max_frames':integer(2,12),'region_xyxy':nullable(box)},['start_control_step','end_control_step'])),
         'motion_settings': ('Read effective motion, collision, numerical and control-budget settings without motion.',parameters()),
         'episode_status': ('Read current success and time/control budgets without motion.', parameters()),
         'await_request': ('Retrieve an existing pending request; never resubmit its action.', parameters({'request_id': {'type': 'string', 'pattern': '^[0-9a-f]{32}$'}}, ['request_id'])),

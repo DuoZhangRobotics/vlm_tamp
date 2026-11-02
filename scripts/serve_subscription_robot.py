@@ -133,7 +133,7 @@ class RobotService:
         write_json(self.output/'inherited-tools.json', {
             'source_code_visible_to_agent': False,
             'separately_billed_model_calls_allowed': False,
-            'geometry_priors': ['upright panel and vertical handle cylinder',
+            'geometry_priors': ['literal caller RGB-D selections; no upright/cylinder/shape prior',
                 'task direction is caller-selected; an unresolved hint leaves it unknown',
                 'bounded observed-point association and functional-finger contact'],
             'grasp_priors': ['small native GraspGen Panda batch; closest valid IK and one approach query per pose'],
@@ -356,6 +356,16 @@ class RobotService:
         if camera not in record['cameras']:raise ValueError('Unknown observed camera')
         return self.completion.surface(record,int(observation_id),camera,polygon_xy)
 
+    def inspect_video(self,start_control_step,end_control_step,max_frames=8,region_xyxy=None):
+        """Read only recorded RGB; do not render, advance physics, or infer direction."""
+        if not self.attempt:raise ValueError('Reset before inspecting the recording')
+        if end_control_step>self.state['control_steps']:
+            raise ValueError('The interval must lie within already executed control steps')
+        from vlm_tamp.observed_video import inspect_recording
+        folder=self.public/f'attempt{self.attempt:02d}'/f'video-inspection{self.calls:03d}'
+        return inspect_recording(self.episode,folder,self.workspace,start_control_step,end_control_step,
+            max_frames,region_xyxy)
+
     def compare_surfaces(self,first_id,second_id,pixels_first_xy=None,pixels_second_xy=None):
         return self.completion.compare(first_id,second_id,pixels_first_xy,pixels_second_xy)
 
@@ -431,14 +441,24 @@ class RobotService:
         dest.mkdir(parents=True, exist_ok=True)
         np.savez_compressed(dest/'points.npz', contact=self.cloud,
             moving=self.scene.moving_reference, static=self.scene.static_points)
-        write_json(dest/'model.json', self.spec)
+        public_model=copy.deepcopy(self.spec)
+        public_model['task_motion_intent']=public_model.pop('motion',None)
+        public_model['task_direction_verified']=False
+        write_json(dest/'model.json', public_model)
         direction=self.spec.get('direction_source',{})
         direction=direction if isinstance(direction,dict) else {}
-        caller_direction=direction.get('task_direction_status')=='caller_specified'
-        return {'model': self.spec, 'geometry_epoch': self.epoch,
+        anchor=self.spec.get('source_anchor_world_m')
+        tangent=(np.cross(np.asarray(self.spec['joint_axis_world']),
+            np.asarray(anchor)-np.asarray(self.spec['joint_origin_world_m'])) if anchor is not None else None)
+        length=float(np.linalg.norm(tangent)) if tangent is not None else 0.
+        return {'model': public_model, 'geometry_epoch': self.epoch,
                 'direction_contract':{'positive_increment':'rotation along the installed signed joint_axis_world',
-                    'grounding_positive_direction_intent':self.spec.get('motion') if caller_direction else None,
-                    'task_direction_status':direction.get('task_direction_status','unknown'),
+                    'grounding_positive_direction_intent':None,
+                    'requested_task_motion':self.spec.get('motion'),
+                    'task_direction_status':'unverified','task_direction_verified':False,
+                    'axis_sign_input_status':direction.get('task_direction_status','unknown'),
+                    'positive_contact_tangent_world':(tangent/length).tolist() if length else None,
+                    'tangent_scope':'Kinematics of the supplied hinge hypothesis; neither sign is labeled as task progress',
                     'positive_rotation_meaning':direction.get('positive_rotation_meaning','rotation along the reported axis; task direction unknown'),
                     'direction_is_a_model_hypothesis':True,
                     'task_success_false_means':'task incomplete; not a judgement that the last motion had the wrong direction'},
@@ -1364,6 +1384,12 @@ class RobotService:
                         if status=='selected_region_stationary_despite_hand_motion' else
                         'Observed object motion and commanded hand motion are separate evidence; neither alone certifies a pinch grasp.')}
         response['scene_reference_control_step']=getattr(self,'scene_reference_control_step',None)
+        if result.get('issued_commands',0) and reference_observation_id is not None and observation.get('observation_id') is not None:
+            from vlm_tamp.visual_inspection import motion_comparison
+            comparison_started=time.perf_counter()
+            response['visual_comparison']=motion_comparison(self.workspace,self.attempt,
+                reference_observation_id,observation['observation_id'])
+            timing['visual_comparison_seconds']=time.perf_counter()-comparison_started
         if (not result.get('terminated_on_simulator_success') and observation.get('observation_id') is not None
                 and (response.get('motion_effect',{}).get('status')=='object_motion_unresolved'
                      or response['grasp_evidence'].get('status')=='gripper_gap_collapsed_during_manipulation')):
@@ -1477,6 +1503,7 @@ class RobotService:
         self.calls += 1
         cameras=getattr(self,'cameras',None)
         validate_operation(operation,arguments,observed_image_sizes(cameras) if cameras else None)
+        if operation=='inspect_video':return self.inspect_video(**arguments)
         if getattr(self,'persistent_episode',False):
             status=self.episode_status()
             if operation=='episode_status':return status

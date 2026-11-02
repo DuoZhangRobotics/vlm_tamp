@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from vlm_tamp.handle_contact import HandleFitError, ground_panel, projected_selection
+from vlm_tamp.handle_contact import ground_panel, projected_selection
 from vlm_tamp.reliable_handle import ground_handle
 from vlm_tamp.rekep_libero.mechanism_geometry import project
 from vlm_tamp.robot_contracts import validate_operation
@@ -105,7 +105,8 @@ def service(tmp_path,monkeypatch):
 
 def test_raw_contact_selection_does_not_invoke_a_cylinder_fit_or_fallback(tmp_path,monkeypatch):
     module,robot,regions=service(tmp_path,monkeypatch)
-    monkeypatch.setattr(module,'ground_handle',lambda *a,**k:pytest.fail('No cylinder fit'))
+    import vlm_tamp.reliable_handle as legacy
+    monkeypatch.setattr(legacy,'ground_handle',lambda *a,**k:pytest.fail('No cylinder fit'))
     result=robot.ground({k:v for k,v in regions.items() if k!='motion'})
     assert result['grounding_status']=='observed_contact_and_part'
     assert result['handle_model_available'] and not result['handle_fit']['shape_fit_performed']

@@ -21,6 +21,15 @@ Read its exact argument schema: python3 robot.py schema OPERATION
 Use python3 robot.py --full OPERATION ... for an unabridged reply.
 Full documentation: tools/full.txt. Read relevant sections, not the whole archive.
 
+Goal, motion and evidence are separate. State the desired change between the
+moving part and a fixed reference; a contact normal or hinge sign is not that goal.
+For a revolute part, motion toward its pivot is not rotation around that pivot.
+The returned positive_contact_tangent_world describes the declared model's positive
+rotation only. Neither sign is automatically labeled as opening or closing.
+When direction is uncertain, a short probe and fixed-view comparison can resolve
+it before a long stroke. Inspect feedback.visual_comparison after motion; hand
+travel, stroke_executed and continuation availability do not establish goal progress.
+
 Python analysis: from robot import call, brief
 call(operation, **arguments) returns the ORIGINAL full response for calculations.
 brief(operation, **arguments) returns the same compact display as the CLI.
@@ -28,7 +37,11 @@ Both issue exactly one request. Do not reissue a motion to get more detail:
 read the returned full_response JSON file instead. Print selected calculation
 results rather than whole histories, point arrays or every camera diagnostic.
 
-Observe: reset, observe, episode_status
+Observe: reset, observe, episode_status, inspect_video
+inspect_video(start_control_step, end_control_step, max_frames=8) retrieves a
+chronological strip of recorded agentview RGB. Optional region_xyxy crops the
+original images. Use it to inspect motion between captures; no new physics or
+sensor capture is performed. Equal start/end requests one recorded control step.
 Geometry: ground, refresh_contact, set_model, inspect_scene
 ground accepts moving_part_id/contact_part_id from current segment_parts masks.
 push and hook_pull accept those same IDs. select_surface_contact accepts
@@ -240,6 +253,29 @@ def practice(value):
     return result
 
 
+def skill_feedback(value: dict) -> dict:
+    """Put the meaning of motion results before detailed numerical diagnostics."""
+    latest=value.get('part_motion_evidence',{}).get('latest',{})
+    current=value.get('observation',{}).get('control_steps')
+    arrival=value.get('motion_arrival',value.get('approach_arrival',{}))
+    return {'task_goal':value.get('task_instruction'),
+        'task_success':value.get('task_success'),
+        'task_progress_assessment':'completed' if value.get('task_success') else 'not_measured_by_motion_tool',
+        'requested_direction_world':value.get('contact',{}).get('direction_world'),
+        'requested_hand_distance_m':value.get('requested_distance_m'),
+        'robot_motion_executed':value.get('robot_motion_executed',False),
+        'hand_reference_reached':arrival.get('goal_reached'),
+        'measured_hand_travel_along_request_m':value.get('measured_contact_progress_m'),
+        'object_motion_status':value.get('object_motion_status','unmeasured'),
+        'object_measurement_reason':latest.get('reason'),
+        'object_measurement_control_step':latest.get('control_step'),
+        'current_control_step':current,
+        'object_measurement_is_current':current is not None and latest.get('control_step')==current,
+        'visual_comparison':value.get('visual_comparison'),
+        'interpretation':('A preview issues no motion.' if value.get('preview') else
+            'Hand travel is not object progress. Compare the moving part against its fixed goal reference in the paired images; unresolved tracking does not confirm the requested direction.')}
+
+
 def compact_response(response):
     """Lossy display with explicit full-file access; never mutates the response."""
     display = pick(response, ('ok', 'error_type', 'error', 'in_flight_requests'))
@@ -270,12 +306,19 @@ def compact_response(response):
         if 'result' in response:
             display['result_type'] = type(value).__name__
         return display
+    if 'skill' in value:display['feedback']=skill_feedback(value)
+    elif 'direction_contract' in value:
+        display['feedback']={'grounding':'caller-supplied geometric hypothesis',
+            'requested_task_motion':value['direction_contract'].get('requested_task_motion'),
+            'task_direction_verified':False,
+            'surface_plane_rms_m':value.get('fit_diagnostics',{}).get('surface_plane_rms_m'),
+            'interpretation':'Grounding lifts your selected pixels; it does not verify the joint identity or which sign achieves the task.'}
     result = observation(value)
     if 'joint_limit_recovery' in value:result['joint_limit_recovery']=value['joint_limit_recovery']
     if 'grasp_stage_contract' in value:result['grasp_stage_contract']=value['grasp_stage_contract']
     if 'skill' in value:
         result.update(pick(value,('skill','mode','preview','status','stop_reason','diagnostic',
-            'task_instruction','contact_constraint','selected_surface_normal_world','planner_rejection_views',
+            'task_instruction','contact_constraint','selected_surface_normal_world','planner_rejection_views','visual_comparison',
             'input_mode','contact_reference_reused','engagement_status','continuation_scope','scene_reused','preview_reused','source_preview',
             'observation_cloud_reused','full_scene_builds','contact_searches','continuation',
             'tracking_reference_reused','tracking_reference_camera_count',
@@ -347,7 +390,8 @@ def compact_response(response):
     if 'model' in value:
         result['model'] = pick(value['model'], ('camera', 'joint_family',
             'joint_origin_world_m', 'joint_axis_world', 'source_anchor_world_m',
-            'panel_normal_world', 'observed_handle_radius_m', 'constraint','motion','generic_part_joint_model'))
+            'panel_normal_world', 'observed_handle_radius_m', 'constraint','task_motion_intent',
+            'task_direction_verified','generic_part_joint_model'))
     if isinstance(value.get('grounding_review'),dict):
         result['grounding_review']=pick(value['grounding_review'],('accepted','status','failed_checks',
             'measurements','observation_id','reason','calibration_source','semantic_identity_verified',
@@ -396,7 +440,9 @@ def compact_response(response):
         result['fit_diagnostics'] = pick(value['fit_diagnostics'],
             ('cylinder_radius_m', 'cylinder_robust_residual_m', 'upright_face_rms_m',
              'cylinder_points', 'handle_on_opposite_observed_face', 'simulator_geometry_used',
-             'geometry_source', 'source', 'reason','target_selection','handle_fit','selected_parts'))
+             'geometry_source', 'source', 'reason','target_selection','handle_fit','selected_parts',
+             'surface_plane_rms_m','hinge_depth_samples_world_m','contact_point_world_m',
+             'moving_observed_points','contact_observed_points','axis_prior','shape_completion'))
         if isinstance(value['fit_diagnostics'].get('motion_direction_check'), dict):
             result['fit_diagnostics']['motion_direction_check'] = pick(value['fit_diagnostics']['motion_direction_check'],
                 ('source','image_hint_status','image_direction_xy','selected_axis',
@@ -408,6 +454,13 @@ def compact_response(response):
             'worker_seconds', 'wall_seconds', 'maximum_joint_reference_error_rad','endpoint_tracking',
             'arrival','terminated_on_tracking_error','terminated_on_control_budget','nominal_path_commands'))
     if 'motion_effect' in value:result['motion_effect']=value['motion_effect']
+    if 'selected_frame_count' in value:
+        result.update(pick(value,('available','camera','requested_control_interval','available_control_interval',
+            'recorded_frames_in_interval','frames','selected_frame_count','comparison_image','source',
+            'new_sensor_capture','robot_motion_issued','depth_available','interpretation')))
+    if value.get('available') is False and 'robot_motion_issued' in value:
+        result.update(pick(value,('available','reason','available_control_interval','new_sensor_capture','robot_motion_issued')))
+    if 'visual_comparison' in value:result['visual_comparison']=value['visual_comparison']
     if 'scene_observation_support' in value:result['scene_observation_support']=evidence(value['scene_observation_support'])
     if isinstance(value.get('result'), dict):
         result['planning'] = pick(value['result'], ('status', 'planner', 'grasp_constraint',
