@@ -317,10 +317,14 @@ def publish(study,*,force=False,now=None):
     if not running and scheduled==['baseline'] and manifest.get('baseline_completed'):status='Complete'
     capacity=read(study/'capacity-wait.json',{})
     if capacity.get('waiting') and not stopped:
-        status='Waiting for shared memory capacity'
+        reasons=capacity.get('wait_reasons',[])
+        io_wait='io_wait_without_responsive_login' in reasons
+        status='Waiting for host responsiveness' if io_wait else 'Waiting for shared memory capacity'
         shared=capacity.get('shared_headroom_gib')
         shared=f'{shared:.1f} GiB' if isinstance(shared,(int,float)) else 'not limited'
         message=f"The next Luna actor has not started. Additional headroom needed: {capacity['additional_headroom_needed_gib']:.1f} GiB; available shared-pool headroom including clean inactive file cache: {shared}. Waiting does not consume the episode budget."
+        if io_wait:
+            message=f"The next Luna actor has not started: I/O wait is {capacity.get('io_full_avg10')}% and a fresh successful login check is unavailable. Waiting does not consume the episode budget."
     if active.get('status')=='running' and not running and not stopped:message='The saved process is no longer alive; its last result is recorded below.'
     links={'Luna pixel and hinge selections':'selections.html','Study protocol':'study-manifest.json','Declared cases':'plan.json'}
     if (study/'failure-summary.html').exists():links['Task failure explanations']='failure-summary.html'
@@ -337,11 +341,14 @@ def publish(study,*,force=False,now=None):
         peak=resource.get('job_memory_peak_gib')
         peak=f'{peak:.1f}' if isinstance(peak,(int,float)) else 'unavailable'
         health=f"{label}: I/O pressure {resource.get('io_full_avg10','unavailable')}%; job memory {memory} GiB, peak {peak} GiB. Watchdog sampling: every 2 seconds."
+        probe=resource.get('login_probe')
+        if probe:
+            health+=f" Last SSH login check: {'passed' if probe.get('healthy') else 'failed'}, {probe.get('seconds',0):.2f} s."
         summary={k:resource.get(k) for k in ('time','io_full_avg10','io_some_avg10','memory_full_avg10',
             'job_memory_full_avg10','job_memory_gib','job_memory_peak_gib','job_anon_and_shmem_gib',
             'job_memory_max_events','job_memory_oom_kills','host_available_memory_gib',
             'shared_headroom_including_clean_inactive_file_gib','health_read_seconds')}
-        summary.update(sample_scope='memory is this experiment job; I/O pressure is host-wide',
+        summary.update(sample_scope='memory is this experiment job; I/O pressure is host-wide',login_probe=probe,
             running=running,sample_interval_seconds=2,stop_policy=monitor.get('policy'))
         written+=_json(study/'resource-summary.json',summary)
         links['Memory and I/O measurements']='resource-summary.json'

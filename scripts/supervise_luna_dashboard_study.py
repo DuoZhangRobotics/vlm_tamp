@@ -15,11 +15,34 @@ import tempfile
 import threading
 import queue
 import time
+from typing import Any
 
 ROOT=Path(__file__).resolve().parents[1]
 SAMPLE_SECONDS=2
 DETAIL_SECONDS=15
 MAX_JOB_MEMORY_BYTES=32*1024**3
+
+
+def check_login(host: str) -> dict[str, Any]:
+    """Measure an explicitly configured host login; report failure without retrying."""
+    started = time.monotonic()
+    command = ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5',
+        '-o', 'StrictHostKeyChecking=yes', host, '/usr/bin/true']
+    try:
+        completed = subprocess.run(command, capture_output=True, text=True, timeout=5)
+    except subprocess.TimeoutExpired:
+        return {'host': host, 'healthy': False, 'reason': 'ssh_login_timeout',
+            'checked_at': time.time(), 'seconds': time.monotonic()-started}
+    return {'host': host, 'healthy': completed.returncode == 0, 'returncode': completed.returncode,
+        'stderr': completed.stderr[:500], 'checked_at': time.time(),
+        'seconds': time.monotonic()-started}
+
+
+def login_is_responsive(row: dict[str, Any]) -> bool:
+    """Only a successful login within two existing sampler intervals is current."""
+    probe = row.get('login_probe') or {}
+    age = row.get('time', time.time()) - probe.get('checked_at', 0)
+    return probe.get('healthy') is True and 0 <= age <= 2*DETAIL_SECONDS
 
 
 def write(path,value):
@@ -104,24 +127,32 @@ def sample(group):
             'health_read_seconds':time.monotonic()-started}
 
 
-def capacity_status(row,limit):
+def capacity_status(row: dict[str, Any], limit: int) -> dict[str, Any]:
+    """Admit by memory headroom and measured host responsiveness during I/O wait."""
     # Subtract only already-charged anonymous/tmpfs memory. Subtracting clean
     # file cache as well would double-count it as available shared headroom.
     needed=max(0,limit/1024**3-row.get('job_anon_and_shmem_gib',0))+2.
     shared=row.get('shared_headroom_including_clean_inactive_file_gib')
-    ready=(row['host_available_memory_gib']>=needed and (shared is None or shared>=needed)
-           and row['io_full_avg10']<10 and row['memory_full_avg10']<5)
-    return {'waiting':not ready,'additional_headroom_needed_gib':needed,
+    reasons=[]
+    if row['host_available_memory_gib']<needed:reasons.append('host_memory_headroom')
+    if shared is not None and shared<needed:reasons.append('shared_memory_headroom')
+    if row['memory_full_avg10']>=5:reasons.append('host_memory_pressure')
+    if row['io_full_avg10']>=10 and not login_is_responsive(row):reasons.append('io_wait_without_responsive_login')
+    return {'waiting':bool(reasons),'wait_reasons':reasons,'additional_headroom_needed_gib':needed,
             'shared_headroom_gib':shared,'host_available_gib':row['host_available_memory_gib'],
+            'io_full_avg10':row['io_full_avg10'],'login_probe':row.get('login_probe'),
             'recorded_at':row['time']}
 
 
-def wait_for_capacity(study,name):
+def wait_for_capacity(study: Path | str, name: str) -> None:
     """Wait before starting an actor, so waiting consumes no episode budget."""
     group=cgroup_path();limit=require_memory_limit(group)
     local=Path(os.environ['VLM_TAMP_CAPACITY_STATE']);last_publish=0
     while True:
-        status={**capacity_status(sample(group),limit),'run':name}
+        row=sample(group)
+        latest=local.parent/'latest.json'
+        if latest.exists():row['login_probe']=json.loads(latest.read_text()).get('login_probe',{})
+        status={**capacity_status(row,limit),'run':name}
         write(local,status)
         if not status['waiting'] or time.monotonic()-last_publish>=60:
             write(Path(study)/'capacity-wait.json',status)
@@ -142,15 +173,20 @@ def require_memory_limit(group):
 
 class ProcessSampler:
     """One daemon may inspect processes; the health loop never waits for it."""
-    def __init__(self,group):
+    def __init__(self,group: Path,login_host: str | None = None) -> None:
+        """Keep optional process and login diagnostics off the two-second health loop."""
         self.group=group;self.queue=queue.Queue(maxsize=1);self.stopped=threading.Event();self.latest={}
+        self.login_host=login_host
         self.thread=threading.Thread(target=self._work,daemon=True)
         self.thread.start()
 
-    def _work(self):
+    def _work(self) -> None:
+        """Collect optional diagnostics independently of kernel-limit monitoring."""
         while not self.stopped.is_set():
+            probe=check_login(self.login_host) if self.login_host else None
             try:value=process_details(self.group)
             except OSError as error:value={'time':time.time(),'error':str(error)}
+            if probe is not None:value['login_probe']=probe
             try:self.queue.get_nowait()
             except queue.Empty:pass
             self.queue.put_nowait(value)
@@ -165,11 +201,11 @@ class ProcessSampler:
         self.stopped.set()  # Never join a potentially blocked /proc reader.
 
 
-def pressure_stop(samples):
+def pressure_stop(samples: list[dict[str, Any]]) -> str | None:
     """Stop on recurring observed server strain, not on a task/planner failure."""
     tail=samples[-3:]
     if len(tail)<3:return None
-    if all(s['io_full_avg10']>=10 for s in tail):return 'sustained_host_io_pressure'
+    if all(s['io_full_avg10']>=10 and not login_is_responsive(s) for s in tail):return 'sustained_host_io_pressure'
     if all(max(s['memory_full_avg10'],s.get('job_memory_full_avg10',0))>=5 for s in tail):
         shortage=any(s.get('host_available_memory_gib',0)<8
                      or (s.get('shared_headroom_including_clean_inactive_file_gib') is not None
@@ -209,11 +245,13 @@ def run(study: Path, stages: list[tuple[str, int | None]], *, first_run: str | N
     if driver_command is not None and (len(stages)!=1 or cases_file or first_run):
         raise ValueError('A custom driver uses one monitored stage, without an evaluation case override')
     group=cgroup_path();limit=require_memory_limit(group)
-    local=Path(tempfile.mkdtemp(prefix='vlm-luna-resource-monitor-'));details=ProcessSampler(group)
+    login_host=os.environ.get('VLM_TAMP_LOGIN_HEALTH_HOST')
+    local=Path(tempfile.mkdtemp(prefix='vlm-luna-resource-monitor-'));details=ProcessSampler(group,login_host)
     state={'pid':os.getpid(),'started_at':time.time(),'status':'running','local_directory':str(local),
            'sample_interval_seconds':SAMPLE_SECONDS,'detail_interval_seconds':DETAIL_SECONDS,
            'memory_limit_bytes':limit,'stages':stages,'first_run':first_run,'log_tag':log_tag,
-           'stop_policy':'Three consecutive full I/O pressure samples >=10%; or memory pressure >=5% with host/shared-pool shortage or new job-limit hits. Kernel memory/whole-group OOM limits remain mandatory. No automatic retries.'}
+           'login_health_host':login_host,
+           'stop_policy':'Three consecutive full I/O pressure samples >=10% without fresh successful configured SSH logins; or memory pressure >=5% with host/shared-pool shortage or new job-limit hits. Kernel memory/whole-group OOM limits remain mandatory. No automatic retries.'}
     write(study/'resource-monitor.json',{'latest_sample':str(local/'latest.json'),'samples':str(local/'samples.jsonl'),
                                        'supervisor':str(local/'supervisor.json'),'policy':state['stop_policy']})
     write(study/'supervisor-state.json',state);write(local/'supervisor.json',state)
@@ -251,6 +289,7 @@ def run(study: Path, stages: list[tuple[str, int | None]], *, first_run: str | N
                                nfs_sample_time=extra.get('time'),
                                process_details_age_seconds=row['time']-extra['time'] if extra.get('time') else None,
                                counter_scope='Asynchronous process diagnostics may be stale. rchar/wchar include IPC; sums can fall when processes exit.')
+                    if extra.get('login_probe') is not None:row['login_probe']=extra['login_probe']
                     history.append(row);history=history[-3:]
                     write(local/'latest.json',row)
                     with (local/'samples.jsonl').open('a') as samples:samples.write(json.dumps(row)+'\n')

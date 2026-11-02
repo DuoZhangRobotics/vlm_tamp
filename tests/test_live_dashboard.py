@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+import pytest
 
 import live_study_dashboard as dashboard
 
@@ -40,6 +41,20 @@ def fixture(tmp_path,monkeypatch):
     (run/'tool-events.jsonl').write_text('')
     monkeypatch.setattr(dashboard,'_live_process',lambda _:True)
     return study,run,manifest
+
+
+def test_io_admission_wait_is_not_labelled_as_memory_shortage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The page identifies the actual resource preventing actor admission."""
+    study, _, _ = fixture(tmp_path, monkeypatch)
+    (study/'capacity-wait.json').write_text(json.dumps({'waiting': True,
+        'wait_reasons': ['io_wait_without_responsive_login'], 'io_full_avg10': 30,
+        'additional_headroom_needed_gib': 18, 'shared_headroom_gib': 140}))
+    dashboard.publish(study, force=True)
+    status = json.loads((study/'watch-status.json').read_text())
+    assert status['status_text'].startswith('Waiting for host responsiveness')
+    assert '30%' in status['message'] and 'login check' in status['message']
 
 
 def test_missed_endpoint_is_visible_even_when_all_commands_were_issued(tmp_path,monkeypatch):

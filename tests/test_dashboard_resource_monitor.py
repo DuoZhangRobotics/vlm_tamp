@@ -2,11 +2,49 @@ from supervise_luna_dashboard_study import pressure_stop
 import threading
 import time
 import pytest
+from types import SimpleNamespace
+import subprocess
 
 
 def row(io=0,memory=0,**kwargs):
     return {'io_full_avg10':io,'memory_full_avg10':memory,'host_available_memory_gib':40,
             'shared_headroom_including_clean_inactive_file_gib':25,**kwargs}
+
+
+def test_high_io_wait_with_measured_responsive_login_does_not_block() -> None:
+    """Cold-read waiting alone must not be confused with an SSH outage."""
+    from supervise_luna_dashboard_study import capacity_status
+    value = {**row(io=30), 'time': 100, 'login_probe': {'healthy': True, 'checked_at': 95, 'seconds': .4}}
+    assert pressure_stop([value]*3) is None
+    assert not capacity_status(value, 16*1024**3)['waiting']
+    value['host_available_memory_gib'] = 4
+    assert capacity_status(value, 16*1024**3)['waiting']
+    value['memory_full_avg10'] = 6
+    assert pressure_stop([value]*3) == 'sustained_memory_pressure_with_shortage_or_job_limit'
+
+
+@pytest.mark.parametrize('probe', [None, {'healthy': False, 'checked_at': 99},
+    {'healthy': True, 'checked_at': 69}])
+def test_missing_failed_or_stale_login_cannot_override_high_io(probe: dict | None) -> None:
+    """Unknown or obsolete host health keeps the existing interruption policy."""
+    from supervise_luna_dashboard_study import capacity_status
+    value = {**row(io=30), 'time': 100, 'login_probe': probe}
+    assert pressure_stop([value]*3) == 'sustained_host_io_pressure'
+    assert capacity_status(value, 16*1024**3)['wait_reasons'] == ['io_wait_without_responsive_login']
+
+
+def test_login_probe_reports_timeout_explicitly(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Probe failure is observable and never reuses an earlier successful result."""
+    from supervise_luna_dashboard_study import check_login
+
+    def timeout(*args: object, **kwargs: object) -> None:
+        """Represent a bounded failed SSH connection."""
+        raise subprocess.TimeoutExpired('ssh', 5)
+
+    monkeypatch.setattr(subprocess, 'run', timeout)
+    assert check_login('configured-host')['reason'] == 'ssh_login_timeout'
+    monkeypatch.setattr(subprocess, 'run', lambda *args, **kwargs: SimpleNamespace(returncode=0, stderr=''))
+    assert check_login('configured-host')['healthy'] is True
 
 
 def test_transient_pressure_does_not_interrupt_a_trial():

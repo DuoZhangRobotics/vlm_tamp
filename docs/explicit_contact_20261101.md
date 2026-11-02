@@ -175,3 +175,14 @@ memory pressure, despite 27.34% I/O wait. I/O wait is not by itself a measured
 login outage. The subsequent physical checks kept the existing experiment
 watchdog. See `results/contact-handoff-startup-readiness-20261101`; no task success
 is assigned to startup checks or interrupted initialization.
+
+The first prepared practice study never launched a Luna actor: host-wide I/O
+wait alone kept admission closed while memory headroom exceeded 140 GiB. It is
+preserved as preparation, with zero task outcomes. The revised monitor accepts
+fresh successful SSH-login evidence from the explicitly configured host during
+high I/O wait. Missing, failed or older-than-two-sampler-interval checks retain
+the previous high-I/O interruption behavior. Memory headroom, pressure checks,
+16 GiB/no-swap kernel limits and two-second health sampling remain. SSH probes
+run in the existing asynchronous diagnostics worker. The webpage distinguishes
+I/O admission from memory shortage and shows the measured login latency.
+The new frozen practice study is `results/luna-contact-handoff-practice-v2-20261101`.
