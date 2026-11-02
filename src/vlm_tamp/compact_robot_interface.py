@@ -136,6 +136,9 @@ or had the wrong direction. Compare observed state changes with the goal.
 Execute requests sequentially; await_request retrieves an already pending reply.
 Scene updates label measured RGB-D motion versus prediction assuming contact.
 Inspect those labels and uncertainty. Read full diagnostics when they matter.
+Failed contact searches can return rejection images. Red is the native planner's
+reported sphere, blue an observed cloud point, and yellow the requested touch
+projection. These depict an unexecuted candidate, not a measured collision.
 """
 
 
@@ -267,7 +270,7 @@ def compact_response(response):
     if 'grasp_stage_contract' in value:result['grasp_stage_contract']=value['grasp_stage_contract']
     if 'skill' in value:
         result.update(pick(value,('skill','mode','preview','status','stop_reason','diagnostic',
-            'task_instruction','contact_constraint','selected_surface_normal_world',
+            'task_instruction','contact_constraint','selected_surface_normal_world','planner_rejection_views',
             'input_mode','contact_reference_reused','engagement_status','continuation_scope','scene_reused','preview_reused','source_preview',
             'observation_cloud_reused','full_scene_builds','contact_searches','continuation',
             'tracking_reference_reused','tracking_reference_camera_count',

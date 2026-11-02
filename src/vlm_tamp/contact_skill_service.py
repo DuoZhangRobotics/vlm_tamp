@@ -836,6 +836,14 @@ def run_skill(
                 break
     except SkillStop as error:
         result.update(stop_reason=error.reason,diagnostic=error.evidence)
+        if error.evidence.get('attempts') and scene is not None:
+            from .contact_rejection_view import render_contact_rejection
+            pictures=render_contact_rejection(error.evidence,planning_scene or scene,service.cameras,
+                camera,point if point is not None else np.asarray(result['contact']['point_world_m']),root)
+            if pictures:
+                result['planner_rejection_views']=[{**row,'image':str(Path(row['image']).relative_to(service.workspace))}
+                    for row in pictures]
+                result['images']=[row['image'] for row in result['planner_rejection_views']]+result.get('images',[])
         if error.evidence.get('selection_geometry'):
             result['selection_geometry']=error.evidence['selection_geometry']
         if result.get('contact_handoff',{}).get('status') in {'approaching','reacquiring_moved_target'}:
