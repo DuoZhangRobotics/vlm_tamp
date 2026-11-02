@@ -283,6 +283,64 @@ run completed without a resource stop. Host pressure does not identify which
 workload caused the I/O. No runtime code changes or new unit tests were needed
 for this input-only experiment.
 
+## Fresh Luna evaluation after local IK correction
+
+The user requested new trials on states 17 and 49. Results are in
+`results/luna-local-ik-evaluation-20261102/watch.html`, with event-level explanations
+and both videos in `failure-summary.html`. Runtime commit `7361cc1` includes the
+native local IK fix. Each case used a fresh Luna/high actor, 600 controls, 1800 wall
+seconds, no inherited notes, no worked example and no operator coordinates. Both
+memory audits and the 623-file/native-binary integrity checks passed. No runtime
+source, prompt or configuration changed during the study.
+
+Neither task succeeded. These are two development-state episodes, not an estimate
+of a general success rate:
+
+| State | Initial → final open angle | Controls | Episode wall | Actor wall |
+| --- | --- | --- | --- | --- |
+| 17 | 88.92° → 122.21° | 600 | 256.9 s | 332.3 s |
+| 49 | 107.26° → 122.15° | 600 | 166.3 s | 223.8 s |
+
+Angles are evaluator-only simulator measurements, excluded from actor inputs.
+Actor wall time includes setup and writing final reports outside the episode.
+
+In state 17, Luna selected the visible face and repeatedly requested world −X.
+Its first 15 cm `push_stroke` opened the door from 88.36° to 122.71° over controls
+160–280. Later requests kept −X. Two initial-contact approaches also failed to
+physically arrive, with 32.4 and 87.7 mm final reference errors. Luna's final notes
+interpreted some image changes as progress toward closure; native angles contradict
+that interpretation. The raw notes are preserved, not promoted to validated memory.
+
+In state 49, Luna first selected a background pixel as one hinge endpoint, noticed
+the implausible depth, and revised the annotation. Its selected-part plane still
+had a 52 mm RMS fit residual. The revised closing sign remained a caller hypothesis.
+The actual commands used explicit +Y, not the hinge model to generate an arc.
+The first push ended at 120.15° open; the continuation kept +Y and exhausted the
+budget at 122.15°. That final call issued 355 controls, including 282 repeated holds,
+and advanced only 72 of its 100 nominal references. It ended 67.7 mm from its
+planned final reference. RGB-D motion feedback had too few consistent visible
+correspondences and did not establish progress toward the task goal.
+
+Numerical continuation remained sound in these runs: 117/117 local IK queries in
+state 17 and 74/74 in state 49 succeeded, without sampled optimization or push
+environment checks. Median warm calls were 3.11 and 3.07 ms. Maximum adjacent
+push-IK joint changes were 0.0109 and 0.0036 rad. Neither actor selected the optional
+surface-normal contact model. No grasp or arc planning was requested.
+
+Service calls totaled 96.7 s (state 17) and 64.4 s (state 49). Outside-service time
+was 235.6 and 159.5 s, including Luna, transport and local analysis; it is not an
+isolated reasoning measurement. Nested IK time was 6.44 and 3.63 s; native free-
+approach path search was 0.195 and 0.108 s. These nested times overlap service time.
+Peak job RAM was 6.12 GiB, peak GPU memory 1885 MiB, and host full I/O pressure
+peaked at 14.24%. All 39 fresh SSH probes succeeded; no resource interruption occurred.
+
+The observed failure pattern is wrong closing-direction selection and lack of
+correction from progress evidence, alongside the physical approach/holding issues
+above. These trials do not implicate a local IK failure, and they do not establish
+whether the deeper cause is the actor's visual interpretation or the way public
+goal/progress evidence is communicated. The next focused diagnostic should test
+that interpretation without supplying successful coordinates or action sequences.
+
 All diagnostic pixels/settings above were operator inputs, excluded from Luna
 prompts and memory. Native object angles/contacts are evaluation-only evidence.
 
