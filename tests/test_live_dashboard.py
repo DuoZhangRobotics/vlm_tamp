@@ -141,6 +141,17 @@ def test_static_page_uses_lazy_media_and_data_polling():
     assert 'id="live" type="checkbox" checked' not in dashboard.HTML
 
 
+def test_logs_open_in_page_without_expanding_the_published_html(tmp_path,monkeypatch):
+    study,run,_=fixture(tmp_path,monkeypatch)
+    (run/'agent-prompt.txt').write_text('Close the microwave.\n')
+    dashboard.publish(study,force=True)
+    assert (study/'document-viewer.js').is_file()
+    assert 'id="documentPanel"' in (study/'watch.html').read_text()
+    assert "a.target='_blank'" not in (study/'watch.js').read_text()
+    assert (study/'watch.html').stat().st_size<20000
+    assert 'Close the microwave.' not in (study/'watch.html').read_text()
+
+
 def test_video_index_contains_every_saved_episode(tmp_path,monkeypatch):
     study,run,_=fixture(tmp_path,monkeypatch)
     for i in [1,2,3]:

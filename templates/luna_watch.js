@@ -7,10 +7,15 @@ let state=null,chosen=new URLSearchParams(location.search).get('run')||saved.cho
 let selectedVersion=null,overviewRequest=null,detailBusy=false,restoring=false;
 const cards=new Map(),rows=new Map(),detailsCache=new Map();
 const selectionViewer=new LunaSelectionViewer(el('selectionViewer'),{onInteract:()=>pauseDisplay('Display updates paused for pixel inspection.')});
+const documentReader=new LunaDocumentReader(el('documentPanel'),{onOpen:()=>pauseDisplay('Display updates paused for document inspection.')});
 const num=x=>typeof x==='number'?x.toFixed(1):'—';
 function text(id,value){el(id).textContent=value??''}
 function node(tag,value){const n=document.createElement(tag);if(value!==undefined)n.textContent=value;return n}
-function link(parent,label,path){if(!path)return;const a=node('a',label);a.href=path;a.target='_blank';a.rel='noopener';parent.append(a)}
+function link(parent,label,path){
+ if(!path)return;const a=node('a',label);a.href=path;
+ if(/\.(?:jsonl?|txt|md)(?:[?#]|$)/i.test(path))a.onclick=event=>{event.preventDefault();documentReader.open(label,path,a)};
+ parent.append(a);
+}
 function table(parent,values){const t=node('table');for(const row of values){const tr=t.insertRow();for(const value of row)tr.insertCell().textContent=value??'—'}parent.append(t)}
 function save(){
  saved.chosen=chosen;saved.scrollY=scrollY;saved.open=saved.open||{};saved.video=saved.video||{};

@@ -272,6 +272,7 @@ def _run_data(study,run,entry,active):
             ('Learner notes','agent-workspace/guidelines.json'),('Timing JSON','timing-breakdown.json')]
            if (run/path).exists()}
     if (study/'failure-summary.html').exists():links['Task failure explanations']='failure-summary.html'
+    if (study/'pipeline-walkthrough.html').exists():links['Actual Luna pipeline walkthrough']='pipeline-walkthrough.html'
     if (study/'heuristic-audit.html').exists():links['Geometry and heuristic audit']='heuristic-audit.html'
     if (run/'evaluator-diagnostics.json').exists():links['Evaluator diagnosis']=_relative(run/'evaluator-diagnostics.json',study)
     from urllib.parse import quote
@@ -308,7 +309,8 @@ def publish(study,*,force=False,now=None):
     started=time.perf_counter();html_bytes=_write(study/'watch.html',HTML_PATH.read_text())
     client_bytes=_write(study/'watch.js',CLIENT_PATH.read_text());written=html_bytes+client_bytes
     for source,destination in [('luna_selections.js','selection-viewer.js'),('luna_selections.css','selection-viewer.css'),
-            ('luna_selections.html','selections.html'),('luna_selections_page.js','selections-page.js')]:
+            ('luna_selections.html','selections.html'),('luna_selections_page.js','selections-page.js'),
+            ('luna_documents.js','document-viewer.js')]:
         written+=_write(study/destination,(TEMPLATES/source).read_text())
     completed=manifest.get('completed_runs',[]);entries={r['run']:r for r in completed}
     for interrupted in manifest.get('interrupted_runs',[]):
@@ -354,6 +356,7 @@ def publish(study,*,force=False,now=None):
     if active.get('status')=='running' and not running and not stopped:message='The saved process is no longer alive; its last result is recorded below.'
     links={'Luna pixel and hinge selections':'selections.html','Study protocol':'study-manifest.json','Declared cases':'plan.json'}
     if (study/'failure-summary.html').exists():links['Task failure explanations']='failure-summary.html'
+    if (study/'pipeline-walkthrough.html').exists():links['Actual Luna pipeline walkthrough']='pipeline-walkthrough.html'
     if (study/'heuristic-audit.html').exists():links['Geometry and heuristic audit']='heuristic-audit.html'
     if manifest.get('repair_report'):links['Contact repair tests']=manifest['repair_report']
     if manifest.get('superseded_by'):links['Open the new rerun']=manifest['superseded_by']

@@ -399,3 +399,81 @@ without on held-out states 8 and 35. Notes were frozen verbatim and explicitly
 acknowledge no successful method. See
 `results/luna-contact-handoff-practice-v2-20261101/watch.html`. These results do
 not evaluate the new surface-normal model.
+
+### Communication rerun and actual image audit, 2026-11-02
+
+Frozen runtime `1bd96b6` completed fresh clean 17/49 evaluations, both unsuccessful
+at 600 controls. No teacher, reflection, inherited notebook, operator example or
+successful coordinates were supplied. Source integrity passed for all 623 checked
+files during each run. See `results/luna-communication-rerun-20261102/watch.html`
+and its `evaluator-summary.json`; native opening angles below are evaluator-only.
+
+- State 17: initial/best opening 88.92 degrees, final 116.63. Event 6's approach
+  stopped 21.1 mm short and issued no stroke. Event 10's requested 40 mm stroke
+  moved the hand 37.1 mm and opened the door from 89.51 to 99.77 degrees. Later
+  tracking accurately measured rotation, but the actor incorrectly interpreted
+  consistency with its selected axis/sign as support for closing. Its own findings
+  explicitly record that interpretation. Local IK succeeded on 86/88 queries;
+  finite late failures returned reported reachable prefixes, not global retries.
+  The final approach consumed the remaining controls. Wall time remained 1,070 s.
+- State 49: initial opening 107.26 degrees, best 71.05, final 90.44. Approaches
+  incidentally closed the door, while requested strokes reopened it. Event 17's
+  approach reached 73.65 degrees; its stroke reopened to 78.76. The actor kept
+  tentative direction [-0.65, 0.76, 0], explicitly acknowledging the task sign
+  remained unverified. All 156 local IK queries succeeded. The last direct stroke
+  exhausted the controls with 1,416 s wall budget remaining.
+
+These are task failures, not evidence of global geometric infeasibility. Physical
+arrival failures, numerical failures and incorrect task-direction interpretation
+remain distinct. Videos are the corresponding trial's `attempt01/initial/rollout.mp4`.
+State 17's first wrong stroke is controls 160-187 (8.00-9.35 simulated seconds);
+state 49's event-17 approach/stroke boundary is control 200 (10.00 seconds).
+
+The underlying multimodal tool-output audit found 45 actual image blocks for 17
+and 32 for 49, with no image-output failures. Those counts include comparison
+sheets and are neither unique-photo counts nor comprehension measurements. The
+actors requested comparison images 11 and 7 times respectively. Neither used
+the available `inspect_video` or `track_video_motion` operation. See
+`actual-image-input-audit.json`. Static image paths alone are not image inputs.
+
+Two separate read-only tests supplied the same public state-49 RGB intervals to
+fresh Luna/high actors, with no motion commands, angles, expected labels or robot
+tools. In `results/luna-video-comprehension-check-20261102`, eight-frame sheets
+plus fixed-view context produced both direction labels reversed. In
+`results/luna-video-original-frames-check-20261102`, individual original frames
+produced an uncertain answer for the opening clip and a reversed answer for the
+closing clip. The image-output counts were 6 and 20. Frame/end-point alignment
+was checked against saved RGB (mean pixel difference 1.81-1.96/255, consistent
+with compression). These limited tests show a visual/spatial interpretation
+failure on these recordings; they do not establish a general model capability
+ceiling. Occlusion and viewpoint quality remain relevant limitations.
+
+Actor wall times were 794.23 and 427.85 seconds. Service times were 209.11 and
+83.59 seconds; the remainder includes model calls, transport and local analysis,
+not isolated reasoning time. Median warm local IK was approximately 3.1 ms.
+Peak trial-process RAM was 9.40 GiB, GPU allocation 2,475 MiB, peak host I/O
+pressure 12.23%, memory pressure zero, and 82 fresh SSH probes succeeded.
+
+### Inspectable dashboard and walkthrough, 2026-11-02
+
+Raw text/JSON links previously requested a new browser tab. The dashboard now
+opens Tool log, Luna input/output and Prompt in an in-page reader with record
+selection, visible load errors and literal text rendering. It fetches only the
+selected file, pauses display updates during inspection and preserves video DOM.
+The reader presents public messages and tool I/O, excluding internal reasoning
+records. This changes reporting only; no experiment/controller/planner changed.
+
+`pipeline-walkthrough.html` beside the communication report shows exact saved
+requests, compact feedback, original images, annotated selections and the scoring
+boundary. Pixel overlays are reconstructed from logged coordinates, not extra
+annotations that were supplied to the actor. `pipeline-walkthrough-data.json`
+preserves the selected event inputs and compact outputs. The next diagnostic is
+to test goal-reference interpretation on visible fixed/moving geometry before
+another full episode, without supplying a closing axis or simulator object pose.
+
+Validation: 17 dashboard/document-reader tests passed; Ruff and diff whitespace
+checks passed. Headless Chrome opened all three requested links in the same page
+and displayed a missing-document error. The eight-step image walkthrough passed
+interaction and overflow checks at 736, 360 and 320 px; all referenced images
+resolved and no JavaScript exceptions occurred. No new physical experiment was
+needed for these reporting-only changes.

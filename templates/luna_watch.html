@@ -3,6 +3,10 @@
 <title>Luna experiments — inspection</title>
 <style>
 :root{font:16px system-ui;color:#203249;background:#f3f6fa}body{max-width:1180px;margin:28px auto;padding:0 18px}h1{font-size:28px}h2{font-size:20px}.muted{color:#607088;font-size:14px}section,article{background:white;border:1px solid #d6dfeb;border-radius:10px;padding:18px;margin:16px 0}button,select{padding:8px;font:inherit}button{cursor:pointer}a{color:#1462ad}table{width:100%;border-collapse:collapse}th,td{padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;vertical-align:top}.scroll{overflow:auto}.stats{display:flex;gap:22px;flex-wrap:wrap}.stats b{display:block;font-size:22px}.gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}.gallery article{margin:0}.gallery h3{margin:0 0 8px}img,video{max-width:100%;max-height:430px}video{width:100%;background:#111}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px}details{margin:12px 0}summary{cursor:pointer}progress{width:100%}.links a{display:inline-block;margin:5px 14px 5px 0}#updateNote{color:#8b5000}[hidden]{display:none!important}
+#documentPanel{position:fixed;inset:4vh 3vw;z-index:1000;background:#fff;border:1px solid #9dadbf;border-radius:8px;padding:18px;box-shadow:0 0 0 100vmax #172b4377;display:flex;flex-direction:column;gap:10px;max-width:1200px;margin:auto;box-sizing:border-box}
+#documentPanel header,#documentPanel [data-document-navigation]{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#documentPanel h2{margin:0;flex:1}#documentPanel p{margin:0}#documentPanel select{min-width:0;max-width:100%;flex:1}
+#documentPanel pre{margin:0;overflow:auto;overscroll-behavior:contain;flex:1;min-height:0;padding:12px;background:#f3f6fa;white-space:pre-wrap;word-break:break-word}
 </style><link rel="stylesheet" href="selection-viewer.css"></head><body>
 <h1>Luna experiments</h1>
 <p id="status">Loading saved results…</p><p id="stamp" class="muted"></p>
@@ -28,4 +32,9 @@
 <p class="muted">These measurements are nested inside tool time and overlap. Do not add the sections together.</p><div id="nested"></div></details>
 <h3>Reported issues</h3><p class="muted">A rejected request may have been recovered from. Full records remain available in the tool log.</p><div id="issues"></div></section>
 <p id="health" class="muted"></p>
-<script src="selection-viewer.js"></script><script src="watch.js"></script></body></html>
+<aside id="documentPanel" role="dialog" aria-modal="true" aria-labelledby="documentTitle" hidden>
+<header><h2 id="documentTitle" data-document-title>Document</h2><button data-document-refresh>Reload document</button><button data-document-close>Close</button></header>
+<p data-document-status role="status" aria-live="polite"></p>
+<div data-document-navigation hidden><button data-document-previous>Previous record</button><select data-document-record aria-label="Log record"></select><button data-document-next>Next record</button></div>
+<pre data-document-content aria-label="Document contents"></pre></aside>
+<script src="selection-viewer.js"></script><script src="document-viewer.js"></script><script src="watch.js"></script></body></html>
