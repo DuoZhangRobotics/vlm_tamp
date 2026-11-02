@@ -7,14 +7,42 @@ from pathlib import Path
 import subprocess
 import sys
 import time
+from typing import Any
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT/'src'),str(ROOT/'scripts')]
 from vlm_tamp.coupled_storage import read_json,write_json
 from run_restriction_study import source_hashes, validate_terminal
 from run_contact_skill_study import freeze_memory
-from report_restriction_fixes import render
+from report_luna_pipeline_validation import render
 from vlm_tamp.execution_limits import checked_control_steps
+
+
+def save_study_manifest(study: Path, path: Path, manifest: dict[str, Any]) -> None:
+    """Publish phase-boundary results using the existing compact dashboard schema."""
+    write_json(path, manifest)
+    plan = manifest['plan']
+    completed = []
+    if manifest.get('practice_completed'):
+        practice = Path(manifest['practice_run'])
+        completed.append({'run': practice.name, 'stage': 'practice',
+            'attempts': manifest['practice_attempts'],
+            'memory_condition': 'prior' if manifest.get('prior_memory_sha256') else 'none',
+            'actor_wall_seconds': read_json(practice/'agent-exit.json')['wall_seconds']})
+    completed.extend({'run': row['run'], 'stage': 'transfer', 'attempts': [row],
+        'memory_condition': row['memory_condition'], 'actor_wall_seconds': row['actor_wall_seconds']}
+        for row in manifest['evaluations'])
+    transfer = [{**case, 'memory_condition': condition} for case in plan['later_evaluation_cases']
+        for condition in plan.get('evaluation_memory_conditions', ['frozen'])]
+    phase = ('complete' if manifest.get('completed') else
+        'memory_scope_review' if manifest.get('evaluations_pending') and not manifest['evaluations'] else
+        'transfer' if manifest.get('practice_completed') else 'practice')
+    write_json(study/'plan.json', {**plan, 'model': 'gpt-6-luna', 'reasoning': 'high', 'transfer': transfer})
+    write_json(study/'study-manifest.json', {
+        'generated_from': path.name, 'phase': phase, 'plan': {
+            **plan, 'model': 'gpt-6-luna', 'reasoning': 'high', 'transfer': transfer},
+        'scheduled_stages': ['practice', 'transfer'], 'completed_runs': completed,
+        'completed': manifest.get('completed', False), 'source_sha256': manifest['source_sha256']})
 
 
 def actor_command(out,arguments,*,control_steps,episode_seconds):
@@ -124,7 +152,7 @@ def main():
             raise ValueError('Initial memory differs from the declared prior; clean practice requires no prior')
         manifest={'source_sha256':frozen,'prior_memory_sha256':prior_hash,'clean_start':prior is None,
             'plan':plan,'started_at':time.time(),'evaluations':[]}
-        write_json(path,manifest)
+        save_study_manifest(study,path,manifest)
         attempts=int(plan['initial_and_maximum_attempts']);curriculum=study/plan['practice_cases']
         practice=run_actor(study,a.tag+'-practice',['--task','close_microwave','--state','17',
             '--learning-practice','--practice-cases',str(curriculum),'--attempts',str(attempts),
@@ -137,10 +165,12 @@ def main():
         memory=freeze_memory(study,practice,a.tag)
         manifest.update(practice_run=str(practice),practice_attempts=practice_results,practice_completed=True,
             frozen_memory=str(memory),frozen_memory_sha256=hashlib.sha256(memory.read_bytes()).hexdigest())
-        write_json(path,manifest)
+        save_study_manifest(study,path,manifest)
     if a.practice_only:
         manifest.update(practice_completed=True,evaluations_pending=True,completed=False)
-        write_json(path,manifest);render(study);return
+        save_study_manifest(study,path,manifest);render(study);return
+    manifest['evaluations_pending']=False
+    save_study_manifest(study,path,manifest)
     for index,case in enumerate(plan['later_evaluation_cases']):
         order=conditions if index%2==0 else list(reversed(conditions))
         for condition in order:
@@ -160,10 +190,10 @@ def main():
             write_json(out/'source-integrity.json',{'sources_unchanged_during_run':True,'checked_files':len(frozen)})
             result=read_json(out/'evaluation-private.json')['attempts'][0];agent=read_json(out/'agent-exit.json')
             manifest['evaluations'].append({'run':name,'memory_condition':condition,**result,
-                'actor_wall_seconds':agent['wall_seconds']});write_json(path,manifest)
+                'actor_wall_seconds':agent['wall_seconds']});save_study_manifest(study,path,manifest)
             print(json.dumps({'run':name,'native_success':result['official_task_success'],
                 'controls':result['control_steps']}),flush=True)
-    manifest.update(completed=True,evaluations_pending=False,finished_at=time.time());write_json(path,manifest);render(study)
+    manifest.update(completed=True,evaluations_pending=False,finished_at=time.time());save_study_manifest(study,path,manifest);render(study)
 
 
 if __name__=='__main__':main()

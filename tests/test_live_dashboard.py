@@ -4,6 +4,32 @@ from pathlib import Path
 import live_study_dashboard as dashboard
 
 
+def test_varied_practice_uses_compact_dashboard_and_preserves_episode_scores(tmp_path: Path) -> None:
+    """The four-episode runner publishes small static HTML and counts each outcome."""
+    from run_varied_contact_practice import save_study_manifest, render
+
+    study = tmp_path / 'study'
+    practice = study / 'trials' / 'clean-practice'
+    practice.mkdir(parents=True)
+    (practice / 'agent-exit.json').write_text('{"wall_seconds": 50}')
+    attempts = [{'official_task_success': value, 'control_steps': 600} for value in [True, False, True, False]]
+    manifest = {'plan': {'control_steps': 600, 'later_evaluation_cases': [{'task': 'close_microwave', 'state_index': 8}],
+        'evaluation_memory_conditions': ['none', 'frozen']}, 'source_sha256': {},
+        'practice_completed': True, 'practice_run': str(practice), 'practice_attempts': attempts,
+        'evaluations': [], 'evaluations_pending': True}
+    save_study_manifest(study, study / 'test-practice-manifest.json', manifest)
+    render(study, force=True)
+    status = json.loads((study / 'watch-status.json').read_text())
+    assert status['task_outcomes'] == {'completed': 4, 'successes': 2}
+    assert status['totals']['transfer']['planned'] == 2
+    page = study / 'watch.html'
+    assert page.stat().st_size < 20000
+    assert 'watch.js' in page.read_text()
+    stamp = page.stat().st_mtime_ns
+    render(study)
+    assert page.stat().st_mtime_ns == stamp
+
+
 def fixture(tmp_path,monkeypatch):
     study=tmp_path/'study';run=study/'trials/case';run.mkdir(parents=True)
     manifest={'phase':'baseline','plan':{'baseline':[{}],'transfer':[]},'completed_runs':[]}
