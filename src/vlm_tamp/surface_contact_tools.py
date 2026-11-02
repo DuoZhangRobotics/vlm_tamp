@@ -159,6 +159,11 @@ def contact_solutions(
             pose_matrix(metadata['eef_pose_world_xyzw'])[:3,:3],**normal_arguments)
     else:
         solutions=ik.solve_many(candidate['tcp_pose_world_xyzw'],start)
+    events=getattr(ik,'events',[])
+    if events:
+        candidate['ik_diagnostic']={key:events[-1][key] for key in (
+            'scene_collision_checked','self_collision_checked','constraint_feasible_seeds',
+            'distinct_solver_successes','minimum_position_error_m','returned','elapsed_seconds') if key in events[-1]}
     return candidate,solutions
 
 
@@ -179,10 +184,11 @@ def plan_contact_pose(
     """cuRobo endpoint IK followed by native planning; no extra collision pass."""
     folder=Path(folder);folder.mkdir();start=np.asarray(metadata['joint_positions'])
     began=time.perf_counter();deadline=began+float(budget_seconds);attempts=[]
-    candidate,solutions=contact_solutions(ik,metadata,point,contact_name,quaternion_xyzw,
-        contact_constraint=contact_constraint,surface_normal_world=surface_normal_world)
-    timing={'ik_seconds':time.perf_counter()-began,'approach_planning_seconds':0.}
     with NativeScene(scene,record,metadata,start,.05,articulated=False) as context:
+        ik.configure_scene(context)
+        candidate,solutions=contact_solutions(ik,metadata,point,contact_name,quaternion_xyzw,
+            contact_constraint=contact_constraint,surface_normal_world=surface_normal_world)
+        timing={'ik_seconds':time.perf_counter()-began,'approach_planning_seconds':0.}
         for solution in solutions:
             remaining=deadline-time.perf_counter()
             if remaining<=0:break
@@ -210,6 +216,7 @@ def plan_contact_pose(
         'contact_ik_failed' if not solutions else 'contact_path_not_found',
         'search_complete':len(attempts)==len(solutions),'physical_infeasibility_proved':False,
         'attempts':attempts,'timing_seconds':timing,'contact_pose':candidate}
+    diagnostic['ik_diagnostic']=candidate.get('ik_diagnostic',{})
     write_json(folder/'attempts.json',attempts)
     error=ValueError('Contact-pose planning: '+diagnostic['status']);error.planning_diagnostic=diagnostic
     raise error
@@ -222,8 +229,9 @@ def plan_pose(ik,scene,record,metadata,pose,folder):
     write_json(folder/'planning-input.json',{'reference_joints':start,
         'requested_pose_world_xyzw':pose,'planning_only':True,
         'metadata':{key:metadata[key] for key in ['joint_positions','eef_pose_world_xyzw','robot_collision_volumes_world']}})
-    solutions=ik.solve_many(pose,start)
     with NativeScene(scene,record,metadata,start,.05,articulated=False) as context:
+        ik.configure_scene(context)
+        solutions=ik.solve_many(pose,start)
         for index,solution in enumerate(solutions):
             path,result=context.plan(start,solution['joints'],constrained=False,seconds=8.)
             attempts.append({'ik_index':index,'goal_joints':solution['joints'],'result':result})

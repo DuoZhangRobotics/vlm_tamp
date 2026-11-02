@@ -65,30 +65,50 @@ def test_contact_tracking_reuses_absolute_reference_and_returns_incremental_moti
     assert second['reference_camera_count']==2 and tracker.last_view_counts['side']==30
 
 
-def test_physical_push_planner_does_not_consult_environment_predictions(monkeypatch):
+@pytest.fixture
+def ik_point_world(monkeypatch):
+    from contextlib import nullcontext
     import vlm_tamp.contact_skills as module
-    def forbidden(*a,**k):raise AssertionError('Observed environment must not veto a physical push stroke')
-    monkeypatch.setattr(module,'skill_native_scene',forbidden)
+    import vlm_tamp.current_robot_scene as measured
+    context=SimpleNamespace()  # No path planner or independent collision validator.
+    monkeypatch.setattr(module,'skill_native_scene',lambda *args,**kw:nullcontext(context))
+    monkeypatch.setattr(measured,'clear_current_robot_scene',lambda scene,*args:scene)
+    updates=[]
+    return {'configure_observed_scene':lambda value:updates.append(('scene',value)),
+            'move_scene_target':lambda value:updates.append(('target',value.copy()))},updates
+
+
+def test_physical_push_uses_collision_aware_ik_without_a_path_planner(ik_point_world):
+    import vlm_tamp.contact_skills as module
+    methods,updates=ik_point_world
     scene=SimpleNamespace(skill_collision_policy='veto')
-    ik=SimpleNamespace(chain=LinearChain(),self_valid=lambda q:True,
-        solve_contact=lambda point,local,seed,rotation:{'joints':np.r_[point,np.zeros(4)]})
+    def solve(point,local,seed,rotation):
+        # The target geometry must move with each commanded point, not remain
+        # an obstacle at its pre-push position.
+        np.testing.assert_allclose(updates[-1][1][:3,3],point)
+        return {'joints':np.r_[point,np.zeros(4)]}
+    ik=SimpleNamespace(chain=LinearChain(),solve_contact=solve,**methods)
     meta={'joint_positions':[0.]*7}
     path,report=module.plan_contact_stroke(ik,scene,{},meta,np.zeros(3),np.array([.1,0,0]),Budget(5),physical_feedback=True)
     assert path[-1,0]==pytest.approx(.1) and report['physical_feedback']
+    assert updates[0][0]=='scene'
+    assert report['ik_environment_collision_checked'] and not report['environment_planner_used']
 
 
-def test_physical_push_keeps_a_reachable_prefix_when_the_next_ik_fails(monkeypatch):
+def test_physical_push_keeps_a_reachable_prefix_when_the_next_ik_fails(ik_point_world):
     import vlm_tamp.contact_skills as module
+    methods,_=ik_point_world
     scene=SimpleNamespace(skill_collision_policy='veto')
-    ik=SimpleNamespace(chain=LinearChain(),self_valid=lambda q:True,
+    ik=SimpleNamespace(chain=LinearChain(),**methods,
         solve_contact=lambda point,local,seed,rotation:None if point[0]>.02 else {'joints':np.r_[point,np.zeros(4)]})
     path,report=module.plan_contact_stroke(ik,scene,{}, {'joint_positions':[0.]*7},np.zeros(3),np.array([.1,0,0]),Budget(5),physical_feedback=True)
     assert .015<path[-1,0]<=.02 and report['reachable_prefix']['reason']=='contact_ik_failed'
 
 
-def test_push_continuation_tracks_the_contact_offset_from_each_previous_posture():
+def test_push_continuation_tracks_the_contact_offset_from_each_previous_posture(ik_point_world):
     from scipy.spatial.transform import Rotation
     import vlm_tamp.contact_skills as module
+    methods,_=ik_point_world
     rotation=Rotation.from_euler('z',90).as_matrix();quat=Rotation.from_matrix(rotation).as_quat()
     chain=SimpleNamespace(forward=lambda q:np.r_[np.asarray(q)[:3],quat])
     contact=np.array([.04,0,0]);calls=[]
@@ -96,7 +116,7 @@ def test_push_continuation_tracks_the_contact_offset_from_each_previous_posture(
         calls.append((point.copy(),seed.copy()))
         assert np.allclose(local,contact) and np.allclose(preferred,rotation)
         return {'joints':np.r_[point-rotation@local,np.zeros(4)]}
-    ik=SimpleNamespace(chain=chain,solve_contact=solve)
+    ik=SimpleNamespace(chain=chain,solve_contact=solve,**methods)
     path,report=module.plan_contact_stroke(ik,SimpleNamespace(skill_collision_policy='veto'),{},
         {'joint_positions':[0.]*7},contact,np.array([.023,0,0]),Budget(5),physical_feedback=True)
     np.testing.assert_allclose(path[-1,:3],[.023,0,0],atol=1e-12)

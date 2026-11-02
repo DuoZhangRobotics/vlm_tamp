@@ -17,7 +17,6 @@ from scipy.spatial.transform import Rotation
 from .rekep_libero.geometry import pose_matrix,transform_points
 from .rekep_libero.robot_chain_v4 import RobotChain
 from .coupled_storage import preserve_scene,write_json
-from .rekep_libero.scene_state_v7 import voxel_points
 
 ROOT=Path(__file__).resolve().parents[2]
 LIBRARY=ROOT/'.runtime/mcvamp-contact-numerical/libmcvamp_contact_numerical.so'
@@ -140,21 +139,10 @@ class NativeScene:
         parts=[{'robot_geom_name':'gripper0_hand_collision','sphere_range':[0,len(gripper)],
             'native_sphere_indices':list(range(37,55)),'selected_handle_contact_allowed':False}]
         contact_surface=getattr(scene,'skill_contact_surface',None) or 'fingertips'
-        if self.collision_policy=='advisory':
-            observed_counts={'stationary':len(scene.static_points),'moving':len(scene.moving_reference),'contact_reference':len(scene.contact_reference)}
-            static,moving,contact=(_f(np.empty((0,3))) for _ in range(3))
-        else:
-            from .contact_collision_evidence import selected_contact_points
-            selected=selected_contact_points(scene)
-            static=_f(transform_points(voxel_points(scene.static_points,.0075),robot_world))
-            moving=_f(transform_points(voxel_points(scene.moving_reference[~selected],.005),robot_world))
-            # The transported handle reference locates the contact region; it is
-            # not a fresh depth measurement. Adding it to the obstacle tree lets
-            # submillimetre rigid-fit error invent palm penetration even when the
-            # current measured moving surface is clear. Query current observed
-            # moving endpoints, with the reference used only for association.
-            contact=_f(transform_points(voxel_points(scene.moving_reference[selected],.003),robot_world))
-            observed_counts={'stationary':len(static),'moving':len(moving),'contact':len(contact)}
+        from .collision_scene_points import planner_points, world_points
+        clouds, observed_counts = planner_points(scene, self.world_robot, self.collision_policy)
+        static, moving, contact = (clouds[name] for name in ('stationary', 'moving', 'contact'))
+        self.ik_clouds_world = world_points(clouds, self.world_robot)
         origin=transform_points([self.origin],robot_world)[0]
         axis=robot_world[:3,:3]@self.axis
         anchor=transform_points([self.anchor],robot_world)[0]

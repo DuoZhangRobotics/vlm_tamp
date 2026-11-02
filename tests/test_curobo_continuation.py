@@ -105,7 +105,7 @@ def test_constructor_closes_configured_arc_if_frame_query_fails(tmp_path):
     context = SimpleNamespace(chain=chain, origin=np.zeros(3), axis=np.array([0., 0., 1.]),
         reference_q=q, pad_local=np.zeros(3), grasp_constraint='point',
         scene=SimpleNamespace(config={}))
-    ik = SimpleNamespace(client=SimpleNamespace(backend='v2', request=request),
+    ik = SimpleNamespace(configure_scene=lambda context: None, client=SimpleNamespace(backend='v2', request=request),
         _v2_arc_spheres=({}, {'sphere_count': 0, 'groups': []}),_v2_arc_aperture=())
     (tmp_path/'scene-reference.json').write_text(json.dumps({'arrays_path': 'unused', 'arrays_sha256': 'unused'}))
     with pytest.raises(RuntimeError, match='frame query failed'):

@@ -41,6 +41,7 @@ def test_first_executable_pose_stops_search_without_variants(monkeypatch,tmp_pat
         def plan(self,a,b,**kw):
             calls.append('path');return np.array([a,b]),{'exact_solution':True,'status':'solved'}
     class IK:
+        def configure_scene(self,context):pass
         chain=None
         def solve_many(self,pose,initial):
             calls.append(pose.copy())
@@ -74,6 +75,7 @@ def test_closest_scene_valid_ik_is_chosen_without_an_extra_route(monkeypatch,tmp
         def plan(self,a,b,**kw):
             paths.append(b.copy());return np.array([a,b]),{'exact_solution':True,'status':'solved'}
     class IK:
+        def configure_scene(self,context):pass
         chain=None
         def solve_many(self,pose,initial):
             return [{'joints':np.full(7,v),'pose_world_xyzw':pose} for v in [.3,.1,.2]]
@@ -105,7 +107,7 @@ def test_intended_goal_contact_keeps_the_contact_enabled_approach(monkeypatch,tm
         def plan(self,a,b,**kwargs):
             modes.append(self.allow);return np.array([a,b]),{'exact_solution':True}
     monkeypatch.setattr(module,'NativeScene',Context)
-    ik=SimpleNamespace(solve_many=lambda pose,seed:[{'joints':np.full(7,.1),'pose_world_xyzw':pose}])
+    ik=SimpleNamespace(configure_scene=lambda context: None, solve_many=lambda pose,seed:[{'joints':np.full(7,.1),'pose_world_xyzw':pose}])
     state={'metadata':{'joint_positions':np.zeros(7),'robot_calibration':calibration()}}
     budget={'maximum_joint_speed':.6,'endpoint_hold_steps':6,'available_approach_steps':500,
         'grasp_closure_steps_reserved':40,'remaining_control_steps':540}
@@ -127,6 +129,7 @@ def test_hand_collision_is_rejected_without_calling_ik(monkeypatch,tmp_path):
         def validate(self,q):return {'accepted':True}
         def plan(self,a,b,**kwargs):return np.array([a,b]),{'exact_solution':True,'status':'solved'}
     class IK:
+        def configure_scene(self,context):pass
         chain=None
         def solve_many(self,pose,initial):
             queried.append(pose.copy());return [{'joints':np.full(7,.1),'pose_world_xyzw':pose}]

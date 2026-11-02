@@ -56,6 +56,7 @@ def select_direct_grasp(generated,state,ik,record,open_scene,goal,folder,config,
             error=ValueError('Measured start fails the selected robot/collision admission')
             error.planning_diagnostic={'status':'invalid_start','diagnostic':start}
             raise error
+        ik.configure_scene(approach_context)
         for ordinal,row in enumerate(rows):
             if time.perf_counter()>=deadline:break
             attempt={'pose_index':ordinal,'graspgen_index':row['graspgen_index'],

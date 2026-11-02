@@ -81,40 +81,100 @@ class Worker:
         self.count = int(config.get('curobo_num_seeds', 64))
         self.return_count = min(self.count, int(config.get('curobo_return_seeds', 32)))
         self.robot_config = v2_model(robot_config)
+        self.native_indices = self.robot_config.pop('native_sphere_indices', [])
+        self.native_self_pairs = self.robot_config.pop('native_self_collision_pairs', [])
+        self.point_scene = None
         self.seed = int(config.get('seed', 0))
-        self.solver = self.create_solver(self.robot_config, collision=False)
+        self.solver = self.create_solver(self.robot_config)
         return {'backend': 'curobo_v2', 'version': importlib.metadata.version('nvidia-curobo'),
                 'upstream_revision': '4ea77366ca48ee453e7df139e39fa6532af49f3b',
                 'torch': torch.__version__, 'cuda': torch.version.cuda, 'warp': wp.__version__,
                 'gpu': torch.cuda.get_device_name(), 'joint_names': self.solver.joint_names,
                 'num_seeds': self.count, 'return_seeds': self.return_count,
-                'cuda_graph': True, 'grasp_ik_environment_collision': False,
+                'cuda_graph': True, 'grasp_ik_environment_collision': 'current observed scene supplied before planning',
+                'ik_self_collision': True, 'robot_collision_model': 'native VAMP spheres and self pairs',
                 'compatibility': ['Warp public device_from_torch alias for v0.8.0 mesh adapter',
                                   'v0.8.0 particle IK legacy cost names normalized'],
                 'full_pose_error_cleanup': 'release optimizer graphs after a numerical exception; preserve the error',
                 'arc_optimizer_lifetime': 'one configured arc in local_continuation mode; one query in global mode',
                 'native_admission_required': True}
 
-    def create_solver(self, robot, *, collision=False, **kwargs):
+    def create_solver(self, robot, *, collision=True, **kwargs):
         from curobo.inverse_kinematics import InverseKinematics, InverseKinematicsCfg
         torch.manual_seed(self.seed)
         count = int(kwargs.pop('num_seeds', self.count))
         cfg = InverseKinematicsCfg.create(robot=copy.deepcopy(robot), device_cfg=self.device,
             optimizer_configs=ik_optimizer_configs(),
             num_seeds=count, seed_solver_num_seeds=count,
-            self_collision_check=False, load_collision_spheres=collision,
+            self_collision_check=collision, load_collision_spheres=collision,
+            optimizer_collision_activation_distance=0.,
             position_tolerance=kwargs.pop('position_tolerance', float(self.config.get('ik_position_tolerance_m', .003))),
             orientation_tolerance=kwargs.pop('orientation_tolerance', float(self.config.get('ik_orientation_tolerance_rad', .01))),
             use_cuda_graph=True, random_seed=self.seed, **kwargs)
-        # The v0.8.0 factory applies self_collision_check=False to optimization
-        # rollouts only. Match it in metrics too; native VAMP remains the
-        # authoritative robot self-collision check for our calibrated export.
-        for costs in cfg.metrics_rollout_config.get_cost_manager_configs():
-            costs.disable_self_collision()
+        if collision and self.native_self_pairs:
+            indices = {native: index for index, native in enumerate(self.native_indices)}
+            pairs = [[indices[a], indices[b]] for a, b in self.native_self_pairs]
+            cfg.robot_config.kinematics.self_collision_config.collision_pairs = torch.tensor(
+                pairs, dtype=torch.int16, device=self.device.device)
+            cfg.robot_config.kinematics.self_collision_config.sphere_padding.zero_()
         for rollout in cfg.optimizer_rollout_configs:
             if rollout.cost_cfg is None or rollout.cost_cfg.tool_pose_cfg is None:
                 raise ValueError('Every cuRobo IK optimizer stage requires a tool-pose objective')
-        return InverseKinematics(cfg)
+        return InverseKinematics(cfg, scene_collision_checker=self.point_scene)
+
+    def configure_scene(self, arrays_path: str, arrays_sha256: str,
+                        palm_contact: bool = False) -> dict[str, Any]:
+        """Update the shared collision world without changing observed geometry."""
+        from pathlib import Path
+        from .curobo_scene_points import ObservedPointScene
+        started = time.perf_counter()
+        path = Path(arrays_path)
+        if hashlib.sha256(path.read_bytes()).hexdigest() != arrays_sha256:
+            raise ValueError('Observed point scene hash mismatch')
+        with np.load(path, allow_pickle=False) as data:
+            clouds = {name: data[name].astype(np.float32) for name in ('stationary', 'moving', 'contact')}
+        if any(x.ndim != 2 or x.shape[1] != 3 or not np.isfinite(x).all() for x in clouds.values()):
+            raise ValueError('Observed point partitions must contain finite xyz values')
+        needed = max(1, len(clouds['stationary'])+len(clouds['moving']), len(clouds['contact']))
+        recreated = self.point_scene is None or needed > self.point_scene.capacity
+        if recreated:
+            self.solver.destroy()
+            for cached in getattr(self, 'contact_solvers', {}).values():cached['solver'].destroy()
+            self.contact_solvers = {}
+            self.point_scene = ObservedPointScene(self.device, self.native_indices, 1 << (needed-1).bit_length())
+            self.solver = self.create_solver(self.robot_config)
+        self.point_scene.update(clouds, palm_contact)
+        return {'scene_collision_checked': True, 'self_collision_checked': True,
+            'observed_points': {k: len(v) for k, v in clouds.items()},
+            'scene_sha256': arrays_sha256, 'solver_recreated': recreated,
+            'scene_setup_seconds': time.perf_counter()-started,
+            'geometry': 'native cuRobo zero-size cuboids at VAMP observed points',
+            'point_radius_m': 0., 'collision_activation_distance_m': 0.,
+            'palm_contact_allowed': bool(palm_contact), 'finger_environment_collision_checked': False}
+
+    def move_scene_target(self, transform: ArrayLike) -> dict[str, Any]:
+        matrix = np.asarray(transform, float)
+        if matrix.shape != (4, 4) or not np.isfinite(matrix).all():
+            raise ValueError('Expected a finite target transform')
+        if self.point_scene is None or not self.point_scene.loaded:
+            raise ValueError('Configure the observed scene before moving target geometry')
+        self.point_scene.move_target(matrix)
+        return {'target_geometry_updated': True}
+
+    def collision_diagnostics(self, joints: ArrayLike) -> dict[str, Any]:
+        """Read native collision costs for offline model-parity tests; no motion."""
+        from curobo._src.geom.collision.buffer_collision import CollisionBuffer
+        state=self.solver.compute_kinematics(self.joint_state(joints))
+        spheres=state.robot_spheres
+        cost=self.solver.core.metrics_rollout.constraint_manager.get_cost('self_collision')
+        cost.setup_batch_tensors(spheres.shape[0],spheres.shape[1])
+        self_cost=cost.forward(spheres)
+        buffer=CollisionBuffer.from_shape(spheres.shape,self.device)
+        environment=self.point_scene.get_sphere_distance(state,buffer,
+            self.device.to_device([1.]),self.device.to_device([0.]))
+        return {'spheres_world':spheres.detach().cpu().tolist(),
+            'self_collision_cost':self_cost.detach().cpu().tolist(),
+            'environment_cost_per_sphere':environment.detach().cpu().tolist()}
 
     def solve_contact(self, point: ArrayLike, contact_local: ArrayLike,
                       reference_quaternion_xyzw: ArrayLike, seed: ArrayLike, local: bool = True,
@@ -185,6 +245,10 @@ class Worker:
         cached['used']=True
         return {'solutions': result.solution.detach().cpu().reshape(-1, 7).tolist(),
                 'success': result.success.detach().cpu().reshape(-1).tolist(),
+                'feasible': result.feasible.detach().cpu().reshape(-1).tolist(),
+                'position_error_m': result.position_error.detach().cpu().reshape(-1).tolist(),
+                'scene_collision_checked': self.point_scene is not None and self.point_scene.loaded,
+                'self_collision_checked': True,
                 'elapsed_seconds': time.perf_counter()-started,
                 'solver_created':created,'first_solve_for_contact_solver':first_solve,
                 'solver_setup_seconds':setup_seconds,'solve_call_seconds':solve_call_seconds,
@@ -203,6 +267,8 @@ class Worker:
         started = time.perf_counter()
         if solver_mode not in {'global', 'local_continuation'}:
             raise ValueError('Unsupported arc solver mode')
+        if self.point_scene is None or not self.point_scene.loaded:
+            raise ValueError('Configure the shared observed collision world before arc IK')
         for name, value in {'mesh_pitch': mesh_pitch, 'moving_mesh_pitch': moving_mesh_pitch,
                             'local_dt': local_dt}.items():
             if not np.isfinite(value) or value <= 0.:
@@ -239,9 +305,8 @@ class Worker:
         if not np.isfinite(self.arc_position_tolerance) or self.arc_position_tolerance<=0:
             raise ValueError('Arc position tolerance must be positive')
         self.arc_rng = np.random.default_rng(self.seed)
-        # MC-VAMP owns environment collision checking for complete paths.
-        # IK supplies endpoint configurations; do not build a second mesh world
-        # that can veto them before the motion planner sees them.
+        # The caller already supplied exactly the native planner's point world.
+        # Only its moving partitions are transported to each proposed arc goal.
         self.moving_mesh_name=None
         scene = Scene(mesh=[])
         model = copy.deepcopy(self.robot_config)
@@ -266,8 +331,8 @@ class Worker:
                 'arc_id': self.active_arc_id, 'solver_mode': solver_mode,
                 'optimizer_generation': self.arc_optimizer_generation,
                 'optimizer_lifetime': 'one_arc' if solver_mode == 'local_continuation' else 'one_query',
-                'solver_recreated': True, 'gpu_environment_collision_checked': False,
-                'collision_owner': 'native MC-VAMP sphere planner',
+                'solver_recreated': True, 'gpu_environment_collision_checked': True,
+                'collision_owner': 'cuRobo IK and native MC-VAMP paths, shared observed points',
                 'current_moving_surface_only': True,
                 'local_optimization_dt_seconds': None,
                 'local_seed_std_rad': self.arc_local_seed_std if solver_mode == 'local_continuation' else None,
@@ -279,7 +344,7 @@ class Worker:
                 'observed_points': {key: len(value) for key, value in clouds.items()},
                 'mesh_triangles': {},
                 'scene_arrays_sha256': scene_arrays_sha256, 'native_admission_required': True,
-                'map_method': 'no GPU environment; MC-VAMP owns the observed collision world',
+                'map_method': 'same VAMP observed points through native cuRobo point distances',
                 'hidden_object_geometry_used': False}
 
     def create_arc_solver(self):
@@ -355,10 +420,10 @@ class Worker:
         self.arc_solver_used = True
         rotation = Rotation.from_rotvec(float(angle)*self.arc_axis)
         translation = self.arc_origin-rotation.apply(self.arc_origin)
-        quat = rotation.as_quat()
-        if self.moving_mesh_name is not None:
-            self.arc_solver.scene_collision_checker.data.update_obstacle_pose(self.moving_mesh_name,
-                Pose.from_list([*translation, quat[3], *quat[:3]], device_cfg=self.device))
+        transform=np.eye(4);transform[:3,:3]=rotation.as_matrix();transform[:3,3]=translation
+        if self.point_scene is None:
+            raise ValueError('Configure the observed IK collision scene before an arc query')
+        self.point_scene.move_target(transform)
         # Express the caller-selected attachment directly in cuRobo.
         # There is no soft orientation objective for a point-only target.
         orient_weights = {'point': [0.]*3, 'rigid': [1.]*3, 'jaw_axis': [0., 1., 1.]}[mode]
@@ -434,6 +499,8 @@ class Worker:
                 'success': result.success.detach().cpu().reshape(-1).tolist(),
                 'elapsed_seconds': time.perf_counter()-started,
                 'solver_seconds': float(result.solve_time),
+                'scene_collision_checked': self.point_scene is not None and self.point_scene.loaded,
+                'self_collision_checked': True,
                 'peak_gpu_allocated_bytes': torch.cuda.max_memory_allocated(), 'backend': 'curobo_v2'}
 
 
@@ -448,7 +515,8 @@ def main():
                 request_id = request.pop('id', None)
                 if op == 'close':
                     result = {}
-                elif op in {'initialize', 'fk', 'solve', 'solve_contact', 'configure_arc', 'arc_forward', 'solve_arc', 'end_arc'}:
+                elif op in {'initialize', 'fk', 'solve', 'solve_contact', 'configure_scene', 'move_scene_target', 'collision_diagnostics',
+                            'configure_arc', 'arc_forward', 'solve_arc', 'end_arc'}:
                     result = getattr(worker, op)(**request)
                 else:
                     raise ValueError(f'Unknown cuRobo v2 operation: {op}')

@@ -139,6 +139,10 @@ Inspect those labels and uncertainty. Read full diagnostics when they matter.
 Failed contact searches can return rejection images. Red is the native planner's
 reported sphere, blue an observed cloud point, and yellow the requested touch
 projection. These depict an unexecuted candidate, not a measured collision.
+cuRobo solves IK with the observed environment and robot self-collisions enabled.
+Finger/environment contacts remain permitted; palm/arm collisions remain checked.
+During a contact stroke the observed target is transported by the requested motion;
+this is a contact prediction, not a measurement or task-success certificate.
 """
 
 
@@ -168,7 +172,7 @@ def contact_search_summary(diagnostic: dict) -> dict:
                     'blocking_sphere_world_m','joint_bound_violations','self_rejections','bounds_rejections'))})
         if not rejected:rejections[status]+=1
     return {**pick(diagnostic,('search_complete','global_infeasibility_proved','physical_infeasibility_proved',
-        'timing_seconds','search_work','selected_pixel','selected_contact','planning_stage','push_stroke_issued')),
+        'timing_seconds','search_work','selected_pixel','selected_contact','planning_stage','push_stroke_issued','ik_diagnostic')),
         'attempted_candidates':len(attempts),'search_outcomes':dict(outcomes),
         'rejection_counts':dict(rejections),'blocking_examples':examples}
 
@@ -274,7 +278,7 @@ def compact_response(response):
             'input_mode','contact_reference_reused','engagement_status','continuation_scope','scene_reused','preview_reused','source_preview',
             'observation_cloud_reused','full_scene_builds','contact_searches','continuation',
             'tracking_reference_reused','tracking_reference_camera_count',
-            'contact_motion_policy','stroke_scene_collision_veto','object_progress_is_execution_gate',
+            'contact_motion_policy','stroke_scene_collision_veto','collision_check_scope','object_progress_is_execution_gate',
             'object_motion_status','object_progress_reference_control_step','planning_limit',
             'part_motion_evidence',
             'continue_push_available','next_operation','grasp_scene_refresh_required','scene_refresh_scope',

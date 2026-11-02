@@ -76,9 +76,6 @@ def export_model(record, directory, margin_rad=0.):
         'robot_only_calibration': True, 'simulator_scene_state_used': False,
         'base_frame': 'world', 'end_effector': 'LIBERO controller grip_site',
         'joint_order': [f'joint{i+1}' for i in range(7)], 'command_joint_reserve_rad': margin_rad,
-        'curobo_internal_environment_collision_check': False,
-        'curobo_internal_self_collision_check': False,
-        'self_collision_backend': 'VAMP Panda validation after cuRobo IK',
-        'environment_collision_backend': 'full robot mesh versus observed depth, with task contact permissions',
+        'collision_configuration': 'TaskIK installs shared VAMP spheres/self pairs; each planning query supplies the observed world',
         'collision_free_guarantee': False}, indent=2)+'\n')
     return config

@@ -84,7 +84,7 @@ def test_contact_approach_offers_unmodified_endpoints_to_native_planner(monkeypa
             return np.vstack([start,goal]),{'exact_solution':len(calls)==9}
         def validate(self,*a):pytest.fail('No independent endpoint validation')
     monkeypatch.setattr(skill,'skill_native_scene',lambda *a,**kw:Context())
-    ik=SimpleNamespace(chain=SimpleNamespace(forward=lambda q:np.r_[point-offset,[0.,0.,0.,1.]]))
+    ik=SimpleNamespace(configure_scene=lambda context: None, chain=SimpleNamespace(forward=lambda q:np.r_[point-offset,[0.,0.,0.,1.]]))
     evidence={'point_world_m':point.tolist(),'contact_name':'selected_pad',
         'contact_surface':'fingertips','direction_world':[1,0,0]}
     result=skill.plan_engagement(ik,SimpleNamespace(skill_approach_speed_rad_s=.6),{},

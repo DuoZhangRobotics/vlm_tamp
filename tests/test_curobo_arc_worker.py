@@ -88,6 +88,7 @@ def worker_scene(monkeypatch, tmp_path):
         Pose=Pose, GoalToolPose=SimpleNamespace(from_poses=lambda poses: poses)))
     monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
     worker = Worker()
+    worker.point_scene = SimpleNamespace(loaded=True, move_target=lambda transform: None)
     worker.config, worker.seed, worker.count = {}, 17, 64
     worker.robot_config = {'kinematics': {}}
     worker.solver = SimpleNamespace(grasp_solver_untouched=True)
@@ -162,7 +163,7 @@ def test_local_optimizer_is_reused_only_within_one_arc_and_rng_resets(worker_sce
     assert replacement['optimizer_generation'] == 2
     solve(worker, replacement['arc_id'])
     assert np.array_equal(first_seeds, solvers[-1].calls[0]['seed_config'].numpy())
-    assert len(meshes) == 0  # Environment collision belongs to MC-VAMP.
+    assert len(meshes) == 0  # Scene is supplied by the shared point-world adapter.
     assert worker.solver.grasp_solver_untouched
 
 
@@ -201,8 +202,8 @@ def test_local_geometry_ownership_and_optimizer_settings(worker_scene):
     worker, config, meshes, solvers = worker_scene
     setup = worker.configure_arc(**config)
     assert setup['observed_points'] == {'stationary': 2, 'moving': 2}
-    assert not setup['gpu_environment_collision_checked']
-    assert setup['collision_owner']=='native MC-VAMP sphere planner'
+    assert setup['gpu_environment_collision_checked']
+    assert setup['collision_owner']=='cuRobo IK and native MC-VAMP paths, shared observed points'
     assert meshes==[] and solvers[0].options['scene_model'].mesh==[]
     options = solvers[0].options
     assert 'optimization_dt' not in options
@@ -219,7 +220,7 @@ def test_global_mode_keeps_query_reset_and_uses_only_current_collision_clouds(wo
     assert setup['solver_mode'] == 'global'
     assert setup['observed_points']['moving'] == 2
     assert setup['current_moving_surface_only']
-    assert meshes==[] and not setup['gpu_environment_collision_checked']
+    assert meshes==[] and setup['gpu_environment_collision_checked']
     assert setup['seed_velocity_weight']==0.
     assert setup['velocity_regularization_weight'] is None
     assert setup['velocity_regularization_source']=='upstream_optimizer_default'
@@ -242,7 +243,7 @@ def test_cleared_clouds_do_not_reuse_a_previous_moving_obstacle(worker_scene,mod
         'scene_arrays_sha256':hashlib.sha256(path.read_bytes()).hexdigest()})
     assert setup['observed_points']=={'stationary':0,'moving':0}
     assert worker.moving_mesh_name is None
-    assert len(meshes)==0  # Neither old nor new observed surfaces become a GPU veto.
+    assert len(meshes)==0  # No second mesh representation is constructed.
     solve(worker,setup['arc_id'])
 
 

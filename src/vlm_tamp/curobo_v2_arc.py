@@ -1,7 +1,7 @@
 """Full-angle cuRobo IK endpoints for upstream MC-VAMP constrained planning.
 
-MC-VAMP owns the observed collision world. IK does not build a second world,
-and returned planner paths are not rechecked. Local continuation is a reported
+IK and MC-VAMP use shared observed points and robot spheres. Returned planner
+paths are not rechecked. Local continuation is a reported
 fallback after the full-angle attempt fails.
 """
 from pathlib import Path
@@ -45,8 +45,9 @@ class CuroboV2ArcProposer:
         self.queries = []
         before = time.perf_counter()
         if not hasattr(ik, '_v2_arc_spheres'):
-            ik._v2_arc_spheres = calibrated_spheres(context.chain, context.scene.robot, context.world_robot)
+            ik._v2_arc_spheres = calibrated_spheres(context.chain, context.scene.robot, context.world_robot, include_self=True)
         spheres, provenance = ik._v2_arc_spheres
+        ik.configure_scene(context)
         reference = read_json(self.folder/'scene-reference.json')
         self.configure_request = dict(collision_spheres=spheres,
             position_tolerance=self.ik_position_tolerance_m,

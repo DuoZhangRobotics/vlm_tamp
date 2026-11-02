@@ -88,6 +88,76 @@ Previously the wrapper displayed `unknown` for these nested native reasons.
   candidate overlaps observed top-edge points by 5.47 mm. These are native
   spherical-model overlaps, not proof of exact physical palm penetration.
 
+## Collision-aware IK (November 2)
+
+The earlier contact and full-pose IK calls had environment and self-collision
+disabled. Their success flag meant kinematic convergence; native VAMP subsequently
+rejected colliding endpoints. The user explicitly requested collision-aware IK.
+
+The v2 worker now optimizes with the same 59 robot spheres and self-collision pairs
+as the pinned VAMP model. Environment queries use exactly the existing sampled
+observed points, with the same stationary/moving/contact ownership. cuRobo's native
+zero-size cuboid distance is the distance to a point. This uses upstream distance
+and gradient kernels without reconstructing a mesh, adding occupied thickness,
+or introducing a custom IK/gradient solver. The robot base and fingers are exempt
+from environment queries, as in VAMP. Explicit palm contact exempts the palm only
+against the selected contact partition. Arm and other palm collisions remain active.
+
+The obstacle storage, collision masks, and contact solvers remain resident. Large
+particle batches are partitioned only to respect Warp's signed 32-bit kernel-index
+limit; every configuration still sees every point. Collision activation distance,
+point radius, sphere padding and self-collision padding are zero. No post-IK repair,
+extra returned-path check, posture gate, or fallback was introduced.
+
+Free approaches and grasp selection configure the shared scene before solving IK.
+Arc goals rotate observed moving geometry by the requested angle. Direct push IK
+transports the moving target with the requested stroke while retaining stationary
+geometry. This prediction assumes contact; RGB-D feedback remains the measurement.
+Direct strokes do not construct a VAMP path planner. The redundant local CPU self
+check was removed because cuRobo now uses the same native sphere pairs itself.
+
+Validation:
+
+- 224 targeted CPU/native tests passed; two historical-recording fixtures skipped.
+- 14 native GPU tests passed, including exact boundary distances, gradients,
+  finger/palm permissions, and geometry/permission updates under CUDA graph replay.
+- Across 235 configurations in three saved scenes, GPU/native self and scene
+  admission agreed in every case. Maximum sphere-coordinate discrepancy was
+  2.06 micrometres. See `results/curobo-collision-ik-zero-20261102`.
+- The two rejected state-17 panel contacts returned no successful IK solution;
+  warm searches took approximately 1.46 s. This is a finite optimization result,
+  not proof that all postures are infeasible. The previously reachable handle
+  contact returned 22 warm solutions, all admitted by VAMP, in 15.8 ms end to end.
+- Full-pose and zero-angle arc smoke checks returned 31 solutions each; the arc
+  sphere/contact-frame checks agreed to 0.24 micrometres. No motion was executed
+  by those checks. See `results/curobo-collision-arc-check-20261102`.
+
+The first adapter test accidentally retained cuRobo's default 1 cm cached box
+dimensions. Boundary regression tests caught this; both stores now explicitly
+zero their dimensions. The earlier `curobo-collision-ik-20261102` and
+`curobo-collision-physical-20261102` results are marked invalid for zero-padding
+comparisons and preserved for audit. Use the `-zero-` reruns above and below.
+
+The corrected physical replay is **not a task success**. In
+`results/curobo-collision-physical-zero-20261102/state017-handle-outer-face-r1`,
+the approach reached at control 130 (6.50 simulated seconds), with 3.61 mm contact
+error. The requested 2 cm stroke produced a large change between IK postures;
+the scheduled references span 2.55 radians in one joint and were truncated to the
+470 remaining controls. After advancing 20 references and waiting another 20
+controls, execution stopped at control 171 (8.55 s): the last issued reference
+was 23.6 mm away, normal error 0.0707 rad, joint lead 0.0562 rad. Stop reason:
+`push_reference_not_reached`. No additional collision veto ran in execution.
+The door went from 88.92 to 87.36 degrees open; 104.6 s of skill time remained.
+The recorded execution is `attempt01/initial/rollout.mp4` in that result folder.
+
+This exposes an unresolved continuity issue: collision-free IK endpoints do not
+make their joint interpolation a straight usable contact trajectory. The next
+diagnostic is native cuRobo continuation/seed selection at that stroke. No new
+continuity cutoff, alternate solver or motion-planning fallback was added to
+conceal this failure. Full Luna task evaluations have not been repeated with
+collision-aware IK. The preceding point/normal-interface trials, before this
+change, failed both states 17 and 49 at 600 controls.
+
 All diagnostic pixels/settings above were operator inputs, excluded from Luna
 prompts and memory. Native object angles/contacts are evaluation-only evidence.
 

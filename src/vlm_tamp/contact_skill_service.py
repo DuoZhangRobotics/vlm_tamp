@@ -267,8 +267,9 @@ def run_skill(
     if context and context.get('part_motion_evidence'):
         result['part_motion_evidence']=copy.deepcopy(context['part_motion_evidence'])
     result['collision_policy']=collision_policy
-    result['contact_motion_policy']='physical_execution_feedback' if physical_push else 'planned_contact'
-    result['stroke_scene_collision_veto']=False
+    result['contact_motion_policy']='collision_aware_ik_with_physical_execution_feedback'
+    result['stroke_scene_collision_veto']=True
+    result['collision_check_scope']='cuRobo IK endpoints; no extra returned-path collision pass'
     result['object_progress_is_execution_gate']=not physical_push
     result['environment_collision_predictions']={'count':0,'examples':[],
         'all_environment_states_checked':False,'collision_free_certificate':False}
@@ -799,6 +800,8 @@ def run_skill(
                 planning_scene=collision_scene()
                 with planning_stage(budget,stroke_plan_seconds,'withdrawal',result,timing,'stroke_planning_seconds') as (planning,nested):
                     phase=time.perf_counter()
+                    with skill_native_scene(planning_scene,service.record,meta,start) as ik_context:
+                        service.ik.configure_scene(ik_context)
                     goals=service.ik.solve_many(matrix_pose(retreat),start)
                     nested['ik_seconds']+=time.perf_counter()-phase
                     path=None;attempts=[]

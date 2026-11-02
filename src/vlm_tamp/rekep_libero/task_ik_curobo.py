@@ -1,7 +1,8 @@
 """cuRobo IK results, unchanged, for the native motion planner.
 
-FK errors are reported, not used for a second IK acceptance decision. The native
-planner owns collision admission. Point continuation uses cuRobo as well.
+FK errors are reported, not used for a second IK acceptance decision. cuRobo
+optimizes with shared observed points and native VAMP robot spheres/self pairs.
+The native planner owns complete path search. Point continuation uses cuRobo.
 """
 
 import json
@@ -33,6 +34,14 @@ class TaskIK(BaseIK):
         self.output = Path(output)
         self.reserve = float(config.get('command_joint_reserve_rad',0.))
         model = export_model(robot_record, self.output/'curobo-model', self.reserve)
+        from .curobo_collision_model import calibrated_spheres, native_self_collision_pairs
+        world_robot = np.linalg.inv(np.asarray(robot_record['calibration']['world_to_robot']))
+        self.world_robot = world_robot
+        spheres, provenance = calibrated_spheres(self.chain, None, world_robot, include_self=True)
+        model['kinematics'].update(collision_link_names=list(spheres), collision_spheres=spheres,
+            collision_sphere_buffer=0., self_collision_ignore={}, self_collision_buffer={})
+        model['native_sphere_indices'] = [i for group in provenance['groups'] for i in group['native_indices']]
+        model['native_self_collision_pairs'] = native_self_collision_pairs()
         self.client = CuroboClient(model, config, self.output/'curobo.log')
         self.events = []
         self._save('curobo-runtime.json', self.client.metadata)
@@ -41,6 +50,31 @@ class TaskIK(BaseIK):
         except BaseException:
             self.client.close()
             raise
+
+    def configure_scene(self, context):
+        """Give IK the exact observed point partitions already prepared for VAMP."""
+        return self._configure_clouds(context.ik_clouds_world, bool(context.record.get('palm_contact_allowed')))
+
+    def configure_observed_scene(self, scene):
+        """Prepare the shared points for a direct IK stroke without building a path planner."""
+        from vlm_tamp.collision_scene_points import planner_points, world_points
+        clouds, _ = planner_points(scene, self.world_robot)
+        return self._configure_clouds(world_points(clouds, self.world_robot),
+            getattr(scene, 'skill_contact_surface', None) == 'palm')
+
+    def _configure_clouds(self, clouds, palm_contact):
+        import hashlib
+        path = self.output/'curobo-observed-scene.npz'
+        np.savez(path, **clouds)
+        result = self.client.request('configure_scene', arrays_path=str(path.resolve()),
+            arrays_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+            palm_contact=palm_contact)
+        self.scene_setup = result
+        return result
+
+    def move_scene_target(self, transform):
+        """Move the observed target for this goal; fixed geometry remains fixed."""
+        return self.client.request('move_scene_target', transform=np.asarray(transform).tolist())
 
     def _save(self, name, value):
         (self.output/name).write_text(json.dumps(value, indent=2, allow_nan=False)+'\n')
@@ -106,9 +140,9 @@ class TaskIK(BaseIK):
                 'position_error_m': position, 'orientation_error_rad': angle,
                 'joint_reserve_rad': joint_reserve(q, self.chain.limits),
                 'posture_cost': posture_cost(q, seed, self.chain.limits), 'backend': 'curobo',
-                'scene_collision_checked': False,'solver_reported_success':bool(success),
+                'scene_collision_checked': result.get('scene_collision_checked', False),'solver_reported_success':bool(success),
                 'candidate_modified': False, 'joint_bound_projection_rad': 0.,
-                'collision_admission': 'native motion planner'})
+                'collision_admission': 'cuRobo IK feasibility, then native path planning'})
         solutions.sort(key=lambda row: row['posture_cost'])
         for rank, solution in enumerate(solutions):
             solution['posture_rank'] = rank
@@ -155,14 +189,12 @@ class TaskIK(BaseIK):
                 continue
             pose = self.chain.forward(q); transform = pose_matrix(pose)
             error = float(np.linalg.norm(transform[:3, 3]+transform[:3, :3]@offset-point))
-            # Physical push continuation has no environment path query, so this
-            # existing VAMP self check is its sole robot self-collision check.
-            if local and not self.self_valid(q):
-                continue
             candidates.append({'joints': q.tolist(), 'pose_world_xyzw': pose.tolist(),
                 'position_error_m': error, 'solver_reported_success': bool(success),
                 'orientation_is_soft_preference': False, 'candidate_modified': False,
-                'backend': result['backend']})
+                'backend': result['backend'],
+                'scene_collision_checked': result.get('scene_collision_checked', False),
+                'self_collision_checked': result.get('self_collision_checked', False)})
             if oriented:
                 from vlm_tamp.contact_orientation import contact_orientation_report
                 candidates[-1]['contact_orientation'] = contact_orientation_report(
@@ -171,6 +203,12 @@ class TaskIK(BaseIK):
             'contact_constraint': 'surface_normal' if oriented else 'point',
             'seed_count': result.get('seed_count'), 'returned': len(result['solutions']),
             'distinct_solver_successes': len(candidates), 'elapsed_seconds': result['elapsed_seconds'],
+            'scene_collision_checked': result.get('scene_collision_checked', False),
+            'self_collision_checked': result.get('self_collision_checked', False),
+            'constraint_feasible_seeds': sum(result.get('feasible', [])),
+            'minimum_position_error_m': min(result.get('position_error_m', []), default=None),
+            'closest_posture_distance_rad': min((float(np.linalg.norm(np.asarray(c['joints'])-seed))
+                for c in candidates), default=None),
             **{k:result[k] for k in ('solver_created','first_solve_for_contact_solver',
                 'solver_setup_seconds','solve_call_seconds','solver_reported_seconds') if k in result},
             'wall_seconds': time.perf_counter()-began})

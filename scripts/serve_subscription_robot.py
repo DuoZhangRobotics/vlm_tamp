@@ -1112,6 +1112,9 @@ class RobotService:
         return self.keep_plan(path,result,'free')
 
     def ik_solutions(self, pose_world_xyzw):
+        start=self.state['metadata']['joint_positions']
+        with NativeScene(self._query_scene(None),self.record,self.state['metadata'],start,.05,articulated=False) as context:
+            self.ik.configure_scene(context)
         return {'solutions': self.ik.solve_many(vector(pose_world_xyzw,7),
                     self.state['metadata']['joint_positions'],maximum=8)}
 
