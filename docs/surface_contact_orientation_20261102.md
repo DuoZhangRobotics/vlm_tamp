@@ -245,6 +245,44 @@ selection. Video: `state017-handle-outer-face-r1/attempt01/initial/rollout.mp4`.
 Full Luna task evaluations were not rerun for this local-solver change; validation
 focused on native numerical behavior and the matched physical push.
 
+## Closing-oriented direction: three matched operator replays
+
+The user then requested a test in the closing direction. Only the requested world
+direction changed; the contact pixel, robot face, orientation constraint, distance,
+speed, controller, tolerances and runtime code stayed identical. This is an
+operator input comparison, not a Luna-selected action or learned policy.
+
+The operator selected an opaque, flat door-rim patch in public RGB-D
+(`arm_lower_right`, pixel `[300,318]`, region `[297,314,304,323]`). Its measured
+inward normal, approximately `[0.999816,0.019185,0.000065]`, supplies a closing-
+oriented push. This approximates the local closing motion; it is not an exact
+hinge-derived tangent. No simulator hinge coordinates or object geometry selected
+the command. The curved handle's normal still specifies the robot contact face.
+These diagnostic pixels and vectors are not supplied to Luna or promoted to memory.
+
+`results/curobo-closing-direction-push-20261102/watch.html` contains all three
+videos, full inputs/outputs, IK traces and time breakdowns. Every replay returned
+`stroke_executed`: seven local IK solutions succeeded, 14 nominal controls ran,
+and no additional settling controls were required. The hand advanced 18.09 mm
+along the 20 mm command; final 3D tracking error was 3.81 mm, within the unchanged
+4 mm completion tolerance. Maximum adjacent IK joint change was 0.0210 rad.
+The approach was unchanged and reached at control 130; the push ended at control
+144 (7.20 simulated seconds). Three identical-state replays establish only local
+repeatability.
+
+Evaluation-only simulator angles changed from 87.65 to 83.64 degrees open during
+the push: 4.01 degrees of closing. The microwave was not fully closed. RGB-D
+object-motion estimation still reported unresolved in all three runs, so successful
+robot execution must not be confused with validated visual progress feedback.
+
+Total skill wall times were 17.41, 13.30 and 14.07 s; contact search took 7.34,
+3.23 and 3.61 s. Stroke computation including first local use took 0.85–0.92 s,
+with warm IK calls around 3.3 ms. Peak measured job memory was 4.25 GiB. Host-wide
+full I/O pressure peaked at 18.02%, while eleven fresh SSH checks succeeded; the
+run completed without a resource stop. Host pressure does not identify which
+workload caused the I/O. No runtime code changes or new unit tests were needed
+for this input-only experiment.
+
 All diagnostic pixels/settings above were operator inputs, excluded from Luna
 prompts and memory. Native object angles/contacts are evaluation-only evidence.
 
