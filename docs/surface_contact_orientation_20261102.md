@@ -197,6 +197,54 @@ separation, keeping acquisition collisions enabled, previous-posture seeding, an
 ensuring a push does not prepare or query an environment world. No new continuity
 limit, fallback, seed menu, posture correction, or controller change was introduced.
 
+## Native local IK continuation
+
+The next audit found that the method called "local" disabled cuRobo's LM seed
+stage and forced its particle/L-BFGS optimizer at every waypoint. One supplied
+seed did not prevent particle sampling. Sorting the single returned candidate
+also could not establish that it was the nearest possible configuration.
+
+Continuation now calls the pinned SDK's native `seed_ik_solver.solve_single`
+with exactly one supplied seed: the preceding joint configuration. The result
+passes through the SDK's standard result evaluation using
+`solve_pose(..., run_optimizer=False)`. That evaluates the existing pose, joint
+limit and self-collision conditions without modifying the LM result or running
+the main optimizer. Both native success flags must pass. A failed local solve
+is returned directly, with no sampled retry, CPU correction or substitute pose.
+The same point/normal criteria and existing numerical tolerances are preserved.
+Acquisition retains its collision-aware batch. Push continuation still has no
+environment collision constraint. The local solver and CUDA graphs stay cached.
+
+The corrected call follows the incremental pattern used in
+[Bullet's IK](https://github.com/bulletphysics/bullet3/blob/master/examples/SharedMemory/IKTrajectoryHelper.cpp)
+and [MoveIt's Cartesian interpolation](https://moveit.picknik.ai/main/api/html/cartesian__interpolator_8cpp_source.html).
+This follows a nearby local solution; it is not a proof of a global minimum over
+all IK branches. No new runtime joint-jump threshold or timing constraint was added.
+
+Validation: 133 targeted tests passed, plus three real GPU tests. The GPU tests
+forbid invocation of the main optimizer, exercise seven successive nearby targets
+for both point and surface-normal models, and verify that an unreachable request
+fails without a retry. The CPU tests also inject an LM failure while the metrics
+would accept its output, ensuring that a failed solver result is not rescued.
+
+Matched physical replay: `results/curobo-local-lm-push-20261102/watch.html`.
+The initial approach again reached at control 130. All seven push IK calls
+succeeded; maximum adjacent joint change was 0.0254 rad (1.46 degrees), versus
+0.0306 rad before the local-solver correction. Both used 14 nominal push controls.
+Warm worker calls took 3.3–3.7 ms (native LM computation about 1.1 ms), versus
+10–11 ms before. First local use took 0.809 s; the complete stroke computation
+took 0.834 s versus 1.310 s. The whole skill took 14.13 s versus 14.37 s.
+
+This remains a partial-closing diagnostic, not full task success. The door moved
+from 87.65 to 84.48 degrees open during the push, with no IK failures or collision
+veto. At control 164 (8.20 simulated seconds), the measured contact was 19.09 mm
+short of the final reference after the existing 20-control settling allowance.
+The stop reason was `push_reference_not_reached`; 105.9 s of skill time remained.
+The remaining physical contact/target tracking issue is separate from IK branch
+selection. Video: `state017-handle-outer-face-r1/attempt01/initial/rollout.mp4`.
+Full Luna task evaluations were not rerun for this local-solver change; validation
+focused on native numerical behavior and the matched physical push.
+
 All diagnostic pixels/settings above were operator inputs, excluded from Luna
 prompts and memory. Native object angles/contacts are evaluation-only evidence.
 

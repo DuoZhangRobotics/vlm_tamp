@@ -212,7 +212,9 @@ class TaskIK(BaseIK):
             'closest_posture_distance_rad': min((float(np.linalg.norm(np.asarray(c['joints'])-seed))
                 for c in candidates), default=None),
             **{k:result[k] for k in ('solver_created','first_solve_for_contact_solver',
-                'solver_setup_seconds','solve_call_seconds','solver_reported_seconds') if k in result},
+                'solver_setup_seconds','solve_call_seconds','solver_reported_seconds','native_local_solve_seconds',
+                'native_result_metrics_seconds',
+                'local_solver_success','solution_method','sampled_optimizer_used','continuation_fallback_used') if k in result},
             'wall_seconds': time.perf_counter()-began})
         return sorted(candidates, key=lambda row: np.linalg.norm(np.asarray(row['joints'])-seed))
 
@@ -220,7 +222,7 @@ class TaskIK(BaseIK):
                       orientation_reference: ArrayLike, *, contact_normal_local: ArrayLike | None = None,
                       surface_normal_world: ArrayLike | None = None,
                       environment_collision: bool = True) -> dict[str, Any] | None:
-        """Return the closest native continuation solution for the selected model."""
+        """Return one native local continuation from the supplied previous posture."""
         candidates = self.contact_solutions(target_world, contact_local, seed, orientation_reference, local=True,
             contact_normal_local=contact_normal_local, surface_normal_world=surface_normal_world,
             environment_collision=environment_collision)

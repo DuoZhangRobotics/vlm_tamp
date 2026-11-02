@@ -93,6 +93,7 @@ class Worker:
                 'num_seeds': self.count, 'return_seeds': self.return_count,
                 'cuda_graph': True, 'grasp_ik_environment_collision': 'current observed scene supplied before planning',
                 'ik_self_collision': True, 'robot_collision_model': 'native VAMP spheres and self pairs',
+                'contact_continuation_method': 'single native LM seed; main sampled optimizer disabled',
                 'compatibility': ['Warp public device_from_torch alias for v0.8.0 mesh adapter',
                                   'v0.8.0 particle IK legacy cost names normalized'],
                 'full_pose_error_cleanup': 'release optimizer graphs after a numerical exception; preserve the error',
@@ -191,8 +192,9 @@ class Worker:
 
         Surface-contact goals align a calibrated robot face against the explicitly
         selected outward normal. Goal-frame yaw is free. Continuation uses one
-        current-state seed; acquisition uses the existing batch. No failed model
-        is replaced by the point-only model, and returned joint solutions are unchanged.
+        current-state seed in native LM, followed by cuRobo's result metrics with
+        its main optimizer disabled. Acquisition uses the existing batch. No failed
+        continuation is retried by sampled optimization or a different model.
         """
         from curobo.motion_retargeter import ToolPoseCriteria
         from curobo.types import GoalToolPose, Pose
@@ -231,8 +233,8 @@ class Worker:
             solver = self.create_solver(model, num_seeds=count, environment_collision=environment_collision,
                 **({} if oriented else {'orientation_tolerance': 3.2}))
             if local:
-                solver.config.use_lm_seed = False
-                solver.config.exit_early = False
+                solver.seed_ik_solver.config.position_tolerance = solver.config.position_tolerance
+                solver.seed_ik_solver.config.orientation_tolerance = solver.config.orientation_tolerance
             solver.update_tool_pose_criteria({'contact_point': ToolPoseCriteria(
                 terminal_pose_axes_weight_factor=[1., 1., 1., 1., 1., 0.] if oriented else [1., 1., 1., 0., 0., 0.],
                 project_distance_to_goal=oriented, device_cfg=self.device)})
@@ -244,9 +246,23 @@ class Worker:
             position=self.device.to_device(point[None]),
             quaternion=self.device.to_device(quat[[3, 0, 1, 2]][None]))})
         solve_started=time.perf_counter()
-        result = solver.solve_pose(goal,
-            current_state=self.joint_state(initial[None]),
-            seed_config=self.device.to_device(initial.reshape(1, 1, 7)), return_seeds=count)
+        current_state=self.joint_state(initial[None])
+        seed_config=self.device.to_device(initial.reshape(1, 1, 7))
+        local_seconds=0.
+        if local:
+            # A single supplied seed exactly fills the native LM solver's seed
+            # count. No additional random/particle seeds are generated.
+            local_result=solver.seed_ik_solver.solve_single(goal_tool_poses=goal,
+                current_state=current_state,seed_config=seed_config,return_seeds=1)
+            local_seconds=float(local_result.solve_time)
+            # The SDK's pose/bounds/self-collision result evaluation, without
+            # MPPI/L-BFGS or any modification of LM's joint solution.
+            result=solver.solve_pose(goal,current_state=current_state,
+                seed_config=local_result.solution,return_seeds=1,run_optimizer=False)
+            result.success=result.success & local_result.success
+        else:
+            result=solver.solve_pose(goal,current_state=current_state,
+                seed_config=seed_config,return_seeds=count)
         torch.cuda.synchronize()
         solve_call_seconds=time.perf_counter()-solve_started
         cached['used']=True
@@ -259,7 +275,13 @@ class Worker:
                 'elapsed_seconds': time.perf_counter()-started,
                 'solver_created':created,'first_solve_for_contact_solver':first_solve,
                 'solver_setup_seconds':setup_seconds,'solve_call_seconds':solve_call_seconds,
-                'solver_reported_seconds':float(result.solve_time),
+                'solver_reported_seconds':float(result.solve_time)+local_seconds,
+                'native_local_solve_seconds':local_seconds if local else None,
+                'native_result_metrics_seconds':float(result.solve_time) if local else None,
+                'local_solver_success':local_result.success.detach().cpu().reshape(-1).tolist() if local else None,
+                'solution_method':'native_curobo_lm_from_previous_posture' if local else 'native_curobo_acquisition_batch',
+                'sampled_optimizer_used':not local,
+                'continuation_fallback_used':False,
                 'backend': 'curobo_v2_contact_continuation' if local else 'curobo_v2_contact_ik', 'seed_count': count,
                 'contact_constraint': constraint, 'wrist_twist_constrained': False,
                 'orientation_is_soft_preference': False}

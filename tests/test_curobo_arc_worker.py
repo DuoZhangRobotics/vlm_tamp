@@ -54,9 +54,11 @@ def worker_scene(monkeypatch, tmp_path):
     class Solver:
         def __init__(self, options):
             self.options, self.destroy_count, self.calls = options, 0, []
-            self.config = SimpleNamespace(use_lm_seed=True, exit_early=True)
+            self.local_calls=[]
+            self.config = SimpleNamespace(use_lm_seed=True, exit_early=True,
+                position_tolerance=.003,orientation_tolerance=.01)
             self.seed_ik_solver = SimpleNamespace(action_min=torch.full((7,), -1.),
-                                                 action_max=torch.full((7,), 1.))
+                action_max=torch.full((7,), 1.),config=SimpleNamespace(),solve_single=self.solve_single)
             self.scene_collision_checker = SimpleNamespace(
                 data=SimpleNamespace(update_obstacle_pose=lambda *args: None))
 
@@ -65,6 +67,11 @@ def worker_scene(monkeypatch, tmp_path):
 
         def update_tool_pose_criteria(self, criteria):
             self.criteria = criteria
+
+        def solve_single(self, **kwargs):
+            self.local_calls.append(kwargs)
+            return SimpleNamespace(solution=kwargs['seed_config'],success=torch.ones((1,1),dtype=torch.bool),
+                solve_time=.002)
 
         def solve_pose(self, goal, **kwargs):
             self.calls.append(kwargs)
@@ -125,15 +132,34 @@ def test_contact_continuation_reuses_one_current_posture_seed(worker_scene):
     result=worker.solve_contact(**second)
     assert len(solvers)==1 and not meshes
     assert solvers[0].options['num_seeds']==1
-    assert not solvers[0].config.use_lm_seed and not solvers[0].config.exit_early
-    for supplied,call in zip([args,second],solvers[0].calls):
+    assert solvers[0].config.use_lm_seed and solvers[0].config.exit_early
+    for supplied,call in zip([args,second],solvers[0].local_calls):
         np.testing.assert_array_equal(call['seed_config'].numpy(),np.array(supplied['seed']).reshape(1,1,7))
         np.testing.assert_array_equal(call['current_state'].position.numpy(),[supplied['seed']])
+    assert all(call['run_optimizer'] is False for call in solvers[0].calls)
+    assert not result['sampled_optimizer_used'] and not result['continuation_fallback_used']
     assert not result['orientation_is_soft_preference']
     assert solvers[0].criteria['contact_point'].terminal_pose_axes_weight_factor == [1.,1.,1.,0.,0.,0.]
     assert 'optimization_dt' not in solvers[0].options
     assert 'velocity_regularization_weight' not in solvers[0].options
     assert worker.solver.grasp_solver_untouched
+
+
+def test_failed_local_lm_is_not_retried_or_rescued_by_metrics(worker_scene):
+    worker,_,_,solvers=worker_scene
+    args=dict(point=[.5,.1,.2],contact_local=[.04,0.,0.],
+        reference_quaternion_xyzw=[0.,0.,0.,1.],seed=[.1,.2,.3,.4,.5,.6,.7])
+    worker.solve_contact(**args)
+    solver=solvers[0]
+    proposed=torch.tensor([[[.3,.2,.3,.4,.5,.6,.7]]])
+    solver.seed_ik_solver.solve_single=lambda **kw:SimpleNamespace(solution=proposed,
+        success=torch.zeros((1,1),dtype=torch.bool),solve_time=.002)
+    result=worker.solve_contact(**args)
+    assert result['success']==[False] and result['local_solver_success']==[False]
+    assert len(solvers)==1 and len(solver.calls)==2
+    assert solver.calls[-1]['run_optimizer'] is False
+    np.testing.assert_array_equal(solver.calls[-1]['seed_config'],proposed)
+    np.testing.assert_array_equal(result['solutions'],proposed.reshape(1,7))
 
 
 def test_local_optimizer_is_reused_only_within_one_arc_and_rng_resets(worker_scene):
