@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Luna pixel selections</title>
+<style>body{font:16px system-ui;color:#203249;background:#f3f6fa;max-width:1180px;margin:28px auto;padding:0 18px}section{background:white;border:1px solid #d6dfeb;border-radius:10px;padding:18px;margin:16px 0}button,select{padding:8px;font:inherit}button{cursor:pointer}a{color:#1462ad}.muted{color:#607088;font-size:14px}[hidden]{display:none!important}</style><link rel="stylesheet" href="selection-viewer.css"></head><body>
+<p><a id="backToWatch" href="watch.html">Back to videos and timing</a></p><h1>Where Luna selected pixels</h1>
+<p>These are the exact requests over their original saved camera images. No pixels or annotations have been corrected. A projected hand/world reference is labelled separately from a Luna click.</p>
+<p><label>Trial <select id="trial" aria-label="Trial"></select></label> <button id="reload">Refresh saved data</button></p><p id="pageStatus" class="muted"></p>
+<section id="viewer"></section><p class="muted">Images load only for the event you inspect. No automatic page refresh. Changing zoom does not change original pixel coordinates.</p>
+<script src="selection-viewer.js"></script><script src="selections-page.js"></script></body></html>

@@ -6,6 +6,7 @@ const initialScroll=saved.scrollY||0;
 let state=null,chosen=new URLSearchParams(location.search).get('run')||saved.chosen||null;
 let selectedVersion=null,overviewRequest=null,detailBusy=false,restoring=false;
 const cards=new Map(),rows=new Map(),detailsCache=new Map();
+const selectionViewer=new LunaSelectionViewer(el('selectionViewer'),{onInteract:()=>pauseDisplay('Display updates paused for pixel inspection.')});
 const num=x=>typeof x==='number'?x.toFixed(1):'—';
 function text(id,value){el(id).textContent=value??''}
 function node(tag,value){const n=document.createElement(tag);if(value!==undefined)n.textContent=value;return n}
@@ -92,6 +93,7 @@ function renderDetail(data,row){
  el('frame').dataset.path=data.frame||'';el('overlay').dataset.path=data.contact_overlay||'';
  el('wrist').dataset.path=data.wrist_view||'';image('wrist',null);
  image('frame',null);image('overlay',null);
+ selectionViewer.setData(data.selection_history||[],row.id);
  el('skill').replaceChildren();table(el('skill'),Object.entries(data.skill||{}));
  el('contactHistory').replaceChildren();table(el('contactHistory'),[
   ['Event / tool','Outcome','Total','Scene prep','Contact search','Stroke plan','Execute + capture','Feedback','Reused','Builds / searches'],
@@ -119,6 +121,7 @@ function renderDetail(data,row){
  restoring=true;for(const d of el('detailPanel').querySelectorAll('details[data-open-key]'))d.open=!!saved.open?.[chosen]?.[d.dataset.openKey];restoring=false;
  showImageWhenOpen('frameDetails','frame');showImageWhenOpen('contactDetails','overlay');
  showImageWhenOpen('wristDetails','wrist');
+ selectionViewer.setVisible(el('selectionDetails').open);
  selectedVersion=row.detail_version;text('updateNote','');
 }
 async function inspectRun(id,move=false,force=false){
@@ -159,6 +162,7 @@ el('live').onchange=()=>{text('displayMode',el('live').checked?'Live overview is
 el('detailPanel').addEventListener('toggle',event=>{
  if(restoring)return;if(event.target.open)pauseDisplay('Display updates paused for inspection. Experiments continue independently.');
  showImageWhenOpen('frameDetails','frame');showImageWhenOpen('contactDetails','overlay');showImageWhenOpen('wristDetails','wrist');save();
+ selectionViewer.setVisible(el('selectionDetails').open);
 },true);
 window.addEventListener('pagehide',save);
 let scrollSave;window.addEventListener('scroll',()=>{clearTimeout(scrollSave);scrollSave=setTimeout(save,200)},{passive:true});

@@ -8,6 +8,7 @@ import time
 
 from report_contact_skills import read, read_events, file_stamp, contact_image, brief_evidence
 from report_restriction_fixes import cached_profile_run
+from luna_selection_history import selection_history
 
 INTERVAL_SECONDS = 60
 _PUBLISH = {}
@@ -117,7 +118,7 @@ def issue_explanation(diagnostic):
 
 def _run_data(study,run,entry,active):
     watched=['tool-events.jsonl','live-episode-status.json','agent-exit.json','evaluation-private.json',
-             'operator-interruption.json','protocol.json','evaluator-diagnostics.json']
+             'operator-interruption.json','protocol.json','evaluator-diagnostics.json','selection-evaluation-reference.json']
     stamp=(active,*[file_stamp(run/name) for name in watched])
     previous=_DETAILS.get(str(run))
     if previous is not None and previous[0]==stamp:return previous[1],0
@@ -240,6 +241,8 @@ def _run_data(study,run,entry,active):
     if (study/'failure-summary.html').exists():links['Task failure explanations']='failure-summary.html'
     if (study/'heuristic-audit.html').exists():links['Geometry and heuristic audit']='heuristic-audit.html'
     if (run/'evaluator-diagnostics.json').exists():links['Evaluator diagnosis']=_relative(run/'evaluator-diagnostics.json',study)
+    from urllib.parse import quote
+    links['Luna pixel and hinge selections']='selections.html?run='+quote(run.name)
     timing=cached_profile_run(run,events,agent.get('wall_seconds'))
     timing={k:v for k,v in timing.items() if not k.startswith('_')}
     reason=interruption.get('reason') or status.get('termination_reason') or status.get('last_completed_operation') or 'Waiting for first observation'
@@ -247,6 +250,7 @@ def _run_data(study,run,entry,active):
           'control_steps':controls,'maximum_control_steps':status.get('maximum_control_steps',600),
           'links':links,'frame':frame,'wrist_view':wrist,'contact_overlay':overlay,'videos':videos,'skill':skill,
           'timing':timing,'contact_calls':contact_calls,'issues':issues[-8:],'reported_issue_count':len(issues),
+          'selection_history':selection_history(study,run,events),
           'attempts':[{'attempt':a.get('attempt'),'task':a.get('task'),'state_index':a.get('state_index'),
                        'success':a.get('official_task_success'),'controls':a.get('control_steps')} for a in attempts]}
     path=run/'watch-data.json';written=_json(path,data)
@@ -270,6 +274,9 @@ def publish(study,*,force=False,now=None):
         return {'published':False,'reason':'unchanged_inactive','bytes_written':0}
     started=time.perf_counter();html_bytes=_write(study/'watch.html',HTML_PATH.read_text())
     client_bytes=_write(study/'watch.js',CLIENT_PATH.read_text());written=html_bytes+client_bytes
+    for source,destination in [('luna_selections.js','selection-viewer.js'),('luna_selections.css','selection-viewer.css'),
+            ('luna_selections.html','selections.html'),('luna_selections_page.js','selections-page.js')]:
+        written+=_write(study/destination,(TEMPLATES/source).read_text())
     completed=manifest.get('completed_runs',[]);entries={r['run']:r for r in completed}
     for interrupted in manifest.get('interrupted_runs',[]):
         if interrupted.get('run'):entries.setdefault(interrupted['run'],interrupted)
@@ -308,7 +315,7 @@ def publish(study,*,force=False,now=None):
         shared=f'{shared:.1f} GiB' if isinstance(shared,(int,float)) else 'not limited'
         message=f"The next Luna actor has not started. Additional headroom needed: {capacity['additional_headroom_needed_gib']:.1f} GiB; available shared-pool headroom including clean inactive file cache: {shared}. Waiting does not consume the episode budget."
     if active.get('status')=='running' and not running and not stopped:message='The saved process is no longer alive; its last result is recorded below.'
-    links={'Study protocol':'study-manifest.json','Declared cases':'plan.json'}
+    links={'Luna pixel and hinge selections':'selections.html','Study protocol':'study-manifest.json','Declared cases':'plan.json'}
     if (study/'failure-summary.html').exists():links['Task failure explanations']='failure-summary.html'
     if (study/'heuristic-audit.html').exists():links['Geometry and heuristic audit']='heuristic-audit.html'
     if manifest.get('repair_report'):links['Contact repair tests']=manifest['repair_report']
