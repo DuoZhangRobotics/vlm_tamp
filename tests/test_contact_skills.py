@@ -82,7 +82,7 @@ def test_physical_push_uses_collision_aware_ik_without_a_path_planner(ik_point_w
     import vlm_tamp.contact_skills as module
     methods,updates=ik_point_world
     scene=SimpleNamespace(skill_collision_policy='veto')
-    def solve(point,local,seed,rotation):
+    def solve(point,local,seed,rotation,**kwargs):
         # The target geometry must move with each commanded point, not remain
         # an obstacle at its pre-push position.
         np.testing.assert_allclose(updates[-1][1][:3,3],point)
@@ -95,12 +95,33 @@ def test_physical_push_uses_collision_aware_ik_without_a_path_planner(ik_point_w
     assert report['ik_environment_collision_checked'] and not report['environment_planner_used']
 
 
+def test_push_stroke_neither_prepares_nor_queries_an_environment_world(monkeypatch):
+    import vlm_tamp.contact_skills as module
+    import vlm_tamp.current_robot_scene as measured
+    def forbidden(*args,**kwargs):raise AssertionError('Push continuation must not use a collision world')
+    monkeypatch.setattr(module,'skill_native_scene',forbidden)
+    monkeypatch.setattr(measured,'clear_current_robot_scene',forbidden)
+    calls=[]
+    def solve(point,local,seed,rotation,*,environment_collision):
+        assert environment_collision is False
+        calls.append(seed.copy())
+        return {'joints':np.r_[point,np.zeros(4)]}
+    ik=SimpleNamespace(chain=LinearChain(),solve_contact=solve,
+        configure_observed_scene=forbidden,move_scene_target=forbidden)
+    scene=SimpleNamespace()
+    path,report=module.plan_contact_stroke(ik,scene,{}, {'joint_positions':[0.]*7},
+        np.zeros(3),np.array([.02,0,0]),Budget(5),physical_feedback=True,environment_collision=False)
+    np.testing.assert_allclose(path[-1,:3],[.02,0,0])
+    assert not report['ik_environment_collision_checked']
+    for seed,previous in zip(calls,path[:-1]):np.testing.assert_array_equal(seed,previous)
+
+
 def test_physical_push_keeps_a_reachable_prefix_when_the_next_ik_fails(ik_point_world):
     import vlm_tamp.contact_skills as module
     methods,_=ik_point_world
     scene=SimpleNamespace(skill_collision_policy='veto')
     ik=SimpleNamespace(chain=LinearChain(),**methods,
-        solve_contact=lambda point,local,seed,rotation:None if point[0]>.02 else {'joints':np.r_[point,np.zeros(4)]})
+        solve_contact=lambda point,local,seed,rotation,**kwargs:None if point[0]>.02 else {'joints':np.r_[point,np.zeros(4)]})
     path,report=module.plan_contact_stroke(ik,scene,{}, {'joint_positions':[0.]*7},np.zeros(3),np.array([.1,0,0]),Budget(5),physical_feedback=True)
     assert .015<path[-1,0]<=.02 and report['reachable_prefix']['reason']=='contact_ik_failed'
 
@@ -112,7 +133,7 @@ def test_push_continuation_tracks_the_contact_offset_from_each_previous_posture(
     rotation=Rotation.from_euler('z',90).as_matrix();quat=Rotation.from_matrix(rotation).as_quat()
     chain=SimpleNamespace(forward=lambda q:np.r_[np.asarray(q)[:3],quat])
     contact=np.array([.04,0,0]);calls=[]
-    def solve(point,local,seed,preferred):
+    def solve(point,local,seed,preferred,**kwargs):
         calls.append((point.copy(),seed.copy()))
         assert np.allclose(local,contact) and np.allclose(preferred,rotation)
         return {'joints':np.r_[point-rotation@local,np.zeros(4)]}

@@ -182,6 +182,21 @@ def test_contact_acquisition_and_continuation_do_not_evict_each_other(worker_sce
         assert row['solver_setup_seconds']==0.
 
 
+def test_push_continuation_has_no_environment_checker_and_cannot_disable_acquisition(worker_scene):
+    worker,_,_,solvers=worker_scene
+    args=dict(point=[.5,.1,.2],contact_local=[.04,0.,0.],
+        reference_quaternion_xyzw=[0.,0.,0.,1.],seed=[.1,.2,.3,.4,.5,.6,.7])
+    acquired=worker.solve_contact(**args,local=False)
+    pushed=worker.solve_contact(**args,local=True,environment_collision=False)
+    acquired_again=worker.solve_contact(**args,local=False)
+    assert len(solvers)==2 and all(s.destroy_count==0 for s in solvers)
+    assert solvers[0].options['environment_collision']
+    assert solvers[1].options['environment_collision'] is False
+    assert acquired['scene_collision_checked'] and acquired_again['scene_collision_checked']
+    assert not pushed['scene_collision_checked'] and pushed['self_collision_checked']
+    assert not acquired_again['solver_created']
+
+
 def test_reconfigure_invalidates_old_ids_and_requires_local_solve_id(worker_scene):
     worker, config, _, solvers = worker_scene
     first = worker.configure_arc(**config)

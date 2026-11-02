@@ -267,9 +267,10 @@ def run_skill(
     if context and context.get('part_motion_evidence'):
         result['part_motion_evidence']=copy.deepcopy(context['part_motion_evidence'])
     result['collision_policy']=collision_policy
-    result['contact_motion_policy']='collision_aware_ik_with_physical_execution_feedback'
-    result['stroke_scene_collision_veto']=True
-    result['collision_check_scope']='cuRobo IK endpoints; no extra returned-path collision pass'
+    result['contact_motion_policy']='ik_push_with_physical_execution_feedback' if kind=='push' else 'collision_aware_contact_ik'
+    result['stroke_scene_collision_veto']=kind!='push'
+    result['collision_check_scope']=('Environment collision checked for initial contact acquisition; push strokes use IK and simulator contact'
+        if kind=='push' else 'cuRobo IK endpoints; no extra returned-path collision pass')
     result['object_progress_is_execution_gate']=not physical_push
     result['environment_collision_predictions']={'count':0,'examples':[],
         'all_environment_states_checked':False,'collision_free_certificate':False}
@@ -715,7 +716,8 @@ def run_skill(
             goal=tcp.copy();goal[:3,3]+=delta
             scene.skill_contact_collision_log['stage']='contact_test' if acquiring_release_contact else 'contact_stroke'
             with planning_stage(budget,stroke_plan_seconds,'contact_stroke',result,timing,'stroke_planning_seconds',accept_finished_work=physical_push) as (planning,nested):
-                path,search=plan_contact_stroke(service.ik,planning_scene,service.record,meta,contact_local,delta,planning,angle=angle,timing=nested,physical_feedback=physical_push)
+                path,search=plan_contact_stroke(service.ik,planning_scene,service.record,meta,contact_local,delta,planning,
+                    angle=angle,timing=nested,physical_feedback=physical_push,environment_collision=kind!='push')
             if collision_policy=='advisory' and not physical_push and budget.remaining>2.:
                 phase=time.perf_counter();log=scene.skill_contact_collision_log
                 try:

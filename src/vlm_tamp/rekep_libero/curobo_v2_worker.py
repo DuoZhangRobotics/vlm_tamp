@@ -99,7 +99,7 @@ class Worker:
                 'arc_optimizer_lifetime': 'one configured arc in local_continuation mode; one query in global mode',
                 'native_admission_required': True}
 
-    def create_solver(self, robot, *, collision=True, **kwargs):
+    def create_solver(self, robot, *, collision=True, environment_collision=True, **kwargs):
         from curobo.inverse_kinematics import InverseKinematics, InverseKinematicsCfg
         torch.manual_seed(self.seed)
         count = int(kwargs.pop('num_seeds', self.count))
@@ -120,7 +120,8 @@ class Worker:
         for rollout in cfg.optimizer_rollout_configs:
             if rollout.cost_cfg is None or rollout.cost_cfg.tool_pose_cfg is None:
                 raise ValueError('Every cuRobo IK optimizer stage requires a tool-pose objective')
-        return InverseKinematics(cfg, scene_collision_checker=self.point_scene)
+        return InverseKinematics(cfg,
+            scene_collision_checker=self.point_scene if environment_collision else None)
 
     def configure_scene(self, arrays_path: str, arrays_sha256: str,
                         palm_contact: bool = False) -> dict[str, Any]:
@@ -139,8 +140,13 @@ class Worker:
         recreated = self.point_scene is None or needed > self.point_scene.capacity
         if recreated:
             self.solver.destroy()
-            for cached in getattr(self, 'contact_solvers', {}).values():cached['solver'].destroy()
-            self.contact_solvers = {}
+            retained = {}
+            for key, cached in getattr(self, 'contact_solvers', {}).items():
+                if cached['environment_collision']:
+                    cached['solver'].destroy()
+                else:
+                    retained[key] = cached
+            self.contact_solvers = retained
             self.point_scene = ObservedPointScene(self.device, self.native_indices, 1 << (needed-1).bit_length())
             self.solver = self.create_solver(self.robot_config)
         self.point_scene.update(clouds, palm_contact)
@@ -179,7 +185,8 @@ class Worker:
     def solve_contact(self, point: ArrayLike, contact_local: ArrayLike,
                       reference_quaternion_xyzw: ArrayLike, seed: ArrayLike, local: bool = True,
                       contact_normal_local: ArrayLike | None = None,
-                      surface_normal_world: ArrayLike | None = None) -> dict[str, Any]:
+                      surface_normal_world: ArrayLike | None = None,
+                      environment_collision: bool = True) -> dict[str, Any]:
         """Solve a point or point-plus-normal goal with native cuRobo criteria.
 
         Surface-contact goals align a calibrated robot face against the explicitly
@@ -209,7 +216,7 @@ class Worker:
         # Keep acquisition and continuation alive independently. Switching
         # between them must not repeatedly evict and warm the other optimizer.
         if not hasattr(self, 'contact_solvers'):self.contact_solvers={}
-        cache_key=(constraint, bool(local))
+        cache_key=(constraint, bool(local), bool(environment_collision))
         cached=self.contact_solvers.get(cache_key)
         created=cached is None or cached['offset']!=signature
         setup_seconds=0.
@@ -221,7 +228,7 @@ class Worker:
                 'contact_point': {'parent_link_name': 'tcp', 'link_name': 'contact_point',
                     'joint_name': 'contact_point_fixed', 'joint_type': 'FIXED',
                     'fixed_transform': [*offset.tolist(), *frame_quat.tolist()]}})
-            solver = self.create_solver(model, num_seeds=count,
+            solver = self.create_solver(model, num_seeds=count, environment_collision=environment_collision,
                 **({} if oriented else {'orientation_tolerance': 3.2}))
             if local:
                 solver.config.use_lm_seed = False
@@ -229,7 +236,7 @@ class Worker:
             solver.update_tool_pose_criteria({'contact_point': ToolPoseCriteria(
                 terminal_pose_axes_weight_factor=[1., 1., 1., 1., 1., 0.] if oriented else [1., 1., 1., 0., 0., 0.],
                 project_distance_to_goal=oriented, device_cfg=self.device)})
-            cached={'solver':solver,'offset':signature,'used':False}
+            cached={'solver':solver,'offset':signature,'used':False,'environment_collision':environment_collision}
             self.contact_solvers[cache_key]=cached
             setup_seconds=time.perf_counter()-setup_started
         solver=cached['solver'];first_solve=not cached['used']
@@ -247,7 +254,7 @@ class Worker:
                 'success': result.success.detach().cpu().reshape(-1).tolist(),
                 'feasible': result.feasible.detach().cpu().reshape(-1).tolist(),
                 'position_error_m': result.position_error.detach().cpu().reshape(-1).tolist(),
-                'scene_collision_checked': self.point_scene is not None and self.point_scene.loaded,
+                'scene_collision_checked': bool(environment_collision and self.point_scene is not None and self.point_scene.loaded),
                 'self_collision_checked': True,
                 'elapsed_seconds': time.perf_counter()-started,
                 'solver_created':created,'first_solve_for_contact_solver':first_solve,

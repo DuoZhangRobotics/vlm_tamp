@@ -1,6 +1,5 @@
 """Exercise complete skill control flow without GPU or simulator startup."""
 from types import SimpleNamespace
-from pathlib import Path
 import numpy as np
 import pytest
 
@@ -66,7 +65,7 @@ def test_advisory_release_flow_and_native_success_termination(tmp_path,monkeypat
             self.episode=tmp_path/'attempt01';self.episode.mkdir()
             self.sim=object();self.ik=SimpleNamespace(configure_scene=lambda context:None, configure_observed_scene=lambda scene:None, move_scene_target=lambda transform:None, chain=chain,self_valid=lambda q:True,
                 solve_many=lambda pose,seed,**kwargs:[{'joints':np.r_[pose[:3],np.zeros(4)]}],
-                solve_contact=lambda point,local,seed,rotation:{'joints':np.r_[point-local,np.zeros(4)]})
+                solve_contact=lambda point,local,seed,rotation,**kwargs:{'joints':np.r_[point-local,np.zeros(4)]})
             self.state={'control_steps':60,'metadata':{'joint_positions':[0.]*7,
                 'eef_pose_world_xyzw':[0,0,0,0,0,0,1],'gripper_qpos':[.04,-.04],
                 'robot_collision_volumes_world':[]}}

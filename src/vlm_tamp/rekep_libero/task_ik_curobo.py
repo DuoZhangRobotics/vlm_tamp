@@ -165,7 +165,8 @@ class TaskIK(BaseIK):
     def contact_solutions(self, target_world: ArrayLike, contact_local: ArrayLike, seed: ArrayLike,
                           orientation_reference: ArrayLike, *, local: bool,
                           contact_normal_local: ArrayLike | None = None,
-                          surface_normal_world: ArrayLike | None = None) -> list[dict[str, Any]]:
+                          surface_normal_world: ArrayLike | None = None,
+                          environment_collision: bool = True) -> list[dict[str, Any]]:
         """Request native point/normal IK; report FK errors without repairing solutions."""
         began = time.perf_counter()
         seed, point, offset = [np.asarray(x, float) for x in (seed, target_world, contact_local)]
@@ -181,6 +182,7 @@ class TaskIK(BaseIK):
         result = self.client.request('solve_contact', point=point.tolist(),
             contact_local=offset.tolist(), seed=seed.tolist(),
             reference_quaternion_xyzw=Rotation.from_matrix(orientation_reference).as_quat().tolist(), local=local,
+            environment_collision=environment_collision,
             **normal_arguments)
         candidates = []
         for values, success in zip(result['solutions'], result['success']):
@@ -216,10 +218,12 @@ class TaskIK(BaseIK):
 
     def solve_contact(self, target_world: ArrayLike, contact_local: ArrayLike, seed: ArrayLike,
                       orientation_reference: ArrayLike, *, contact_normal_local: ArrayLike | None = None,
-                      surface_normal_world: ArrayLike | None = None) -> dict[str, Any] | None:
+                      surface_normal_world: ArrayLike | None = None,
+                      environment_collision: bool = True) -> dict[str, Any] | None:
         """Return the closest native continuation solution for the selected model."""
         candidates = self.contact_solutions(target_world, contact_local, seed, orientation_reference, local=True,
-            contact_normal_local=contact_normal_local, surface_normal_world=surface_normal_world)
+            contact_normal_local=contact_normal_local, surface_normal_world=surface_normal_world,
+            environment_collision=environment_collision)
         return candidates[0] if candidates else None
 
     def solve_contact_many(self, target_world: ArrayLike, contact_local: ArrayLike, seed: ArrayLike,

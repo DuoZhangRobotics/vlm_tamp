@@ -322,6 +322,7 @@ def cartesian_path(
     timing: Counter | None = None,
     contact_local: ArrayLike | None = None,
     allow_partial: bool = False,
+    environment_collision: bool = True,
 ) -> np.ndarray:
     """Cartesian IK waypoints; no CPU pose adjustment or dense path recheck."""
     timing=timing if timing is not None else Counter()
@@ -330,11 +331,12 @@ def cartesian_path(
     first=begin[:3,3]+begin[:3,:3]@local;last=target[:3,3]+target[:3,:3]@local
     count=max(1,int(np.ceil(np.linalg.norm(last-first)/.003)))
     path=[np.asarray(start)]
-    from .current_robot_scene import clear_current_robot_scene
-    checked = clear_current_robot_scene(scene, metadata, metadata.get('control_steps', 0))
-    began=time.perf_counter()
-    ik.configure_observed_scene(checked)
-    timing['ik_scene_setup_seconds']+=time.perf_counter()-began
+    if environment_collision:
+        from .current_robot_scene import clear_current_robot_scene
+        checked = clear_current_robot_scene(scene, metadata, metadata.get('control_steps', 0))
+        began=time.perf_counter()
+        ik.configure_observed_scene(checked)
+        timing['ik_scene_setup_seconds']+=time.perf_counter()-began
     def incomplete(reason):
         scene.skill_partial_plan={'reason':reason,'completed_waypoints':len(path)-1,'requested_waypoints':count,
             'global_infeasibility_proved':False}
@@ -343,14 +345,15 @@ def cartesian_path(
     for fraction in np.linspace(0,1,count+1)[1:]:
         if budget.remaining<=0:return incomplete('stroke_planning_budget_exhausted')
         began=time.perf_counter()
-        transform=np.eye(4)
-        if angle:
-            rotation=Rotation.from_rotvec(np.asarray(scene.axis)*angle*fraction).as_matrix()
-            transform[:3,:3]=rotation
-            transform[:3,3]=scene.origin-rotation@scene.origin
-        else:
-            transform[:3,3]=fraction*(last-first)
-        ik.move_scene_target(transform)
+        if environment_collision:
+            transform=np.eye(4)
+            if angle:
+                rotation=Rotation.from_rotvec(np.asarray(scene.axis)*angle*fraction).as_matrix()
+                transform[:3,:3]=rotation
+                transform[:3,3]=scene.origin-rotation@scene.origin
+            else:
+                transform[:3,3]=fraction*(last-first)
+            ik.move_scene_target(transform)
         normal_arguments={}
         if getattr(scene,'skill_contact_constraint','point')=='surface_normal':
             normal=np.asarray(scene.skill_surface_normal_world)
@@ -358,24 +361,27 @@ def cartesian_path(
                 normal=Rotation.from_rotvec(np.asarray(scene.axis)*angle*fraction).apply(normal)
             normal_arguments={'contact_normal_local':scene.skill_contact_normal_local,
                 'surface_normal_world':normal}
-        solution=ik.solve_contact(first+fraction*(last-first),local,path[-1],begin[:3,:3],**normal_arguments)
+        solution=ik.solve_contact(first+fraction*(last-first),local,path[-1],begin[:3,:3],
+            environment_collision=environment_collision,**normal_arguments)
         timing['ik_seconds']+=time.perf_counter()-began
         if solution is None:return incomplete('contact_ik_failed')
         path.append(np.asarray(solution['joints']))
     return np.asarray(path)
 
 
-def plan_contact_stroke(ik,scene,record,metadata,contact_local,delta,budget,*,angle=0.,timing=None,physical_feedback=False):
+def plan_contact_stroke(ik,scene,record,metadata,contact_local,delta,budget,*,angle=0.,timing=None,
+                        physical_feedback=False,environment_collision=True):
     """Straight contact-point targets solved by cuRobo; no push path planner."""
     timing=timing if timing is not None else Counter()
     start=np.asarray(metadata['joint_positions']);tcp=pose_matrix(ik.chain.forward(start))
     goal=tcp.copy();goal[:3,3]+=delta;scene.skill_partial_plan=None
     path=cartesian_path(ik,scene,record,metadata,start,matrix_pose(goal),budget,
-        timing=timing,contact_local=contact_local,angle=angle,allow_partial=physical_feedback)
+        timing=timing,contact_local=contact_local,angle=angle,allow_partial=physical_feedback,
+        environment_collision=environment_collision)
     return path,{'motion_backend':'cartesian_ik','reachable_prefix':scene.skill_partial_plan,
         'maximum_adjacent_ik_joint_change_rad':float(np.abs(np.diff(path,axis=0)).max()) if len(path)>1 else 0.,
         'physical_feedback':physical_feedback,'orientation_is_soft_preference':False,
-        'environment_planner_used':False,'ik_environment_collision_checked':True,
+        'environment_planner_used':False,'ik_environment_collision_checked':environment_collision,
         'additional_dense_validation':False}
 
 

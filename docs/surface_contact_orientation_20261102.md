@@ -90,6 +90,18 @@ Previously the wrapper displayed `unknown` for these nested native reasons.
 
 ## Collision-aware IK (November 2)
 
+**Current scope after the user's clarification:** environment collision checking
+applies to acquiring the initial contact pose and its approach, not to subsequent
+push strokes. A push uses direct native cuRobo IK initialized from the previous
+joint solution, with robot self-collision and existing joint/speed limits retained.
+No observed collision world is prepared, transported, or queried for that push.
+Acquisition and push optimizers have separate persistent caches; disabling the
+push's environment checker cannot disable a later acquisition. Hook-pull and
+grasped-arc behavior was not changed by this clarification.
+
+The initial implementation described below applied environment collision costs
+too broadly to push continuation. Its measurements remain historical evidence.
+
 The earlier contact and full-pose IK calls had environment and self-collision
 disabled. Their success flag meant kinematic convergence; native VAMP subsequently
 rejected colliding endpoints. The user explicitly requested collision-aware IK.
@@ -157,6 +169,33 @@ continuity cutoff, alternate solver or motion-planning fallback was added to
 conceal this failure. Full Luna task evaluations have not been repeated with
 collision-aware IK. The preceding point/normal-interface trials, before this
 change, failed both states 17 and 49 at 600 controls.
+
+## Corrected push scope and matched replay
+
+`results/curobo-approach-only-push-20261102/watch.html` compares the same observed
+contact, starting state, direction and 2 cm request with the previous run.
+The approach was identical: reached at control 130 with 3.61 mm contact error.
+Environment checking was true for acquisition and false for all seven push IK
+queries; native self checking remained true. All seven push solutions succeeded.
+The largest adjacent IK joint change was 0.0306 rad (1.75 degrees), and only
+14 nominal push controls were needed, versus the previously truncated 470.
+Warm IK calls took 10–11 ms; first-use initialization took 1.24 s. Total stroke
+planning was 1.31 s, versus 1.79 s with the environment constraint.
+
+The robot executed the push: the door moved from 87.65 to 84.49 degrees open
+during the stroke (initial scene: 88.92 degrees). It did not complete the requested
+2 cm hand motion: after 14 references and 20 extra settling controls, the measured
+contact remained 19.05 mm short. It stopped at control 164 (8.20 simulated seconds)
+with `push_reference_not_reached`. The orientation normal error was 0.0389 rad,
+within the existing 0.05 rad tolerance. No IK rejection, environment veto, path
+planner, or extra collision validation stopped the push. Approximately 105.6 s
+of the 120 s skill allowance remained. This is partial physical closing, not full
+task success. Video: `state017-handle-outer-face-r1/attempt01/initial/rollout.mp4`.
+
+132 targeted tests passed for this scope correction, including solver-cache
+separation, keeping acquisition collisions enabled, previous-posture seeding, and
+ensuring a push does not prepare or query an environment world. No new continuity
+limit, fallback, seed menu, posture correction, or controller change was introduced.
 
 All diagnostic pixels/settings above were operator inputs, excluded from Luna
 prompts and memory. Native object angles/contacts are evaluation-only evidence.

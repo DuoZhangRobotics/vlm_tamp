@@ -139,10 +139,11 @@ Inspect those labels and uncertainty. Read full diagnostics when they matter.
 Failed contact searches can return rejection images. Red is the native planner's
 reported sphere, blue an observed cloud point, and yellow the requested touch
 projection. These depict an unexecuted candidate, not a measured collision.
-cuRobo solves IK with the observed environment and robot self-collisions enabled.
-Finger/environment contacts remain permitted; palm/arm collisions remain checked.
-During a contact stroke the observed target is transported by the requested motion;
-this is a contact prediction, not a measurement or task-success certificate.
+cuRobo checks environment and self-collisions when solving the initial contact pose.
+After acquisition, push strokes use IK without an environment collision constraint;
+the simulator determines the physical contact response. Robot self-collision and
+the existing joint/speed limits remain enabled. An executed push is not proof of
+task progress; inspect observed object motion and native task success.
 """
 
 
