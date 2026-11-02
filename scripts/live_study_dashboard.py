@@ -49,6 +49,12 @@ def _live_process(active):
 def issue_explanation(diagnostic):
     """Keep the failed module and cause visible without opening a large JSON log."""
     if not isinstance(diagnostic,dict):return None
+    if diagnostic.get('attempts') and any('planning' in row for row in diagnostic['attempts']):
+        from vlm_tamp.compact_robot_interface import contact_search_summary
+        summary=contact_search_summary(diagnostic)
+        blockers='; '.join(f'{reason} ({count})' for reason,count in summary['rejection_counts'].items())
+        return (f"Native planner checked {summary['attempted_candidates']} sampled IK candidates. "
+            f"Reported rejections: {blockers}. This search does not prove global physical infeasibility.")
     arrival=diagnostic.get('arrival')
     if arrival and not arrival.get('goal_reached'):
         current=arrival.get('last_reference',{});goal=arrival.get('goal',{})
@@ -175,6 +181,8 @@ def _run_data(study,run,entry,active):
            'Stop reason':result.get('stop_reason','—')}
     if result.get('skill'):
         skill.update({'Contact geometry reused':result.get('contact_reference_reused',result.get('contact_reused',False)),
+            'Task instruction':result.get('task_instruction'),
+            'Contact constraint':result.get('contact_constraint','point'),
             'Target engagement':result.get('engagement_status','see measured feedback'),'Scene reused':result.get('scene_reused',False),
             'Input mode':result.get('input_mode','targeted contact'),
             'Stroke method':result.get('motion_backend','see tool log'),
@@ -190,6 +198,24 @@ def _run_data(study,run,entry,active):
             'Retained reference cameras':result.get('tracking_reference_camera_count'),
             'Commanded contact travel (m)':result.get('commanded_contact_distance_m'),
             'Measured contact progress (m)':result.get('measured_contact_progress_m')})
+    orientation=result.get('contact_orientation')
+    if orientation:
+        side=orientation.get('current_contact_signed_plane_offset_m')
+        skill.update({'Selected face outward normal':orientation.get('surface_normal_world'),
+            'Robot contact normal':orientation.get('robot_contact_normal_world'),
+            'Face alignment error (degrees)':orientation.get('normal_error_degrees'),
+            'Robot contact plane side (mm)':1000*side if side is not None else None,
+            'Motion dot outward normal (negative enters)':orientation.get('requested_motion_dot_outward_normal'),
+            'Orientation evidence source':orientation.get('pose_source'),
+            'Plane side meaning':orientation.get('plane_side_meaning'),
+            'Wrist twist':orientation.get('wrist_twist')})
+    selection=result.get('selection_geometry')
+    if selection:
+        side=selection.get('initial_robot_contact_signed_plane_offset_m')
+        skill.update({'Chosen robot face':selection.get('contact_role'),
+            'Initial contact plane side (mm)':1000*side if side is not None else None,
+            'Views on that plane side':', '.join(selection.get('same_plane_side_camera_candidates',[])),
+            'Requested motion dot outward normal':selection.get('requested_motion_dot_outward_normal')})
     arrival=result.get('approach_arrival') or result.get('motion_arrival') or result.get('execution',{}).get('arrival')
     if arrival:
         skill.update({'Requested robot goal reached':arrival.get('goal_reached'),

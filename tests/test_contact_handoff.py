@@ -142,6 +142,39 @@ def test_reacquisition_cannot_extend_episode_control_budget(
     assert not result["continue_push_available"]
 
 
+def test_unchanged_target_does_not_trigger_ik_residual_polishing(
+    contact_service: tuple[Any, dict[str, int], Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Retarget only measured object changes, not compounded solver/controller error."""
+    service, counts, _ = contact_service
+    _, labels, _ = fresh_approaches(service, monkeypatch, shifts=[])
+    original_plan = module.plan_engagement
+    original_issue = service.issue
+
+    def solver_reference(*args: Any, **kwargs: Any) -> dict:
+        """Represent a native IK endpoint with three millimetres of residual."""
+        result = original_plan(*args, **kwargs)
+        result["free_references"][-1, 0] = .003
+        result["path"][-1, 0] = .003
+        return result
+
+    def arrived_reference(refs: np.ndarray, gripper: int, label: str, **kwargs: Any) -> dict:
+        """Represent a reached native reference with residual to the original target."""
+        result = original_issue(refs, gripper, label, **kwargs)
+        if label == "free-approach":
+            service.state["metadata"]["joint_positions"][0] = 0.006
+            service.state["metadata"]["eef_pose_world_xyzw"][0] = 0.006
+        return result
+
+    monkeypatch.setattr(service, "issue", arrived_reference)
+    monkeypatch.setattr(module, "plan_engagement", solver_reference)
+    result = call(service)
+    assert labels == ["free-approach", "push-stroke-1"]
+    assert counts["searches"] == 1
+    assert result["contact_handoff"]["status"] == "reference_reached_no_retarget_needed"
+    assert result["contact_handoff"]["approaches"][0]["current_target_error_m"] == pytest.approx(0.006)
+
+
 @pytest.mark.parametrize("tracking_known", [True, False])
 def test_no_reacquisition_for_stationary_or_unresolved_target(
     contact_service: tuple[Any, dict[str, int], Any], monkeypatch: pytest.MonkeyPatch, tracking_known: bool

@@ -10,6 +10,7 @@ import shutil
 import sys
 import time
 import uuid
+from collections import Counter
 
 
 INDEX = """Robot interface — compact view
@@ -63,6 +64,23 @@ If RGB-D tracks the selected target moving during approach, targeted contact
 reacquires that same point before the stroke. contact_handoff reports this work.
 Reaching a contact point alone leaves wrist orientation free and does not prove
 physical engagement; plan_contact_pose accepts your explicit quaternion when needed.
+For a resolved surface face, push and plan_contact_pose also accept
+contact_constraint='surface_normal' and its signed outward surface_normal_world.
+Use the normal of your selected observed face, for example normal_toward_camera_world
+from measure_surface (read-only) or select_surface_contact (installs a surface scene).
+cuRobo aligns the chosen pad face against it while
+leaving twist free. This chooses orientation, not opening/closing or push direction.
+Supply direction_world or signed joint_degrees separately. Inspect the normal and
+motion arrows together; moving away from the selected face can lose contact.
+Do not flip a normal to label a motion 'closing': select the intended observed face.
+A remote camera can see the face opposite the robot. The preview reports the
+current contact's signed offset from that face's plane: positive is its outward
+side, negative the other side. This is geometric evidence, not a path veto.
+Inner jaw faces point across the finger gap; distal pad faces point along the
+finger length. These are different contact surfaces, not interchangeable labels.
+For goal assessment, compare the moving part with an appropriate fixed reference.
+An unsigned plane angle (0..90 degrees) alone cannot determine opening/closing;
+it folds angles above 90 degrees. Camera-facing normals also depend on the face selected.
 Reset lists each contact's configured collision masks. Active pad surfaces include
 inner faces and distal faces. Body-mesh tip references can be passive: contype=0
 does not initiate contacts, so they may pass through other passive surfaces.
@@ -123,6 +141,33 @@ Inspect those labels and uncertainty. Read full diagnostics when they matter.
 
 def pick(value, keys):
     return {key: value[key] for key in keys if key in value} if isinstance(value, dict) else {}
+
+
+def contact_search_summary(diagnostic: dict) -> dict:
+    """Keep native endpoint blockers visible without printing every joint vector."""
+    attempts=diagnostic.get('attempts',[]);outcomes=Counter();rejections=Counter();examples=[];seen=set()
+    for attempt in attempts:
+        planning=attempt.get('planning',attempt.get('path_result',{}))
+        status=attempt.get('reason',planning.get('status','unreported'))
+        outcomes[status]+=1
+        rejected=False
+        for endpoint,check in planning.get('endpoints',{}).items():
+            if check.get('accepted') is not False:continue
+            rejected=True
+            part=check.get('blocking_robot_part');surface=check.get('blocking_surface')
+            detail=(f'{part} / {surface}' if part or surface else
+                'robot self-collision' if check.get('self_rejections') else
+                'joint bounds' if check.get('bounds_rejections') else 'endpoint rejected; blocker not reported')
+            label=endpoint+': '+detail;rejections[label]+=1
+            if label not in seen and len(examples)<4:
+                seen.add(label)
+                examples.append({'endpoint':endpoint,**pick(check,('blocking_robot_part','blocking_surface',
+                    'blocking_sphere_world_m','joint_bound_violations','self_rejections','bounds_rejections'))})
+        if not rejected:rejections[status]+=1
+    return {**pick(diagnostic,('search_complete','global_infeasibility_proved','physical_infeasibility_proved',
+        'timing_seconds','search_work','selected_pixel','selected_contact','planning_stage','push_stroke_issued')),
+        'attempted_candidates':len(attempts),'search_outcomes':dict(outcomes),
+        'rejection_counts':dict(rejections),'blocking_examples':examples}
 
 
 STATE_KEYS = ('instruction', 'attempt', 'control_steps', 'remaining_control_steps',
@@ -222,6 +267,7 @@ def compact_response(response):
     if 'grasp_stage_contract' in value:result['grasp_stage_contract']=value['grasp_stage_contract']
     if 'skill' in value:
         result.update(pick(value,('skill','mode','preview','status','stop_reason','diagnostic',
+            'task_instruction','contact_constraint','selected_surface_normal_world',
             'input_mode','contact_reference_reused','engagement_status','continuation_scope','scene_reused','preview_reused','source_preview',
             'observation_cloud_reused','full_scene_builds','contact_searches','continuation',
             'tracking_reference_reused','tracking_reference_camera_count',
@@ -240,6 +286,15 @@ def compact_response(response):
             'collision_policy','environment_collision_predictions','cartesian_path_deviation','simulator_physical_contacts_enabled','current_robot_point_filter',
             'perception_recoveries','recovery_options','physical_infeasibility_proved','release_evidence','approach_arrival','contact_handoff','motion_arrival','motion_settings','retained_joint_estimate_id','motion_warnings','contact_warnings','release_motion_observed','release_motion_reference')))
         result['stage_count']=len(value.get('stages',[]))
+        if value.get('contact_orientation'):
+            result['contact_orientation']=pick(value['contact_orientation'],('surface_normal_world',
+                'desired_robot_contact_normal_world','robot_contact_normal_world','normal_error_degrees',
+                'requested_motion_dot_outward_normal','current_contact_signed_plane_offset_m','pose_source',
+                'pose_control_step','surface_pose_current','surface_reference_control_step','wrist_twist','joint_prediction'))
+        if value.get('selection_geometry'):
+            result['selection_geometry']=pick(value['selection_geometry'],('surface_normal_world',
+                'initial_robot_contact_signed_plane_offset_m','requested_motion_dot_outward_normal',
+                'same_plane_side_camera_candidates','normal_source','contact_role'))
         result['feedback_count']=sum('object_motion' in s for s in value.get('stages',[]))
         result['stages']=[pick(s,('stage','artifact_id','control_steps','measured_contact_speed',
             'robot_reference_tracking','arrival',
@@ -247,10 +302,7 @@ def compact_response(response):
             'planning_timing_seconds','scene_update','material_point_offset_m','physical_motion','control_budget_truncated')) for s in value.get('stages',[])[-3:]]
         diagnostic=value.get('diagnostic',{})
         if 'attempts' in diagnostic:
-            from collections import Counter
-            result['diagnostic']={**pick(diagnostic,('search_complete','global_infeasibility_proved','timing_seconds')),
-                'attempted_candidates':len(diagnostic['attempts']),
-                'rejection_counts':dict(Counter(a.get('reason','unknown') for a in diagnostic['attempts']))}
+            result['diagnostic']=contact_search_summary(diagnostic)
         if 'orientation_attempts' in diagnostic:
             attempts=diagnostic['orientation_attempts']
             result['diagnostic']={**pick(diagnostic,('search_complete','global_infeasibility_proved')),
@@ -263,7 +315,7 @@ def compact_response(response):
                 'point_outcomes':[{'point_world_m':a['point_world_m'],'reason':a['reason'],
                     'postures_tested':len(a.get('attempts',[]))} for a in diagnostic['point_attempts']]}
         result['search']=pick(value.get('search',{}),('candidate_index','contact_name','total_seconds','timing_seconds',
-            'reuse_existing_contact','measured_surface_distance_m','region_candidate_index','search_work','contact_pose_selection','contact_model'))
+            'reuse_existing_contact','measured_surface_distance_m','region_candidate_index','search_work','contact_pose_selection','contact_model','contact_constraint'))
         if 'observation_refreshes' in value:
             result['observation_refreshes']=[{'control_steps':r['control_steps'],
                 'recovered':r['after']['accepted'],'reason':r['before'].get('blocking_surface')}
@@ -352,7 +404,11 @@ def compact_response(response):
     if isinstance(value.get('result'), dict):
         result['planning'] = pick(value['result'], ('status', 'planner', 'grasp_constraint',
             'goal_angle_rad', 'terminal_progress_rad', 'total_seconds', 'exact_solution',
-            'goal_proposals_tried', 'global_queries', 'grasp_pose_world_xyzw'))
+            'goal_proposals_tried', 'global_queries', 'grasp_pose_world_xyzw','execution_contract'))
+        if value['result'].get('contact_pose'):
+            result['contact_pose']=pick(value['result']['contact_pose'],('contact_name','contact_role',
+                'contact_constraint','orientation_constraint','point_world_m','surface_normal_world',
+                'contact_orientation','gripper_aperture_qpos','tcp_pose_role','tcp_pose_world_xyzw'))
     for name in ('scene_pose_update', 'scene_pose_observation'):
         if isinstance(value.get(name), dict):
             result[name] = motion(value[name])

@@ -24,21 +24,23 @@ sys.path[:0] = [str(ROOT/'src'), str(ROOT/'scripts'), str(ROOT/'.runtime/mc-vamp
 for _key in list(os.environ):
     if _key.endswith(('_API_KEY', '_TOKEN', '_SECRET')):
         os.environ.pop(_key, None)
+from typing import Any
+
 import numpy as np
+from numpy.typing import ArrayLike
 from PIL import Image
 from vlm_tamp.coupled_storage import read_json, write_json, compact_episode
 from vlm_tamp.profiled_sim_client import ProfiledClient, execute_batch
 from vlm_tamp.coupled_resources import CoupledResources
 from vlm_tamp.coupled_scene import RobotVolumes
 from vlm_tamp.arc_contact_scene import ArcContactScene
-from vlm_tamp.hinged_contact_tools import (TaskIK,ground_handle,select_grasp,contact_plan,
+from vlm_tamp.hinged_contact_tools import (TaskIK,select_grasp,
     NativeScene,clear_native_cache,tool_configuration,tool_contract,require_grasp_budget,grasp_timing_options)
 from vlm_tamp.rigid_hinge_tracking import RGBDHingeTracker, measured_pose
 from vlm_tamp.timed_execution import schedule
 from vlm_tamp.signed_contact_motion import plan_signed_arc
 from vlm_tamp.sequence_execution import measured_robot_scene
 from vlm_tamp.execution_limits import control_limit,checked_control_steps,DEFAULT_CONTROL_STEPS,LEARNING_CONTROL_STEPS
-from vlm_tamp.mcvamp_contact_numerical import JOINT_ADMISSION_RESERVE_RAD
 from vlm_tamp.scene_pose_sync import hand_motion, transport_scene
 from vlm_tamp.planning_feedback import summarize_arc_failure
 from vlm_tamp.grasp_observation import grasp_observation
@@ -532,7 +534,6 @@ class RobotService:
             history=getattr(self,'retained_articulated_scene',None)
             if history is None:raise ValueError('An active or retained observed articulated scene is required')
         scene=history['scene'] if history is not None else self.scene
-        model_spec=history['spec'] if history is not None else self.spec
         anchors=history['anchors'] if history is not None else self.anchors
         reference_step=history['reference_control_step'] if history is not None else getattr(self,'scene_reference_control_step',None)
         track=engine.tracks[track_id];ids=track['observation_ids']
@@ -1062,15 +1063,32 @@ class RobotService:
                 for c in contact_landmarks(self.state['metadata'],'fingertips')],
             'next_planning_interfaces':['plan_contact_pose','plan_pose','plan_joint']}
 
-    def plan_contact_pose(self,point_world_m,quaternion_xyzw=None,contact_name=None,collision_policy=None,budget_seconds=30.):
+    def plan_contact_pose(
+        self,
+        point_world_m: ArrayLike,
+        quaternion_xyzw: ArrayLike | None = None,
+        contact_name: str | None = None,
+        collision_policy: str = None,
+        budget_seconds: float = 30.0,
+        contact_constraint: str = 'point',
+        surface_normal_world: ArrayLike | None = None,
+    ) -> dict[str, Any]:
+        """Plan the requested contact constraint using the current measured gripper aperture."""
         self._check_surface_freshness()
         if self.scene is None:raise ValueError('Ground the scene or select a surface contact first')
         from vlm_tamp.surface_contact_tools import plan_contact_pose
         query=self._query_scene(collision_policy);folder=self.folder('contact-pose-plan')
         path,result=plan_contact_pose(self.ik,query,self.record,self.state['metadata'],point_world_m,folder,
-            quaternion_xyzw=quaternion_xyzw,contact_name=contact_name,budget_seconds=budget_seconds)
+            quaternion_xyzw=quaternion_xyzw,contact_name=contact_name,budget_seconds=budget_seconds,
+            contact_constraint=contact_constraint,surface_normal_world=surface_normal_world)
         result.update(environment_collision_policy=collision_policy or self.config.get('environment_collision_policy','veto'))
-        return self.keep_plan(path,result,'free')
+        result['execution_contract']={'gripper':0,'aperture':'hold the aperture used for contact planning'}
+        arrival={'maximum_wait_steps':20}
+        if quaternion_xyzw is None:
+            arrival['contact_local_m']=result['contact_pose']['contact_local_m']
+            if contact_constraint=='surface_normal':
+                arrival['contact_normal_local']=result['contact_pose']['contact_normal_local']
+        return self.keep_plan(path,result,'free',extra={'arrival':arrival,'required_gripper_command':0})
 
     def plan_pose(self,pose_world_xyzw,collision_policy=None):
         self._check_surface_freshness()
@@ -1097,20 +1115,69 @@ class RobotService:
         return {'solutions': self.ik.solve_many(vector(pose_world_xyzw,7),
                     self.state['metadata']['joint_positions'],maximum=8)}
 
-    def push(self,observation_id,camera,contact_pixel_xy,contact_name,region_xyxy=None,target_region_xyxy=None,direction_world=None,
-             distance_m=.03,joint_degrees=None,joint_model_epoch=None,mode='controlled',
-             contact_speed_m_s=.03,contact_surface='fingertips',preview=False,budget_seconds=120.,collision_policy='veto',
-             approach_speed_rad_s=.6,stroke_length_m=None,search_seconds=None,stroke_plan_seconds=None,max_ineffective_strokes=2,withdrawal_distance_m=.015,
-             moving_part_id=None,contact_part_id=None,approach_wait_steps=20):
+    def push(
+        self,
+        observation_id: int | None,
+        camera: str | None,
+        contact_pixel_xy: ArrayLike | None,
+        contact_name: str | None,
+        region_xyxy: ArrayLike | None = None,
+        target_region_xyxy: ArrayLike | None = None,
+        direction_world: ArrayLike | None = None,
+        distance_m: float = 0.03,
+        joint_degrees: float | None = None,
+        joint_model_epoch: int | None = None,
+        mode: str = 'controlled',
+        contact_speed_m_s: float = 0.03,
+        contact_surface: str = 'fingertips',
+        preview: bool = False,
+        budget_seconds: float = 120.0,
+        collision_policy: str = 'veto',
+        approach_speed_rad_s: float = 0.6,
+        stroke_length_m: float | None = None,
+        search_seconds: float | None = None,
+        stroke_plan_seconds: float | None = None,
+        max_ineffective_strokes: int = 2,
+        withdrawal_distance_m: float = 0.015,
+        moving_part_id: str | None = None,
+        contact_part_id: str | None = None,
+        approach_wait_steps: int = 20,
+        contact_constraint: str = 'point',
+        surface_normal_world: ArrayLike | None = None,
+    ) -> dict[str, Any]:
+        """Acquire the caller-selected face and attempt the requested physical push."""
         from vlm_tamp.contact_skill_service import run_skill
         arguments={key:value for key,value in locals().items() if key not in {'self','run_skill'}}
         return run_skill(self,'push',**arguments)
 
-    def hook_pull(self,observation_id,camera,contact_pixel_xy,contact_name,region_xyxy=None,target_region_xyxy=None,direction_world=None,
-                  distance_m=.03,joint_degrees=None,joint_model_epoch=None,
-                  contact_speed_m_s=.03,preview=False,budget_seconds=120.,collision_policy='veto',
-                  approach_speed_rad_s=.6,stroke_length_m=None,search_seconds=None,stroke_plan_seconds=None,max_ineffective_strokes=2,
-                  moving_part_id=None,contact_part_id=None,approach_wait_steps=20):
+    def hook_pull(
+        self,
+        observation_id: int | None,
+        camera: str | None,
+        contact_pixel_xy: ArrayLike | None,
+        contact_name: str | None,
+        region_xyxy: ArrayLike | None = None,
+        target_region_xyxy: ArrayLike | None = None,
+        direction_world: ArrayLike | None = None,
+        distance_m: float = 0.03,
+        joint_degrees: float | None = None,
+        joint_model_epoch: int | None = None,
+        contact_speed_m_s: float = 0.03,
+        preview: bool = False,
+        budget_seconds: float = 120.0,
+        collision_policy: str = 'veto',
+        approach_speed_rad_s: float = 0.6,
+        stroke_length_m: float | None = None,
+        search_seconds: float | None = None,
+        stroke_plan_seconds: float | None = None,
+        max_ineffective_strokes: int = 2,
+        moving_part_id: str | None = None,
+        contact_part_id: str | None = None,
+        approach_wait_steps: int = 20,
+        contact_constraint: str = 'point',
+        surface_normal_world: ArrayLike | None = None,
+    ) -> dict[str, Any]:
+        """Acquire the selected retaining face and test a non-pinching pull."""
         from vlm_tamp.contact_skill_service import run_skill
         arguments={key:value for key,value in locals().items() if key not in {'self','run_skill'}}
         return run_skill(self,'hook_pull',**arguments)
@@ -1130,18 +1197,30 @@ class RobotService:
             stroke_plan_seconds=stroke_plan_seconds,max_ineffective_strokes=max_ineffective_strokes,
             continuation=True,current_hand=True)
 
-    def execute_plan(self, plan_id, gripper=1, speed=.35, hold=6):
+    def execute_plan(
+        self,
+        plan_id: str,
+        gripper: int | None = None,
+        speed: float = 0.35,
+        hold: int = 6,
+    ) -> dict[str, Any]:
+        """Execute the stored plan with completion matching its declared pose constraint."""
         plan = self.plans[plan_id]
         if plan['kind']=='sequence':
             raise ValueError('Use execute_sequence for a prepared multi-stage plan')
         if plan['control_steps']!=self.state['control_steps'] or plan['epoch']!=self.epoch:
             raise ValueError('Plan belongs to an earlier state/model; request a fresh plan')
+        required=(plan.get('extra') or {}).get('required_gripper_command')
+        if gripper is None:gripper=required if required is not None else 1
+        if required is not None and gripper!=required:
+            raise ValueError('This contact plan uses the current aperture. Execute with gripper=0; change aperture before planning a different contact.')
         if gripper not in [-1,0,1] or not 0<float(speed)<=1.0 or int(hold)<0:
             raise ValueError('Invalid gripper, speed, or hold')
         if plan['kind']=='approach':self.active_grasp_contact_offset_m=float((plan.get('extra') or {}).get('contact_depth_offset_m',0.))
         refs = schedule(plan['path'],maximum_joint_speed=float(speed),endpoint_hold_steps=int(hold))
         return self.issue(refs,gripper,plan_id,
-            **({'arrival':{'maximum_wait_steps':20}} if plan['kind'] in {'free','approach'} else {}))
+            **({'arrival':(plan.get('extra') or {}).get('arrival',{'maximum_wait_steps':20})}
+                if plan['kind'] in {'free','approach'} else {}))
 
     def execute_sequence(self,plan_id,close_steps=40,speed=.35,hold=6,manipulation_gripper=1,
                          approach_speed=None,feedback_degrees=15.,calibrate_joint=False,open_steps=20):

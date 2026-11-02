@@ -6,7 +6,9 @@ from pathlib import Path
 import sys
 import time
 import traceback
+from typing import Any
 import numpy as np
+from numpy.typing import ArrayLike
 from PIL import Image
 from .coupled_worker import CoupledWorker,checked_joint_target
 from .execution_limits import DEFAULT_CONTROL_STEPS, checked_control_steps
@@ -92,7 +94,10 @@ class ProfiledWorker(CoupledWorker):
             return {'observation_dir':str(output),'metadata_file':str(output/'metadata.json'),
                 'evaluation':{'task_success':bool(self.env.check_success())},'control_steps':self.control_steps,
                 'maximum_control_steps':self.maximum_control_steps,'step_limit_reached':self.control_steps>=self.maximum_control_steps}
-    def joint_trajectory(self,references,gripper=1,stop_on_success=False,push_feedback=None,arrival=None):
+    def joint_trajectory(self, references: ArrayLike, gripper: int = 1,
+                         stop_on_success: bool = False, push_feedback: dict | None = None,
+                         arrival: dict | None = None) -> dict[str, Any]:
+        """Execute references with measured completion for the declared contact model."""
         self._require_env();refs=np.asarray(references,float)
         if refs.ndim!=2 or refs.shape[1]!=7 or not np.isfinite(refs).all():raise ValueError('Finite seven-joint trajectory required')
         if len(refs)>self.maximum_control_steps-self.control_steps:raise ValueError('Complete trajectory exceeds remaining budget')
@@ -100,16 +105,21 @@ class ProfiledWorker(CoupledWorker):
         if gripper not in (-1,0,1):raise ValueError('Invalid gripper command')
         stop_on_success=bool(stop_on_success or getattr(self,'stop_on_success',False))
         terminal=bool(stop_on_success and self.env.check_success())
-        feedback=None;stalled=False;tracking=None;tracking_failure=False
+        feedback=None;tracking=None;tracking_failure=False
         if arrival is not None:
             from .timed_execution import pose_arrival
             if not len(refs):raise ValueError('Arrival tracking requires a nonempty trajectory')
             wait_steps=arrival.get('maximum_wait_steps',20)
             if type(wait_steps) is not int or wait_steps<0:raise ValueError('Use nonnegative maximum_wait_steps')
             tracked_offset=arrival.get('contact_local_m')
+            tracked_normal=arrival.get('contact_normal_local')
             if tracked_offset is not None:
                 tracked_offset=np.asarray(tracked_offset,float)
                 if tracked_offset.shape!=(3,) or not np.isfinite(tracked_offset).all():raise ValueError('Finite contact offset required')
+            if tracked_normal is not None:
+                from .contact_orientation import normal_vector
+                if tracked_offset is None:raise ValueError('A normal-constrained arrival requires its contact offset')
+                tracked_normal=normal_vector(tracked_normal,'robot contact normal')
             tracking={'mode':'bounded_reference_lead_then_measured_arrival','maximum_wait_steps_per_reference':wait_steps,
                 'maximum_joint_lead_rad':1./20.,'lead_bound_source':'existing 1 rad/s reference limit at 20 Hz',
                 'extra_controls':0,'references_advanced':0,'native_collision_rechecks':0}
@@ -135,9 +145,9 @@ class ProfiledWorker(CoupledWorker):
                         'command_issued':True,'execution_veto_checks':0,
                         **({'reference_repeat':repeats>0} if tracking is not None else {})})
                     terminal=bool(stop_on_success and self.action_log[-1]['evaluation_task_success'])
-                    if feedback is not None:stalled=feedback.update(state['metadata']['eef_pose_world_xyzw'],i)
+                    if feedback is not None:feedback.update(state['metadata']['eef_pose_world_xyzw'],i)
                     if tracking is None or terminal:break
-                    measured_arrival=pose_arrival(expected,state['metadata']['eef_pose_world_xyzw'],tracked_offset)
+                    measured_arrival=pose_arrival(expected,state['metadata']['eef_pose_world_xyzw'],tracked_offset,tracked_normal)
                     joint_lead=float(np.max(np.abs(measured-q)))
                     ready=(measured_arrival['reached'] if i==len(refs)-1 else joint_lead<=tracking['maximum_joint_lead_rad'])
                     tracking['last_reference']={'index':i,**measured_arrival,'joint_lead_rad':joint_lead,
@@ -150,7 +160,7 @@ class ProfiledWorker(CoupledWorker):
                 if tracking_failure:break
             if tracking is not None:
                 complete=tracking['references_advanced']==len(refs)
-                tracking['goal']={**pose_arrival(goal_pose,self._eef_pose(),tracked_offset),'reference_path_completed':complete}
+                tracking['goal']={**pose_arrival(goal_pose,self._eef_pose(),tracked_offset,tracked_normal),'reference_path_completed':complete}
                 tracking['goal_reached']=bool(complete and tracking['goal']['reached'])
                 tracking['physical_infeasibility_proved']=False
         finally:self.in_batch=False;self._write_action_log()

@@ -13,8 +13,10 @@ import sys
 import time
 import traceback
 from types import SimpleNamespace
+from typing import Any
 
 import numpy as np
+from numpy.typing import ArrayLike
 import torch
 
 
@@ -114,24 +116,41 @@ class Worker:
                 raise ValueError('Every cuRobo IK optimizer stage requires a tool-pose objective')
         return InverseKinematics(cfg)
 
-    def solve_contact(self, point, contact_local, reference_quaternion_xyzw, seed, local=True):
-        """Continue one contact point from the previous posture; wrist orientation is unconstrained.
+    def solve_contact(self, point: ArrayLike, contact_local: ArrayLike,
+                      reference_quaternion_xyzw: ArrayLike, seed: ArrayLike, local: bool = True,
+                      contact_normal_local: ArrayLike | None = None,
+                      surface_normal_world: ArrayLike | None = None) -> dict[str, Any]:
+        """Solve a point or point-plus-normal goal with native cuRobo criteria.
 
-        A physical push needs a point trajectory. Global full-pose IK can change
-        posture families between adjacent points, producing a large hand sweep
-        under joint interpolation. Use one current-state seed for this solver.
+        Surface-contact goals align a calibrated robot face against the explicitly
+        selected outward normal. Goal-frame yaw is free. Continuation uses one
+        current-state seed; acquisition uses the existing batch. No failed model
+        is replaced by the point-only model, and returned joint solutions are unchanged.
         """
         from curobo.motion_retargeter import ToolPoseCriteria
         from curobo.types import GoalToolPose, Pose
+        from scipy.spatial.transform import Rotation
+        from vlm_tamp.contact_orientation import frame_with_z, normal_vector
         point, offset, quat, initial = [np.asarray(x, float) for x in
             (point, contact_local, reference_quaternion_xyzw, seed)]
         started = time.perf_counter()
-        signature = tuple(offset)
+        oriented = contact_normal_local is not None or surface_normal_world is not None
+        if oriented and (contact_normal_local is None or surface_normal_world is None):
+            raise ValueError('Surface-contact IK requires both the robot face normal and signed surface normal')
+        constraint = 'surface_normal' if oriented else 'point'
+        local_normal = normal_vector(contact_normal_local) if oriented else None
+        outward_normal = normal_vector(surface_normal_world) if oriented else None
+        signature = (tuple(offset), tuple(local_normal) if oriented else None)
+        frame_quat = (Rotation.from_matrix(frame_with_z(local_normal)).as_quat()[[3, 0, 1, 2]]
+            if oriented else np.array([1., 0., 0., 0.]))
+        if oriented:
+            quat = Rotation.from_matrix(frame_with_z(-outward_normal)).as_quat()
         count = 1 if local else self.count
         # Keep acquisition and continuation alive independently. Switching
         # between them must not repeatedly evict and warm the other optimizer.
         if not hasattr(self, 'contact_solvers'):self.contact_solvers={}
-        cached=self.contact_solvers.get(bool(local))
+        cache_key=(constraint, bool(local))
+        cached=self.contact_solvers.get(cache_key)
         created=cached is None or cached['offset']!=signature
         setup_seconds=0.
         if created:
@@ -141,16 +160,17 @@ class Worker:
             model['kinematics'].update(tool_frames=['contact_point'], extra_links={
                 'contact_point': {'parent_link_name': 'tcp', 'link_name': 'contact_point',
                     'joint_name': 'contact_point_fixed', 'joint_type': 'FIXED',
-                    'fixed_transform': [*offset.tolist(), 1., 0., 0., 0.]}})
-            solver = self.create_solver(model, num_seeds=count, orientation_tolerance=3.2)
+                    'fixed_transform': [*offset.tolist(), *frame_quat.tolist()]}})
+            solver = self.create_solver(model, num_seeds=count,
+                **({} if oriented else {'orientation_tolerance': 3.2}))
             if local:
                 solver.config.use_lm_seed = False
                 solver.config.exit_early = False
             solver.update_tool_pose_criteria({'contact_point': ToolPoseCriteria(
-                terminal_pose_axes_weight_factor=[1., 1., 1., 0., 0., 0.],
-                project_distance_to_goal=False, device_cfg=self.device)})
+                terminal_pose_axes_weight_factor=[1., 1., 1., 1., 1., 0.] if oriented else [1., 1., 1., 0., 0., 0.],
+                project_distance_to_goal=oriented, device_cfg=self.device)})
             cached={'solver':solver,'offset':signature,'used':False}
-            self.contact_solvers[bool(local)]=cached
+            self.contact_solvers[cache_key]=cached
             setup_seconds=time.perf_counter()-setup_started
         solver=cached['solver'];first_solve=not cached['used']
         goal = GoalToolPose.from_poses({'contact_point': Pose(
@@ -170,6 +190,7 @@ class Worker:
                 'solver_setup_seconds':setup_seconds,'solve_call_seconds':solve_call_seconds,
                 'solver_reported_seconds':float(result.solve_time),
                 'backend': 'curobo_v2_contact_continuation' if local else 'curobo_v2_contact_ik', 'seed_count': count,
+                'contact_constraint': constraint, 'wrist_twist_constrained': False,
                 'orientation_is_soft_preference': False}
 
     def configure_arc(self, collision_spheres, pad_local, scene_arrays_path,

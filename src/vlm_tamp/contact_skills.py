@@ -9,7 +9,10 @@ import time
 from collections import Counter
 from dataclasses import dataclass,field
 
+from typing import Any
+
 import numpy as np
+from numpy.typing import ArrayLike
 from scipy.spatial import cKDTree
 from scipy.spatial.transform import Rotation
 
@@ -177,20 +180,24 @@ def contact_landmarks(metadata: dict, contact_surface: str, hook: bool = False) 
             # Facing axis of the pad is toward the other finger, along TCP x.
             sign=-np.sign(p[:,0].mean());normal=np.array([sign,0.,0.])
             point=p.mean(0);point[0]=p[:,0].max() if sign>0 else p[:,0].min()
-            result.append({'name':name,'point':point,'normal':normal,**physical})
+            result.append({'name':name,'point':point,'normal':normal,
+                'contact_role':'inner_jaw_face','role_description':'Faces the opposite finger across the open jaw gap.',**physical})
             if not hook:
                 distal=p.mean(0);distal[2]=p[:,2].max()
                 result.append({'name':name+'_distal_face','point':distal,
-                    'normal':np.array([0.,0.,1.]),**physical})
+                    'normal':np.array([0.,0.,1.]),'contact_role':'distal_pad_face',
+                    'role_description':'Pad end face along the finger length.',**physical})
         elif 'finger' in name and not hook:
             tip=p[p[:,2]>=p[:,2].max()-.003].mean(0)
-            result.append({'name':name+'_distal_tip','point':tip,'normal':np.array([0.,0.,1.]),**physical})
+            result.append({'name':name+'_distal_tip','point':tip,'normal':np.array([0.,0.,1.]),
+                'contact_role':'body_mesh_tip','role_description':'Body-mesh reference; check its configured collision masks.',**physical})
         elif name=='gripper0_hand_collision' and contact_surface=='palm' and not hook:
             for axis in [1,2]:
                 for sign in [-1,1]:
                     values=p[:,axis]*sign;point=p[values>=values.max()-.003].mean(0)
                     normal=np.eye(3)[axis]*sign
-                    result.append({'name':name+f'_face_{axis}_{sign}','point':point,'normal':normal,**physical})
+                    result.append({'name':name+f'_face_{axis}_{sign}','point':point,'normal':normal,
+                        'contact_role':'palm_face','role_description':'Palm contact requires explicit selection.',**physical})
     # Stable labels, without recommending a contact strategy.
     return sorted(result,key=lambda x:x['name'])
 
@@ -301,7 +308,21 @@ def fresh_collision_snapshot(scene,cameras,metadata):
         'simulator_object_state_used':False,'robot_filter':filtering}
 
 
-def cartesian_path(ik,scene,record,metadata,start,target_pose,budget,*,displacement=None,angle=0.,timing=None,contact_local=None,allow_partial=False):
+def cartesian_path(
+    ik: Any,
+    scene: Any,
+    record: dict[str, Any],
+    metadata: dict[str, Any],
+    start: ArrayLike,
+    target_pose: ArrayLike,
+    budget: Budget,
+    *,
+    displacement: ArrayLike | None = None,
+    angle: float = 0.0,
+    timing: Counter | None = None,
+    contact_local: ArrayLike | None = None,
+    allow_partial: bool = False,
+) -> np.ndarray:
     """Cartesian IK waypoints; no CPU pose adjustment or dense path recheck."""
     timing=timing if timing is not None else Counter()
     begin=pose_matrix(ik.chain.forward(start));target=pose_matrix(target_pose)
@@ -317,7 +338,14 @@ def cartesian_path(ik,scene,record,metadata,start,target_pose,budget,*,displacem
     for fraction in np.linspace(0,1,count+1)[1:]:
         if budget.remaining<=0:return incomplete('stroke_planning_budget_exhausted')
         began=time.perf_counter()
-        solution=ik.solve_contact(first+fraction*(last-first),local,path[-1],begin[:3,:3])
+        normal_arguments={}
+        if getattr(scene,'skill_contact_constraint','point')=='surface_normal':
+            normal=np.asarray(scene.skill_surface_normal_world)
+            if angle:
+                normal=Rotation.from_rotvec(np.asarray(scene.axis)*angle*fraction).apply(normal)
+            normal_arguments={'contact_normal_local':scene.skill_contact_normal_local,
+                'surface_normal_world':normal}
+        solution=ik.solve_contact(first+fraction*(last-first),local,path[-1],begin[:3,:3],**normal_arguments)
         timing['ik_seconds']+=time.perf_counter()-began
         if solution is None:return incomplete('contact_ik_failed')
         path.append(np.asarray(solution['joints']))
@@ -336,7 +364,17 @@ def plan_contact_stroke(ik,scene,record,metadata,contact_local,delta,budget,*,an
         'environment_planner_used':False,'additional_dense_validation':False}
 
 
-def plan_engagement(ik,scene,record,metadata,evidence,selected,kind,budget,maximum_approach_controls=None):
+def plan_engagement(
+    ik: Any,
+    scene: Any,
+    record: dict[str, Any],
+    metadata: dict[str, Any],
+    evidence: dict[str, Any],
+    selected: Any,
+    kind: str,
+    budget: Budget,
+    maximum_approach_controls: Any = None,
+) -> dict[str, Any]:
     """Solve and plan exactly the contact Luna selected; no alternate pose menu."""
     from .surface_contact_tools import contact_solutions
     began=time.perf_counter();timing=Counter();attempts=[]
@@ -351,8 +389,21 @@ def plan_engagement(ik,scene,record,metadata,evidence,selected,kind,budget,maxim
         if name is None or not name.endswith('_pad_collision'):
             raise ValueError('Choose an inward-facing pad contact_name for a non-pinching hook')
     phase=time.perf_counter()
-    candidate,solutions=contact_solutions(ik,metadata,point,name)
+    constraint=evidence.get('contact_constraint','point')
+    normal_arguments=({'contact_constraint':constraint,'surface_normal_world':evidence['surface_normal_world']}
+        if constraint=='surface_normal' else {})
+    candidate,solutions=contact_solutions(ik,metadata,point,name,**normal_arguments)
     timing['ik_seconds']+=time.perf_counter()-phase
+    selection={}
+    reference_normal=evidence.get('surface_normal_world') if constraint=='surface_normal' else evidence.get('normal_toward_camera_world')
+    if reference_normal is not None:
+        from .contact_orientation import selection_geometry
+        current=pose_matrix(ik.chain.forward(q))
+        current_contact=current[:3,3]+current[:3,:3]@candidate['contact_local_m']
+        selection=selection_geometry(point,reference_normal,current_contact,evidence['direction_world'],
+            getattr(scene,'skill_observed_cameras',{}))
+        selection.update(normal_source='caller_selected_face' if constraint=='surface_normal' else 'observed_local_patch_toward_camera',
+            contact_role=candidate.get('contact_role'))
     budget.check()
     with skill_native_scene(scene,record,metadata,q) as context:
         for solution in solutions:
@@ -363,9 +414,23 @@ def plan_engagement(ik,scene,record,metadata,evidence,selected,kind,budget,maxim
             if not report['exact_solution']:continue
             refs=schedule(path,maximum_joint_speed=scene.skill_approach_speed_rad_s,endpoint_hold_steps=0)
             tcp=pose_matrix(ik.chain.forward(path[-1]))
+            orientation={}
+            if constraint=='surface_normal':
+                from .contact_orientation import contact_orientation_report
+                current=pose_matrix(metadata['eef_pose_world_xyzw'])
+                current_contact=current[:3,3]+current[:3,:3]@candidate['contact_local_m']
+                orientation=contact_orientation_report(tcp[:3,:3],candidate['contact_normal_local'],
+                    evidence['surface_normal_world'],evidence['direction_world'],current_contact,point)
+                orientation['pose_source']='planned IK endpoint'
+                if evidence.get('joint_associated'):
+                    from .contact_orientation import joint_push_prediction
+                    orientation['joint_prediction']=joint_push_prediction(point,scene.origin,scene.axis,evidence['direction_world'])
             return {'path':path,'references':refs,'free_references':refs,
                 'insertion_references':np.empty((0,7)),'direct_contact_approach':True,
                 'contact_local':np.asarray(candidate['contact_local_m']),'contact_world':point,
+                'contact_normal_local':np.asarray(candidate['contact_normal_local']) if 'contact_normal_local' in candidate else None,
+                'contact_constraint':constraint,'contact_orientation':orientation,
+                'selection_geometry':selection,
                 'contact_tcp_pose_world_xyzw':matrix_pose(tcp),'rotation':tcp[:3,:3],
                 'insertion_direction':unit(evidence['direction_world']),'contact_name':name,
                 'contact_model':{key:candidate[key] for key in ('robot_collision_geom',
@@ -375,6 +440,7 @@ def plan_engagement(ik,scene,record,metadata,evidence,selected,kind,budget,maxim
                 'total_seconds':time.perf_counter()-began,'predicted_contact_only':True,
                 'native_contact_policy':context.record,'automatic_pose_adjustment':False}
     raise SkillStop('contact_ik_failed' if not solutions else 'contact_path_not_found',
+        selection_geometry=selection,
         attempts=attempts,search_complete=True,global_infeasibility_proved=False,
         selected_pixel=evidence.get('contact_pixel_xy'),selected_contact=name,
         timing_seconds=dict(timing),search_work={'contact_points':1,'ik_queries':1,'ik_solutions':len(solutions)})

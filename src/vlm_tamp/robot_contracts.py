@@ -163,7 +163,6 @@ def ground_parameters(image_sizes=None):
     pixel = number(minimum=0)
     if image_sizes:
         pixel['maximum'] = max(max(size['width'], size['height'])-1 for size in image_sizes.values())
-    point = array(2, pixel)
     camera = {'type': 'string', 'minLength': 1, 'description': 'Camera name from the current observation; coordinates must refer to this camera.'}
     if image_sizes:
         camera['enum'] = sorted(image_sizes)
@@ -208,6 +207,9 @@ def operation_schemas(image_sizes=None):
         'moving_part_id':nullable(text),'contact_part_id':nullable(text),
         'contact_pixel_xy':array(2,{'type':'integer','minimum':0}),
         'contact_name':text,
+        'contact_constraint':{'type':'string','enum':['point','surface_normal'],
+            'description':'point leaves wrist orientation free; surface_normal aligns the selected robot face opposite the supplied outward normal, with twist free.'},
+        'surface_normal_world':nullable(array(3,description='Signed outward normal of the selected observed face, in world coordinates. Required for surface_normal; this does not specify opening/closing or select a motion direction.')),
         'target_region_xyxy':nullable(box),'direction_world':nullable(array(3)),
         'distance_m':number(exclusiveMinimum=0),
         'joint_degrees':nullable(angle),
@@ -288,8 +290,10 @@ def operation_schemas(image_sizes=None):
         'plan_joint': ('Plan simulation free motion under the declared environment prediction policy to seven joint angles in radians.', parameters({'joints': array(7),'collision_policy':policy}, ['joints'])),
         'ik': ('Compute IK proposals for your world TCP pose; no robot motion.', parameters({'pose_world_xyzw': pose}, ['pose_world_xyzw'])),
         'plan_pose': ('Plan simulation free motion under the declared environment prediction policy to your world TCP pose.', parameters({'pose_world_xyzw': pose,'collision_policy':policy}, ['pose_world_xyzw'])),
-        'plan_contact_pose': ('Plan a fingertip/pad to your observed world contact point. Uses your selected contact_name and calibrated TCP offset. cuRobo solves free orientation unless you supply a quaternion; no pose menus or substituted contact points. Returns a plan_id for execute with gripper=0. No grasp or confirmed contact is assumed.', parameters({
+        'plan_contact_pose': ('Plan your chosen contact_name to an observed world point. point leaves orientation free; surface_normal uses an explicit signed outward surface_normal_world and leaves twist free. Alternatively supply a full quaternion. No pose menus, substituted points or automatic model fallback. Execute with gripper=0. A plan does not establish contact or task direction.', parameters({
             'point_world_m':array(3),'quaternion_xyzw':nullable(array(4)),'contact_name':text,
+            'contact_constraint':contact_arguments['contact_constraint'],
+            'surface_normal_world':contact_arguments['surface_normal_world'],
             'collision_policy':policy,'budget_seconds':number(exclusiveMinimum=0,maximum=1800)},['point_world_m','contact_name'])),
         'execute': ('Execute a fresh complete plan. gripper=-1 opens, 0 holds, +1 closes; default +1. Choose explicitly for a grasp approach.', parameters({'plan_id': text, 'gripper': {'type': 'integer', 'enum': [-1, 0, 1]}, 'speed': speed, 'hold': {'type':'integer','minimum':0}}, ['plan_id'])),
         'gripper': ('Physically open/close while holding the arm. Retain the existing controller arm reference; no automatic inward arm correction.', parameters({'close': {'type': 'boolean'}, 'steps': {'type':'integer','minimum':1}})),
@@ -312,6 +316,12 @@ def operation_schemas(image_sizes=None):
         definitions[operation][1]['anyOf']=[
             {'required':['direction_world'],'properties':{'direction_world':array(3)}},
             {'required':['joint_degrees'],'properties':{'joint_degrees':number()}}]
+    for name in ('push','hook_pull','plan_contact_pose'):
+        definitions[name][1]['allOf']=[{
+            'if':{'properties':{'contact_constraint':{'const':'surface_normal'}},'required':['contact_constraint']},
+            'then':{'required':['surface_normal_world'],
+                'properties':{'surface_normal_world':array(3),'quaternion_xyzw':{'type':'null'}}},
+            'else':{'properties':{'surface_normal_world':{'type':'null'}}}}]
     return {name: {'type': 'function', 'function': {'name': name, 'description': description, 'parameters': schema}}
             for name, (description, schema) in definitions.items()}
 

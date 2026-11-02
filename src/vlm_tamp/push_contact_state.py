@@ -69,6 +69,9 @@ def contact_summary(context):
     return {'available':True,'contact_id':context['contact_id'],'control_step':context['control_step'],
         'availability_scope':'robot motion can be issued; this is not a recommendation to repeat it',
         'robot_contact_surface':context['contact_name'],'contact_surface':context['contact_surface'],
+        'contact_constraint':context.get('contact_constraint','point'),
+        'surface_normal_world':context['surface_normal_world'].tolist()
+            if context.get('surface_normal_world') is not None else None,
         'reference_direction_world':context['direction_world'].tolist(),
         'direction_semantics':'Previous requested direction transported by measured part rotation when available; not a task-goal recommendation.',
         'task_direction_verified':False,
@@ -87,6 +90,8 @@ def resumed_engagement(context):
     empty=np.empty((0,7))
     return {'path':empty,'references':empty,'free_references':empty,'insertion_references':empty,
         'contact_local':context['contact_local'].copy(),'contact_world':context['contact_world'].copy(),
+        'contact_normal_local':context.get('contact_normal_local'),
+        'contact_constraint':context.get('contact_constraint','point'),
         'rotation':np.eye(3),'insertion_direction':context['direction_world'].copy(),
         'contact_name':context['contact_name'],'reuse_existing_contact':context.get('object_target_associated',True),
         'reuse_current_hand_pose':True,

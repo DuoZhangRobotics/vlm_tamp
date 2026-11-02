@@ -108,6 +108,9 @@ def test_continued_push_reuses_contact_scene_and_reports_hand_vs_object_motion(c
     assert result['commanded_contact_distance_m']==pytest.approx(.03)
     assert result['measured_contact_progress_m']==pytest.approx(.03)
     assert result['observed_progress']==pytest.approx(.024)
+    np.testing.assert_allclose(
+        result['part_motion_evidence']['last_measured_change']['material_point_displacement_world_m'],
+        [.024,0.,0.])
     assert result['full_scene_builds']==result['contact_searches']==0
     assert result['contact_reused'] and result['scene_reused']
     assert result['timing_seconds'].get('perception_seconds',0)==0

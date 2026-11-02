@@ -7,8 +7,10 @@ planner owns collision admission. Point continuation uses cuRobo as well.
 import json
 import time
 from pathlib import Path
+from typing import Any
 
 import numpy as np
+from numpy.typing import ArrayLike
 from scipy.spatial.transform import Rotation
 
 from .curobo_client import CuroboClient
@@ -126,13 +128,26 @@ class TaskIK(BaseIK):
         solutions = self.solve_many(target_pose, seed)
         return min(solutions, key=lambda row: np.linalg.norm(np.asarray(row['joints'])-seed)) if solutions else None
 
-    def contact_solutions(self, target_world, contact_local, seed, orientation_reference, *, local):
-        """Existing cuRobo point IK: one continuation seed or an acquisition batch."""
+    def contact_solutions(self, target_world: ArrayLike, contact_local: ArrayLike, seed: ArrayLike,
+                          orientation_reference: ArrayLike, *, local: bool,
+                          contact_normal_local: ArrayLike | None = None,
+                          surface_normal_world: ArrayLike | None = None) -> list[dict[str, Any]]:
+        """Request native point/normal IK; report FK errors without repairing solutions."""
         began = time.perf_counter()
         seed, point, offset = [np.asarray(x, float) for x in (seed, target_world, contact_local)]
+        oriented = contact_normal_local is not None or surface_normal_world is not None
+        if oriented and (contact_normal_local is None or surface_normal_world is None):
+            raise ValueError('Supply both robot contact normal and signed surface normal')
+        normal_arguments = {}
+        if oriented:
+            from vlm_tamp.contact_orientation import normal_vector
+            normal_arguments = {
+                'contact_normal_local': normal_vector(contact_normal_local).tolist(),
+                'surface_normal_world': normal_vector(surface_normal_world).tolist()}
         result = self.client.request('solve_contact', point=point.tolist(),
             contact_local=offset.tolist(), seed=seed.tolist(),
-            reference_quaternion_xyzw=Rotation.from_matrix(orientation_reference).as_quat().tolist(), local=local)
+            reference_quaternion_xyzw=Rotation.from_matrix(orientation_reference).as_quat().tolist(), local=local,
+            **normal_arguments)
         candidates = []
         for values, success in zip(result['solutions'], result['success']):
             q = np.asarray(values, float)
@@ -148,7 +163,12 @@ class TaskIK(BaseIK):
                 'position_error_m': error, 'solver_reported_success': bool(success),
                 'orientation_is_soft_preference': False, 'candidate_modified': False,
                 'backend': result['backend']})
+            if oriented:
+                from vlm_tamp.contact_orientation import contact_orientation_report
+                candidates[-1]['contact_orientation'] = contact_orientation_report(
+                    transform[:3, :3], contact_normal_local, surface_normal_world)
         self.events.append({'query': len(self.events), 'backend': result['backend'],
+            'contact_constraint': 'surface_normal' if oriented else 'point',
             'seed_count': result.get('seed_count'), 'returned': len(result['solutions']),
             'distinct_solver_successes': len(candidates), 'elapsed_seconds': result['elapsed_seconds'],
             **{k:result[k] for k in ('solver_created','first_solve_for_contact_solver',
@@ -156,12 +176,20 @@ class TaskIK(BaseIK):
             'wall_seconds': time.perf_counter()-began})
         return sorted(candidates, key=lambda row: np.linalg.norm(np.asarray(row['joints'])-seed))
 
-    def solve_contact(self, target_world, contact_local, seed, orientation_reference):
-        candidates = self.contact_solutions(target_world, contact_local, seed, orientation_reference, local=True)
+    def solve_contact(self, target_world: ArrayLike, contact_local: ArrayLike, seed: ArrayLike,
+                      orientation_reference: ArrayLike, *, contact_normal_local: ArrayLike | None = None,
+                      surface_normal_world: ArrayLike | None = None) -> dict[str, Any] | None:
+        """Return the closest native continuation solution for the selected model."""
+        candidates = self.contact_solutions(target_world, contact_local, seed, orientation_reference, local=True,
+            contact_normal_local=contact_normal_local, surface_normal_world=surface_normal_world)
         return candidates[0] if candidates else None
 
-    def solve_contact_many(self, target_world, contact_local, seed, orientation_reference):
-        return self.contact_solutions(target_world, contact_local, seed, orientation_reference, local=False)
+    def solve_contact_many(self, target_world: ArrayLike, contact_local: ArrayLike, seed: ArrayLike,
+                           orientation_reference: ArrayLike, *, contact_normal_local: ArrayLike | None = None,
+                           surface_normal_world: ArrayLike | None = None) -> list[dict[str, Any]]:
+        """Return the existing acquisition batch without model substitution."""
+        return self.contact_solutions(target_world, contact_local, seed, orientation_reference, local=False,
+            contact_normal_local=contact_normal_local, surface_normal_world=surface_normal_world)
 
     def approach(self, initial_joints, grasp_solution):
         target = np.asarray(grasp_solution['pose_world_xyzw'])

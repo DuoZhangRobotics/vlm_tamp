@@ -71,7 +71,8 @@ def test_service_rejects_before_geometry_or_state_changes(monkeypatch):
     robot=service.RobotService.__new__(service.RobotService)
     robot.sim=object();robot.cameras={'frontview':{'rgb':np.zeros((100,100,3),np.uint8)}}
     robot.epoch=7;robot.spec={'untouched':True}
-    monkeypatch.setattr(service,'ground_handle',lambda *a,**k:pytest.fail('Geometry must not start'))
+    import vlm_tamp.explicit_grounding as grounding
+    monkeypatch.setattr(grounding,'ground_pixels',lambda *a,**k:pytest.fail('Geometry must not start'))
     request=regions();request['initial_image_direction_xy']=[0,0]
     with pytest.raises(RequestValidationError):robot.ground(request)
     assert robot.epoch==7 and robot.spec=={'untouched':True}

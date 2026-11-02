@@ -2,7 +2,10 @@
 from pathlib import Path
 import time
 
+from typing import Any
+
 import numpy as np
+from numpy.typing import ArrayLike
 from scipy.spatial import cKDTree
 
 from .coupled_scene import Scene,RobotVolumes
@@ -59,7 +62,7 @@ def contact_snapshot(cameras,metadata,camera,region_xyxy,chain,*,radius_m=.02,ob
     center=selected_pixel_point(view,contact_pixel_xy,region_xyxy,selected_mask)
     patch=candidate[np.linalg.norm(candidate-center,axis=1)<=radius_m]
     if len(patch)<3:raise ValueError('At least three depth samples are needed to report a surface normal')
-    _,_,vt=np.linalg.svd(patch-patch.mean(0),full_matrices=False)
+    _,singular_values,vt=np.linalg.svd(patch-patch.mean(0),full_matrices=False)
     normal=vt[-1]
     origin=pose_matrix(view['camera_to_world'])[:3,3]
     if normal@(origin-center)<0:normal=-normal
@@ -83,6 +86,10 @@ def contact_snapshot(cameras,metadata,camera,region_xyxy,chain,*,radius_m=.02,ob
     record={'camera':camera,'region_xyxy':box,'contact_pixel_xy':list(contact_pixel_xy),
         'point_source':'exact caller-selected RGB-D pixel','point_world_m':center.tolist(),
         'normal_toward_camera_world':normal.tolist(),'radius_m':radius_m,
+        'normal_orientation_source':'toward the selected camera; this identifies the observed face, not the task direction',
+        'normal_support_points':len(patch),'normal_patch_singular_values_m':singular_values.tolist(),
+        'normal_fit_rank':int(np.linalg.matrix_rank(patch-patch.mean(0))),
+        'normal_fit_is_execution_gate':False,
         'selected_observed_points':len(contact),'other_observed_points':len(static),
         'surface_fit_residual_m':float(np.median(np.abs((patch-center)@normal))),
         'configured_pad_centers_in_tcp':pads,'grasp_or_attachment_required':False,
@@ -92,9 +99,21 @@ def contact_snapshot(cameras,metadata,camera,region_xyxy,chain,*,radius_m=.02,ob
     return scene,record
 
 
-def contact_pose_candidates(metadata,point_world_m,quaternion_xyzw=None,contact_name=None):
+def contact_pose_candidates(
+    metadata: dict[str, Any],
+    point_world_m: ArrayLike,
+    quaternion_xyzw: ArrayLike | None = None,
+    contact_name: str | None = None,
+    *,
+    contact_constraint: str = 'point',
+    surface_normal_world: ArrayLike | None = None,
+) -> list[dict[str, Any]]:
     """Describe exactly one caller-selected robot contact, without pose menus."""
     from .contact_skills import contact_landmarks
+    from .contact_orientation import checked_surface_normal
+    surface_normal=checked_surface_normal(contact_constraint,surface_normal_world)
+    if surface_normal is not None and quaternion_xyzw is not None:
+        raise ValueError('Choose a full quaternion or the surface-normal constraint, not both')
     point=np.asarray(point_world_m,float)
     if point.shape!=(3,) or not np.isfinite(point).all():raise ValueError('Use a finite world contact point')
     landmarks=contact_landmarks(metadata,'palm' if contact_name and 'hand_collision' in contact_name else 'fingertips')
@@ -104,31 +123,64 @@ def contact_pose_candidates(metadata,point_world_m,quaternion_xyzw=None,contact_
     rotation=current[:3,:3] if quaternion_xyzw is None else pose_matrix([0.,0.,0.,*quaternion_xyzw])[:3,:3]
     pose=np.eye(4);pose[:3,:3]=rotation;pose[:3,3]=point-rotation@contact['point']
     return [{'contact_name':contact['name'],'contact_local_m':contact['point'].tolist(),
+        'contact_role':contact['contact_role'],'role_description':contact['role_description'],
+        'contact_normal_local':contact['normal'].tolist(),
+        'contact_constraint':'full_pose' if quaternion_xyzw is not None else contact_constraint,
+        'surface_normal_world':surface_normal.tolist() if surface_normal is not None else None,
         'robot_collision_geom':contact['robot_collision_geom'],
         'physical_collision_masks':contact['physical_collision_masks'],
         'initiates_simulator_contacts':contact['initiates_simulator_contacts'],
         'point_world_m':point.tolist(),'tcp_pose_world_xyzw':matrix_pose(pose).tolist(),
-        'orientation_constraint':'free' if quaternion_xyzw is None else 'caller_quaternion',
+        'tcp_pose_role':'full_pose_target' if quaternion_xyzw is not None else 'offset-conversion reference; orientation is solved by IK',
+        'orientation_constraint':('opposed_surface_normal_free_twist' if surface_normal is not None else
+            'free' if quaternion_xyzw is None else 'caller_quaternion'),
         'gripper_aperture_qpos':metadata.get('gripper_qpos'),
         'conversion':'TCP translation = requested contact point - rotation × calibrated contact offset'}]
 
 
-def contact_solutions(ik,metadata,point,contact_name,quaternion_xyzw=None):
-    candidate=contact_pose_candidates(metadata,point,quaternion_xyzw,contact_name)[0]
+def contact_solutions(
+    ik: Any,
+    metadata: dict[str, Any],
+    point: ArrayLike,
+    contact_name: str | None,
+    quaternion_xyzw: ArrayLike | None = None,
+    *,
+    contact_constraint: str = 'point',
+    surface_normal_world: ArrayLike | None = None,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Query native IK for the explicit contact frame without post-solve correction."""
+    candidate=contact_pose_candidates(metadata,point,quaternion_xyzw,contact_name,
+        contact_constraint=contact_constraint,surface_normal_world=surface_normal_world)[0]
     start=np.asarray(metadata['joint_positions'])
     if quaternion_xyzw is None:
+        normal_arguments=({'contact_normal_local':candidate['contact_normal_local'],
+            'surface_normal_world':candidate['surface_normal_world']} if contact_constraint=='surface_normal' else {})
         solutions=ik.solve_contact_many(point,candidate['contact_local_m'],start,
-            pose_matrix(metadata['eef_pose_world_xyzw'])[:3,:3])
+            pose_matrix(metadata['eef_pose_world_xyzw'])[:3,:3],**normal_arguments)
     else:
         solutions=ik.solve_many(candidate['tcp_pose_world_xyzw'],start)
     return candidate,solutions
 
 
-def plan_contact_pose(ik,scene,record,metadata,point,folder,*,quaternion_xyzw=None,contact_name=None,budget_seconds=30.):
+def plan_contact_pose(
+    ik: Any,
+    scene: Any,
+    record: dict[str, Any],
+    metadata: dict[str, Any],
+    point: ArrayLike,
+    folder: Path | str,
+    *,
+    quaternion_xyzw: ArrayLike | None = None,
+    contact_name: str | None = None,
+    budget_seconds: float = 30.0,
+    contact_constraint: str = 'point',
+    surface_normal_world: ArrayLike | None = None,
+) -> tuple[np.ndarray, dict[str, Any]]:
     """cuRobo endpoint IK followed by native planning; no extra collision pass."""
     folder=Path(folder);folder.mkdir();start=np.asarray(metadata['joint_positions'])
     began=time.perf_counter();deadline=began+float(budget_seconds);attempts=[]
-    candidate,solutions=contact_solutions(ik,metadata,point,contact_name,quaternion_xyzw)
+    candidate,solutions=contact_solutions(ik,metadata,point,contact_name,quaternion_xyzw,
+        contact_constraint=contact_constraint,surface_normal_world=surface_normal_world)
     timing={'ik_seconds':time.perf_counter()-began,'approach_planning_seconds':0.}
     with NativeScene(scene,record,metadata,start,.05,articulated=False) as context:
         for solution in solutions:
@@ -140,6 +192,15 @@ def plan_contact_pose(ik,scene,record,metadata,point,folder,*,quaternion_xyzw=No
             attempts.append({'joints':solution['joints'],'path_result':result})
             if result['exact_solution']:
                 candidate['tcp_pose_world_xyzw']=ik.chain.forward(path[-1]).tolist()
+                candidate['tcp_pose_role']='planned IK endpoint'
+                if contact_constraint=='surface_normal':
+                    from .contact_orientation import contact_orientation_report
+                    current=pose_matrix(metadata['eef_pose_world_xyzw'])
+                    current_contact=current[:3,3]+current[:3,:3]@candidate['contact_local_m']
+                    candidate['contact_orientation']=contact_orientation_report(
+                        pose_matrix(candidate['tcp_pose_world_xyzw'])[:3,:3],
+                        candidate['contact_normal_local'],candidate['surface_normal_world'],
+                        current_contact_point=current_contact,target_point=point)
                 np.save(folder/'path.npy',path);write_json(folder/'attempts.json',attempts)
                 return path,{**result,'contact_pose':candidate,
                     'requested_point_world_m':np.asarray(point).tolist(),
