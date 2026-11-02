@@ -59,6 +59,10 @@ The planner's returned path is used without an extra dense validation pass.
 Free approaches use measured progress and report execution.arrival.goal_reached.
 Sending all nominal commands does not establish arrival. A targeted push or
 sequence closure starts only after its approach has physically reached its goal.
+If RGB-D tracks the selected target moving during approach, targeted contact
+reacquires that same point before the stroke. contact_handoff reports this work.
+Reaching a contact point alone leaves wrist orientation free and does not prove
+physical engagement; plan_contact_pose accepts your explicit quaternion when needed.
 Contact skills when enabled: push_stroke, push, continue_push, hook_pull.
 push_stroke(direction_world, distance_m) moves the current hand directly in
 simulation, holding its aperture. No object model, prior contact or search is
@@ -229,7 +233,7 @@ def compact_response(response):
             'scene_refresh_required','next_geometry_interfaces','retained_scene_reference_control_step','feedback_cameras',
             'budget_feasibility_scope','nominal_requested_motion_controls','nominal_cost_assumption','preview_artifacts','robot_valid_plan_available','control_budget_feasible','minimum_following_control_steps',
             'collision_policy','environment_collision_predictions','cartesian_path_deviation','simulator_physical_contacts_enabled','current_robot_point_filter',
-            'perception_recoveries','recovery_options','physical_infeasibility_proved','release_evidence','approach_arrival','motion_arrival','motion_settings','retained_joint_estimate_id','motion_warnings','contact_warnings','release_motion_observed','release_motion_reference')))
+            'perception_recoveries','recovery_options','physical_infeasibility_proved','release_evidence','approach_arrival','contact_handoff','motion_arrival','motion_settings','retained_joint_estimate_id','motion_warnings','contact_warnings','release_motion_observed','release_motion_reference')))
         result['stage_count']=len(value.get('stages',[]))
         result['feedback_count']=sum('object_motion' in s for s in value.get('stages',[]))
         result['stages']=[pick(s,('stage','artifact_id','control_steps','measured_contact_speed',

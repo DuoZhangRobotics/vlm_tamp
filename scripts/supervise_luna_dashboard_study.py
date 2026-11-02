@@ -202,7 +202,9 @@ def mark_interruption(study,reason):
         write(status_path,status)
 
 
-def run(study,stages,*,first_run=None,log_tag=None,cases_file=None):
+def run(study,stages,*,first_run=None,log_tag=None,cases_file=None,driver_command=None):
+    if driver_command is not None and (len(stages)!=1 or cases_file or first_run):
+        raise ValueError('A custom driver uses one monitored stage, without an evaluation case override')
     group=cgroup_path();limit=require_memory_limit(group)
     local=Path(tempfile.mkdtemp(prefix='vlm-luna-resource-monitor-'));details=ProcessSampler(group)
     state={'pid':os.getpid(),'started_at':time.time(),'status':'running','local_directory':str(local),
@@ -229,6 +231,7 @@ def run(study,stages,*,first_run=None,log_tag=None,cases_file=None):
             if cases_file:command+=['--cases-file',str(cases_file)]
             if limit:command+=['--limit',str(limit)]
             if stage=='baseline' and limit==1 and first_run:command+=['--baseline-run',first_run]
+            if driver_command is not None:command=list(driver_command)
             with (study/(label+'-driver.log')).open('x') as stream:
                 capacity_file=local/'capacity.json';write(capacity_file,{'waiting':True})
                 environment={**os.environ,'VLM_TAMP_CAPACITY_STATE':str(capacity_file)}

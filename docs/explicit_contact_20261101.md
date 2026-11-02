@@ -99,3 +99,40 @@ An optional evaluator hinge line is hidden by default and is exported outside th
 Useful examples: state 17 event 5 shows contact pixel `(280, 200)` on the visible door; later current-hand requests repeatedly chose `[-1, 0, 0]`. State 49 event 4 shows its early table-point/hinge hypothesis, but it was superseded before pushing. State 49 event 10 uses pixel `(210, 380)` in `arm_wide_back` and explicitly requests model epoch 4 from grounding event 7 in `arm_wide_front`. The viewer links these events so abandoned hypotheses are not blamed for later motions.
 
 Validation includes request/capture provenance, continuation-versus-new-pixel distinction, model-epoch links, mask ownership, camera projection and unchanged source images. Browser checks confirmed exact overlay alignment at 200% zoom, lazy image loading, and separate mask/evaluator toggles. The main HTML remains under 5 KiB; the recorded selections live in per-trial detail JSON, not a repeatedly rewritten embedded-image page.
+
+## Moving-target handoff repair
+
+The read-only readiness audit found a separate service integration bug: after a
+successful robot approach, accepted RGB-D tracking could move the selected
+material point while the first stroke still started at the obsolete hand pose.
+The deterministic reproduction moved the target 100 mm after approach; the old
+service issued a 10 mm stroke from the old location. This is a control-flow
+reproduction, not attribution of every real approach failure to this branch.
+
+Targeted acquisition now measures the selected robot contact against the updated
+material point. If accepted tracking leaves it outside the existing 4 mm arrival
+tolerance, the service approaches that same updated point with the same selected
+contact name, cuRobo IK and native free-path planner. It updates the moving cloud
+and reuses the static scene, fixed joint parameters and tracker. Subsequent
+searches use the existing five-second allowance and remaining skill/episode
+budgets. There is no new clearance, contact guess, pose menu, IK correction or
+returned-path validation. Acquisition motion is excluded from requested stroke
+progress. A failed reacquisition returns its cause without issuing a stroke from
+the obsolete target. Unresolved tracking remains explicitly unresolved; it does
+not create a new veto on direction-only physical experiments or continuations.
+
+`contact_handoff` reports each measured target/finger pair, error and reacquisition.
+It appears in the compact actor reply and watch dashboard. Reaching a point still
+does not certify physical engagement: point IK leaves wrist orientation free.
+The existing explicit-quaternion `plan_contact_pose` remains available; no
+surface-normal alignment heuristic was introduced. Practice instructions now
+explicitly separate observations, unverified hypotheses and tested procedures.
+No previous evaluation notebook is supplied to clean practice.
+
+Validation covers moving targets during initial and repeated acquisition,
+stationary/unresolved targets, failed reacquisition, local search expiration,
+unchanged fixed hinge/static map, correct stroke progress origin, and the 600-step
+budget. Physical qualification and practice evidence are recorded separately
+under `results/contact-handoff-physical-check*-20261101` and
+`results/luna-contact-handoff-practice-20261101`; interrupted startup is not scored
+as a robot task failure.

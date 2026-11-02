@@ -33,6 +33,9 @@ only efficiency optimizations. You still choose the applicable strategy.
 
 For each attempt, record your hypothesis, chosen changes, observations and
 outcome. After a terminal attempt, reset while another granted attempt remains.
+Keep direct observations, unverified hypotheses, and tested procedures separate.
+Following a requested direction does not verify that it advances the task goal;
+support goal-direction claims with observed goal relationships or native success.
 Compare methods on success first, then costs. Save findings.txt and a root
 guidelines.json with a nonempty principles list. Each principle should describe
 applicability, observable failure signals, conditional actions, supporting

@@ -196,6 +196,13 @@ def _run_data(study,run,entry,active):
             'Final robot goal error (mm)':1000*arrival.get('goal',{}).get('position_error_m',0),
             'Extra tracking controls':arrival.get('extra_controls'),
             'Tracking policy':arrival.get('mode')})
+    handoff=result.get('contact_handoff')
+    if handoff:
+        last_contact=(handoff.get('approaches') or [{}])[-1]
+        error=last_contact.get('current_target_error_m')
+        skill.update({'Contact handoff':handoff.get('status'),
+            'Moved-target reacquisitions':handoff.get('reacquisitions'),
+            'Measured target-to-finger error (mm)':1000*error if error is not None else 'unresolved'})
     cleared=result.get('current_robot_point_filter')
     if cleared:
         skill.update({'Last current-pose points cleared':cleared.get('last_removed_points',cleared.get('total_removed_points')),

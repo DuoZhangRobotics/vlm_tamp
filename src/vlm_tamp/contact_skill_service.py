@@ -21,7 +21,7 @@ from .push_contact_state import (observed_contact_cloud,preview_key,active_conta
 from .current_robot_scene import clear_current_robot_scene
 from .coupled_storage import write_json,read_json
 from .rekep_libero.geometry import pose_matrix,matrix_pose,transform_points
-from .timed_execution import schedule_contact
+from .timed_execution import schedule_contact,ARRIVAL_POSITION_TOLERANCE_M
 from .execution_limits import control_limit
 from .robot_contracts import require_motion_intent
 
@@ -53,6 +53,7 @@ def planning_stage(parent,seconds,stage,result,timing,timing_key,*,accept_finish
         row.update(status='stopped',stop_reason=error.reason)
         if error.reason.endswith('budget_exhausted'):
             reason={'initial_contact_search':'contact_search_budget_exhausted',
+                'contact_reacquisition':'contact_reacquisition_budget_exhausted',
                 'contact_insertion':'contact_insertion_budget_exhausted',
                 'contact_stroke':'stroke_planning_budget_exhausted',
                 'withdrawal':'withdrawal_planning_budget_exhausted'}[stage]
@@ -407,7 +408,7 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
                 'execution':reply['execution'],'measured_contact_speed':measured_contact_speed(events,service.ik.chain if service.ik else chain,contact_local,q)}
             if 'arrival' in reply['execution']:
                 stage['arrival']=reply['execution']['arrival']
-                result['approach_arrival' if label=='free-approach' else 'motion_arrival']=stage['arrival']
+                result['approach_arrival' if label=='free-approach' or label.startswith('contact-reacquisition-') else 'motion_arrival']=stage['arrival']
             stage.update(stage_fields)
             if reply['execution'].get('push_feedback'):stage['physical_motion']=reply['execution']['push_feedback']
             issued=int(reply['execution']['issued_commands'])
@@ -453,23 +454,6 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
             return fit
 
         chain=service.ik.chain  # retained FK after native success closes the IK process
-        measured=None
-        if not reused_pose:
-            stage=issue(engagement['free_references'],'free-approach',
-                arrival={'maximum_wait_steps':approach_wait_steps})
-            result['approach_arrival']=stage['execution']['arrival']
-            if not result['approach_arrival']['goal_reached']:
-                raise SkillStop('approach_not_reached',arrival=result['approach_arrival'],
-                    push_stroke_issued=False,physical_infeasibility_proved=False,
-                    explanation='The measured arm did not reach the selected approach goal. Remaining references and the push were not issued. Inspect the current pose/contact or select a different explicit pose.')
-            measured=observe_motion(tracker)
-            stages[-1]['object_motion']=measured
-            if not measured['accepted']:
-                result.setdefault('motion_warnings',[]).append({'reason':'object_motion_unresolved','measurement':measured})
-            approach_transform=np.asarray(measured['transform']) if measured['accepted'] else np.eye(4)
-            approach_object_displacement=np.linalg.norm(transform_points([point],approach_transform)[0]-point)
-            stages[-1]['uncommanded_object_motion_m']=float(approach_object_displacement)
-
         def update_motion(fit):
             nonlocal scene,point,cumulative,tracked_target,direction,progress,unwrapped_angle,geometry_current,scene_control_step
             transform=np.asarray(fit['transform']);r=transform[:3,:3];t=transform[:3,3]
@@ -497,7 +481,63 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
                 result.setdefault('motion_warnings',[]).append({'reason':'motion_inconsistent_with_fixed_joint',**joint_mismatch})
             return float((point-old)@direction)
 
-        if measured is not None and measured['accepted']:update_motion(measured)
+        if not reused_pose:
+            handoff={'approaches':[],'reacquisitions':0,'status':'approaching',
+                'position_tolerance_m':ARRIVAL_POSITION_TOLERANCE_M,
+                'tolerance_source':'existing measured-arrival tolerance; no additional clearance',
+                'physical_contact_verified':False}
+            result['contact_handoff']=handoff
+            while True:
+                label=('free-approach' if not handoff['approaches'] else
+                    f'contact-reacquisition-{handoff["reacquisitions"]}')
+                stage=issue(engagement['free_references'],label,
+                    arrival={'maximum_wait_steps':approach_wait_steps})
+                result['approach_arrival']=stage['execution']['arrival']
+                if not result['approach_arrival']['goal_reached']:
+                    handoff['status']='robot_goal_not_reached'
+                    raise SkillStop('approach_not_reached',arrival=result['approach_arrival'],
+                        push_stroke_issued=False,physical_infeasibility_proved=False,
+                        explanation='The measured arm did not reach the selected approach goal. Remaining references and the push were not issued. Inspect the current pose/contact or select a different explicit pose.')
+                measured=observe_motion(tracker);stage['object_motion']=measured
+                old_point=point.copy()
+                if measured['accepted']:update_motion(measured)
+                else:result.setdefault('motion_warnings',[]).append({'reason':'object_motion_unresolved','measurement':measured})
+                hand=pose_matrix(chain.forward(service.state['metadata']['joint_positions']))
+                hand_point=hand[:3,3]+hand[:3,:3]@contact_local
+                error=float(np.linalg.norm(hand_point-point))
+                stage['uncommanded_object_motion_m']=float(np.linalg.norm(point-old_point)) if measured['accepted'] else None
+                row={'stage':label,'control_steps':int(service.state['control_steps']),
+                    'tracked_target_world_m':point.tolist(),'robot_contact_world_m':hand_point.tolist(),
+                    'target_pose_current':bool(measured['accepted']),
+                    'current_target_error_m':error if measured['accepted'] else None}
+                handoff['approaches'].append(row)
+                if not measured['accepted']:
+                    # Keep the existing direction-only physical experiment
+                    # available, without claiming that stale geometry is current.
+                    handoff['status']='object_pose_unresolved';break
+                if error<=ARRIVAL_POSITION_TOLERANCE_M:
+                    handoff['status']='current_target_reached';break
+                handoff['status']='reacquiring_moved_target'
+                # Reacquire the same material point and robot contact, using
+                # measured target motion and the retained scene. No new pixel,
+                # pose menu, solver correction, or collision validation pass.
+                budget.check();refresh_feedback_views(tracker)
+                result['contact_searches']+=1
+                updated_evidence={**evidence,'point_world_m':point.tolist(),
+                    'direction_world':direction.tolist(),'contact_name':engagement['contact_name']}
+                planning_scene=collision_scene()
+                with planning_stage(budget,stroke_plan_seconds,'contact_reacquisition',result,timing,'contact_search_seconds') as (search_budget,nested):
+                    engagement=plan_engagement(service.ik,planning_scene,service.record,service.state['metadata'],
+                        updated_evidence,scene.contact_reference,kind,search_budget,
+                        maximum_approach_controls=lambda p:max(0,control_steps_limit-service.state['control_steps']-following_controls(p)))
+                    nested.update(engagement.get('timing_seconds',{}))
+                contact_local=engagement['contact_local']
+                handoff['reacquisitions']+=1
+                row['reacquisition_search']=engagement.get('search_work',{})
+            # Acquisition motion is not the requested stroke. Start requested
+            # object progress at the final observed contact, just as hand travel
+            # starts at the measured hand below.
+            original_point=point.copy();progress=0.;unwrapped_angle=0.
         # A new approach has now physically reached its requested robot pose.
         # This is distinct from establishing where the moving part is now.
         can_continue=kind=='push'
@@ -677,6 +717,9 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
                 break
     except SkillStop as error:
         result.update(stop_reason=error.reason,diagnostic=error.evidence)
+        if result.get('contact_handoff',{}).get('status') in {'approaching','reacquiring_moved_target'}:
+            result['contact_handoff'].update(status='acquisition_stopped',stop_reason=error.reason)
+            result['diagnostic']['push_stroke_issued']=False
         if error.reason!='native_task_success':result['status']='returned_without_task_success'
         if error.reason=='approach_not_reached':
             result['recovery_options']=['inspect the current robot and selected surface',
