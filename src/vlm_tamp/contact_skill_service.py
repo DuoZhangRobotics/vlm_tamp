@@ -1,7 +1,6 @@
 """Bounded physical contact skills integrated with the public robot service."""
 import copy
 import hashlib
-import json
 import os
 from collections import Counter
 from contextlib import contextmanager
@@ -10,7 +9,6 @@ import time
 
 import numpy as np
 from PIL import Image,ImageDraw
-from scipy.spatial import cKDTree
 from scipy.spatial.transform import Rotation
 
 from .contact_skills import (Budget,SkillStop,ContactTracker,build_contact_scene,
@@ -435,7 +433,6 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
             # the deadline. Never start a new stroke with an expired budget.
             return stage
 
-        recovered_steps=set()
         def observe_motion(tracker):
             phase=time.perf_counter();fit=tracker.observe(service.cameras,service.state['control_steps'])
             timing['motion_tracking_seconds']+=time.perf_counter()-phase
@@ -573,7 +570,6 @@ def run_skill(service,kind,*,observation_id=None,camera=None,region_xyxy=None,ta
             separation=float(np.linalg.norm(hand_point-point))
             acquiring_release_contact=mode=='push_and_release' and not release_contact_ready
             stroke_speed=.03 if acquiring_release_contact else contact_speed_m_s
-            measured_before=float((hand_point-initial_hand)@initial_direction)
             length=(.01 if acquiring_release_contact else
                 min(stroke_length_m,distance_m) if mode=='push_and_release' else
                 min(stroke_length_m,distance_m-commanded_distance if hand_distance_request else

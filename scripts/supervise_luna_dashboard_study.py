@@ -202,7 +202,10 @@ def mark_interruption(study,reason):
         write(status_path,status)
 
 
-def run(study,stages,*,first_run=None,log_tag=None,cases_file=None,driver_command=None):
+def run(study: Path, stages: list[tuple[str, int | None]], *, first_run: str | None = None,
+        log_tag: str | None = None, cases_file: Path | None = None,
+        driver_command: list[str] | None = None) -> int:
+    """Monitor sequential study stages, or one explicit driver, with the same limits."""
     if driver_command is not None and (len(stages)!=1 or cases_file or first_run):
         raise ValueError('A custom driver uses one monitored stage, without an evaluation case override')
     group=cgroup_path();limit=require_memory_limit(group)
