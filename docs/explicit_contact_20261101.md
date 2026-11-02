@@ -136,3 +136,42 @@ budget. Physical qualification and practice evidence are recorded separately
 under `results/contact-handoff-physical-check*-20261101` and
 `results/luna-contact-handoff-practice-20261101`; interrupted startup is not scored
 as a robot task failure.
+
+### Configured pad faces versus passive mesh tips
+
+Physical qualification exposed another interface defect. The old advertised
+`finger*_collision_distal_tip` describes the body mesh. In this robot XML that
+mesh has `contype=0, conaffinity=1`; the microwave surfaces are also passive.
+The pad boxes have `contype=1, conaffinity=1`. Three matched requests reached the
+body-tip target and issued a short stroke, yet produced no native door contact.
+This is not a failed IK or a measured engagement certificate.
+
+The robot-only geometry export now carries its configured collision masks.
+Existing contact names remain available and are labelled. New
+`finger*_pad_collision_distal_face` points use the actual calibrated pad box's
+distal face center. The tools do not change simulator masks, native collisions,
+VAMP spheres, solver settings, or automatically select a different surface.
+Luna sees these as supplied robot/tool knowledge, not a discovered task policy.
+
+In `results/contact-handoff-active-pad-check-20261101`, all three matched
+approaches reached the selected pad pose (3.45 mm TCP error), followed by real
+pad/door contacts at controls 73–94. The deliberately downward 5 mm probe stopped
+against the top surface with 5.49 mm final robot error. That is a physically
+blocked normal press, not a door-closing demonstration. The 24 native contacts
+per replay are operator-only evaluation evidence, never actor input. The prior
+misaligned diagnostic selected a front-face point 8 mm below the top while
+keeping a downward wrist pose; its video and 7.16 mm stopped-goal evidence remain
+in `results/contact-handoff-physical-check-v6-20261101`.
+
+### Cold-start I/O diagnosis
+
+After the host restart, the existing I/O-percentage watchdog interrupted runtime
+initialization before any requested approach/push. Tracing showed cold dependency
+imports from NFS, including SciPy. Bulk library caching alone was insufficient.
+Direct SSH checks stayed responsive (roughly 0.34–0.46 s) during the reads. One
+bounded initialization-only check, with a 16 GiB/no-swap cap, memory/I/O sampling
+and direct SSH checks, completed in 34.08 s at 2.64 GiB peak job memory and zero
+memory pressure, despite 27.34% I/O wait. I/O wait is not by itself a measured
+login outage. The subsequent physical checks kept the existing experiment
+watchdog. See `results/contact-handoff-startup-readiness-20261101`; no task success
+is assigned to startup checks or interrupted initialization.

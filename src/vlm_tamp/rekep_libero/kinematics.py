@@ -5,6 +5,7 @@ segmentation identity is used by this module.
 """
 
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 from scipy.spatial import ConvexHull
@@ -161,7 +162,7 @@ class PandaIK:
             flags.extend([is_finger] * len(local))
         return np.vstack(clouds), np.asarray(flags, dtype=bool)
 
-    def collision_volumes(self, data=None):
+    def collision_volumes(self, data: Any = None) -> list[dict[str, Any]]:
         """Exact current known-robot collision interiors in world coordinates.
 
         These volumes describe the robot prior, not environmental occupancy.
@@ -174,7 +175,10 @@ class PandaIK:
             rotation = data.geom_xmat[geom_id].reshape(3, 3)
             position = data.geom_xpos[geom_id]
             common = {"type": local["type"], "fixed": local["fixed"], "robot_geom_name": local["robot_geom_name"],
-                      "source": "configured robot collision geometry"}
+                      "source": "configured robot collision geometry",
+                      "physical_collision_masks": {
+                          "contype": int(self.model.geom_contype[geom_id]),
+                          "conaffinity": int(self.model.geom_conaffinity[geom_id])}}
             if local["type"] == "sphere":
                 volumes.append({**common, "center_world": position.tolist(), "radius_m": local["radius"]})
             else:

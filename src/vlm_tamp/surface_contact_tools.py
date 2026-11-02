@@ -4,7 +4,6 @@ import time
 
 import numpy as np
 from scipy.spatial import cKDTree
-from scipy.spatial.transform import Rotation
 
 from .coupled_scene import Scene,RobotVolumes
 from .coupled_storage import write_json,preserve_scene
@@ -105,6 +104,9 @@ def contact_pose_candidates(metadata,point_world_m,quaternion_xyzw=None,contact_
     rotation=current[:3,:3] if quaternion_xyzw is None else pose_matrix([0.,0.,0.,*quaternion_xyzw])[:3,:3]
     pose=np.eye(4);pose[:3,:3]=rotation;pose[:3,3]=point-rotation@contact['point']
     return [{'contact_name':contact['name'],'contact_local_m':contact['point'].tolist(),
+        'robot_collision_geom':contact['robot_collision_geom'],
+        'physical_collision_masks':contact['physical_collision_masks'],
+        'initiates_simulator_contacts':contact['initiates_simulator_contacts'],
         'point_world_m':point.tolist(),'tcp_pose_world_xyzw':matrix_pose(pose).tolist(),
         'orientation_constraint':'free' if quaternion_xyzw is None else 'caller_quaternion',
         'gripper_aperture_qpos':metadata.get('gripper_qpos'),

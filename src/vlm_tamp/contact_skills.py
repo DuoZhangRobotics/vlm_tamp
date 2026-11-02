@@ -6,7 +6,6 @@ measured engagement and object movement.
 """
 import copy
 import time
-from contextlib import nullcontext
 from collections import Counter
 from dataclasses import dataclass,field
 
@@ -19,8 +18,7 @@ from .mcvamp_contact_numerical import NativeScene
 from .rekep_libero.geometry import pose_matrix,matrix_pose,transform_points
 from .rekep_libero.scene_state_v7 import observed_points
 from .surface_contact_tools import contact_snapshot,selected_region_points
-from .timed_execution import schedule,schedule_contact
-from .contact_collision_evidence import current_collision_witness
+from .timed_execution import schedule
 from .part_perception import projected_selection
 
 
@@ -163,24 +161,36 @@ def build_contact_scene(cameras,metadata,chain,camera,region,target_region,conta
         'target_region_xyxy':target_region or region},selected
 
 
-def contact_landmarks(metadata,contact_surface,hook=False):
+def contact_landmarks(metadata: dict, contact_surface: str, hook: bool = False) -> list[dict]:
+    """Describe calibrated contact faces and their configured robot collision masks.
+
+    Masks describe contact eligibility, not measured engagement. Pad distal faces
+    use the actual box face; passive body-mesh references retain their old names.
+    """
     inverse=np.linalg.inv(pose_matrix(metadata['eef_pose_world_xyzw']));result=[]
     for volume in metadata['robot_collision_volumes_world']:
         name=volume['robot_geom_name'];p=transform_points(volume['vertices_world'],inverse)
+        masks=volume.get('physical_collision_masks')
+        physical={'robot_collision_geom':name,'physical_collision_masks':masks,
+            'initiates_simulator_contacts':bool(masks['contype']) if masks is not None else None}
         if name.endswith('_pad_collision'):
             # Facing axis of the pad is toward the other finger, along TCP x.
             sign=-np.sign(p[:,0].mean());normal=np.array([sign,0.,0.])
             point=p.mean(0);point[0]=p[:,0].max() if sign>0 else p[:,0].min()
-            result.append({'name':name,'point':point,'normal':normal})
+            result.append({'name':name,'point':point,'normal':normal,**physical})
+            if not hook:
+                distal=p.mean(0);distal[2]=p[:,2].max()
+                result.append({'name':name+'_distal_face','point':distal,
+                    'normal':np.array([0.,0.,1.]),**physical})
         elif 'finger' in name and not hook:
             tip=p[p[:,2]>=p[:,2].max()-.003].mean(0)
-            result.append({'name':name+'_distal_tip','point':tip,'normal':np.array([0.,0.,1.])})
+            result.append({'name':name+'_distal_tip','point':tip,'normal':np.array([0.,0.,1.]),**physical})
         elif name=='gripper0_hand_collision' and contact_surface=='palm' and not hook:
             for axis in [1,2]:
                 for sign in [-1,1]:
                     values=p[:,axis]*sign;point=p[values>=values.max()-.003].mean(0)
                     normal=np.eye(3)[axis]*sign
-                    result.append({'name':name+f'_face_{axis}_{sign}','point':point,'normal':normal})
+                    result.append({'name':name+f'_face_{axis}_{sign}','point':point,'normal':normal,**physical})
     # Stable labels, without recommending a contact strategy.
     return sorted(result,key=lambda x:x['name'])
 
@@ -358,6 +368,8 @@ def plan_engagement(ik,scene,record,metadata,evidence,selected,kind,budget,maxim
                 'contact_local':np.asarray(candidate['contact_local_m']),'contact_world':point,
                 'contact_tcp_pose_world_xyzw':matrix_pose(tcp),'rotation':tcp[:3,:3],
                 'insertion_direction':unit(evidence['direction_world']),'contact_name':name,
+                'contact_model':{key:candidate[key] for key in ('robot_collision_geom',
+                    'physical_collision_masks','initiates_simulator_contacts')},
                 'attempts':attempts,'candidate_index':0,'timing_seconds':dict(timing),
                 'search_work':{'contact_points':1,'ik_queries':1,'ik_solutions':len(solutions),'path_queries':len(attempts)},
                 'total_seconds':time.perf_counter()-began,'predicted_contact_only':True,

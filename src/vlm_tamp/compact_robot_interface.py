@@ -63,6 +63,11 @@ If RGB-D tracks the selected target moving during approach, targeted contact
 reacquires that same point before the stroke. contact_handoff reports this work.
 Reaching a contact point alone leaves wrist orientation free and does not prove
 physical engagement; plan_contact_pose accepts your explicit quaternion when needed.
+Reset lists each contact's configured collision masks. Active pad surfaces include
+inner faces and distal faces. Body-mesh tip references can be passive: contype=0
+does not initiate contacts, so they may pass through other passive surfaces.
+Use the configured pad faces for contact with such surfaces; no collision flags
+or simulator physics are changed by choosing a contact name.
 Contact skills when enabled: push_stroke, push, continue_push, hook_pull.
 push_stroke(direction_world, distance_m) moves the current hand directly in
 simulation, holding its aperture. No object model, prior contact or search is
@@ -258,7 +263,7 @@ def compact_response(response):
                 'point_outcomes':[{'point_world_m':a['point_world_m'],'reason':a['reason'],
                     'postures_tested':len(a.get('attempts',[]))} for a in diagnostic['point_attempts']]}
         result['search']=pick(value.get('search',{}),('candidate_index','contact_name','total_seconds','timing_seconds',
-            'reuse_existing_contact','measured_surface_distance_m','region_candidate_index','search_work','contact_pose_selection'))
+            'reuse_existing_contact','measured_surface_distance_m','region_candidate_index','search_work','contact_pose_selection','contact_model'))
         if 'observation_refreshes' in value:
             result['observation_refreshes']=[{'control_steps':r['control_steps'],
                 'recovered':r['after']['accepted'],'reason':r['before'].get('blocking_surface')}

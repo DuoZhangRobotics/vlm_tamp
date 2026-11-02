@@ -71,7 +71,9 @@ def test_contact_approach_offers_unmodified_endpoints_to_native_planner(monkeypa
     def ik_query(ik,metadata,selected,name):
         np.testing.assert_array_equal(selected,point)
         assert name=='selected_pad'
-        return {'contact_local_m':offset.tolist()},solutions
+        return {'contact_local_m':offset.tolist(),'robot_collision_geom':'selected_pad',
+            'physical_collision_masks':{'contype':1,'conaffinity':1},
+            'initiates_simulator_contacts':True},solutions
     monkeypatch.setattr(surface,'contact_solutions',ik_query)
     class Context:
         record={}
