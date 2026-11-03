@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Molmo2 pointing test</title>
+<style>
+body{max-width:1160px;margin:24px auto;padding:0 18px;font:16px/1.5 system-ui;color:#203249;background:white}h1{font-size:28px}h2{font-size:21px}a{color:#1462ad}button,select{font:inherit;padding:8px;max-width:100%}summary,button{cursor:pointer}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px}.muted{color:#56687d}.panels{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:20px}.plot{width:100%;max-width:512px;height:auto;display:block}.scroll{overflow:auto}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:9px;border-bottom:1px solid #dce3eb;vertical-align:top}.links a{display:inline-block;margin-right:14px}.card{padding:14px;border:1px solid #dce3eb;border-radius:8px}.selected{background:#eef4fb}[hidden]{display:none!important}
+#documentPanel{position:fixed;inset:4vh 3vw;z-index:1000;background:white;border:1px solid #9dadbf;padding:18px;box-shadow:0 0 0 100vmax #172b4377;display:flex;flex-direction:column;gap:10px;max-width:1200px;margin:auto;box-sizing:border-box}#documentPanel header,#documentPanel [data-document-navigation]{display:flex;gap:10px;flex-wrap:wrap}#documentPanel h2{margin:0;flex:1}#documentPanel pre{margin:0;overflow:auto;flex:1;min-height:0;padding:12px;background:#f3f6fa}#documentPanel select{min-width:0;flex:1}
+</style></head><body>
+<h1>Molmo2: locate the door and select a closing contact</h1>
+<p>Official Molmo2-8B · local BF16 inference · model loaded once · fresh greedy request for each query.</p>
+<p><strong>A window mark counts as a door selection.</strong> Image-space pointing, raw depth, and successful physical contact are separate measurements.</p>
+<p class="muted">Five recorded instants from one state-17 episode, plus its initial wrist view. The opposite-side camera is an extra recorded diagnostic view. No IK or robot motion is run in this experiment. There is no inherited conversation between queries.</p>
+<div id="outcome" class="card"></div>
+<h2>Inspect the exact marks</h2>
+<label>Query <select id="caseSelector" aria-label="Pointing query"></select></label>
+<p id="selectionNote" aria-live="polite"></p>
+<div class="panels"><section><h3>Image 1 · wider context</h3><svg id="contextPlot" class="plot" viewBox="0 0 512 512" role="img" aria-label="Context image and any returned marks"></svg></section><section><h3>Image 2 · requested contact view</h3><svg id="contactPlot" class="plot" viewBox="0 0 512 512" role="img" aria-label="Contact image with Molmo2's unmodified mark"></svg></section></div>
+<p id="assessment"></p><p id="selectedLinks" class="links"></p>
+<details open><summary>Exact input text</summary><pre id="prompt"></pre></details>
+<details open><summary>Raw model output</summary><pre id="raw"></pre></details>
+<details><summary>Raw depth at the marked pixel · operator inspection only</summary><pre id="depth"></pre></details>
+<h2>Time breakdown</h2><p id="timing"></p>
+<p class="muted">Per-query time includes image preprocessing, GPU transfer and generation. Initial model loading and the one-time download are separate. Luna/Sol's prior agent times also included agent startup and tool calls, so those times are not an identical measurement.</p>
+<div class="scroll"><table id="trialTable"><thead><tr><th>View / query</th><th>Points in image 2</th><th>Image-space assessment</th><th>Preprocess</th><th>Generate</th><th>Total</th></tr></thead><tbody></tbody></table></div>
+<h2>Protocol and resources</h2>
+<p>The initial side-view image bytes match the previous Luna/Sol experiment. This test uses Molmo2's native pointing prompt and response format, not their agent/tool/JSON protocol. The two requests distinguish object localization from closing-contact selection; neither is a demonstrated successful push.</p>
+<p id="resources"></p>
+<p class="links"><a class="document" href="protocol.json">Frozen protocol</a><a class="document" href="summary.json">Complete results</a><a class="document" href="load.json">Model load and environment</a><a class="document" href="resource-summary.json">Memory / I/O / SSH</a><a class="document" href="inference-resources/pointing-driver.log">Inference log</a><a href="../sol56-vs-luna-contact-20261103/watch.html">Earlier Luna/Sol comparison</a></p>
+<p class="muted">No automatic point replacement, mask centroid, depth repair, device fallback or robot-tool change was added. This page never reloads itself.</p>
+<aside id="documentPanel" role="dialog" aria-modal="true" aria-labelledby="documentTitle" hidden><header><h2 id="documentTitle" data-document-title>Document</h2><button data-document-refresh>Reload document</button><button data-document-close>Close</button></header><p data-document-status role="status"></p><div data-document-navigation hidden><button data-document-previous>Previous</button><select data-document-record aria-label="Log record"></select><button data-document-next>Next</button></div><pre data-document-content></pre></aside>
+<script type="application/json" id="resultsData">DATA_PLACEHOLDER</script>
+<script src="document-viewer.js"></script>
+<script>
+'use strict';
+const data=JSON.parse(document.getElementById('resultsData').textContent),reader=new LunaDocumentReader(document.getElementById('documentPanel'));
+const ns='http://www.w3.org/2000/svg';
+function svgNode(name,attributes){const e=document.createElementNS(ns,name);for(const[k,v]of Object.entries(attributes))e.setAttribute(k,v);return e}
+function text(id,value){document.getElementById(id).textContent=value}
+function link(label,path){const a=document.createElement('a');a.textContent=label;a.href=path;a.className='document';a.onclick=e=>{e.preventDefault();reader.open(label,path,a)};return a}
+function draw(id,path,points){const svg=document.getElementById(id);svg.replaceChildren(svgNode('image',{href:path,width:512,height:512}));for(const p of points){const[x,y]=p.pixel_xy;svg.append(svgNode('circle',{cx:x,cy:y,r:9,fill:'none',stroke:'white','stroke-width':5}),svgNode('circle',{class:'point',cx:x,cy:y,r:9,fill:'none',stroke:'#00a9df','stroke-width':3}),svgNode('path',{d:`M${x-15} ${y}H${x+15}M${x} ${y-15}V${y+15}`,stroke:'#00a9df','stroke-width':2}))}}
+const selector=document.getElementById('caseSelector');
+for(const row of data.cases){const option=document.createElement('option');option.value=row.id;option.textContent=row.observation+' · '+row.camera+' · '+row.query;selector.append(option)}
+function select(){const row=data.cases.find(r=>r.id===selector.value),r=row.result;draw('contextPlot',row.images[0].path,r.points.filter(p=>p.image_index===1));draw('contactPlot',row.images[1].path,r.points.filter(p=>p.image_index===2));text('prompt',row.prompt);text('raw',r.raw_text);text('selectionNote',r.status+' · '+r.points.length+' point(s) returned · '+r.total_seconds.toFixed(2)+' s');text('assessment',row.assessment?.explanation||'Image-space assessment pending.');text('depth',JSON.stringify(row.depth||[],null,2));const links=document.getElementById('selectedLinks');links.replaceChildren(link('Prompt','queries/'+row.id+'/prompt.txt'),link('Raw output','queries/'+row.id+'/raw.txt'),link('Full result','queries/'+row.id+'/result.json'));for(const tr of document.querySelectorAll('#trialTable tbody tr'))tr.classList.toggle('selected',tr.dataset.id===row.id)}
+selector.onchange=select;
+for(const row of data.cases){const r=row.result,tr=document.createElement('tr');tr.dataset.id=row.id;for(const value of [row.observation+' / '+row.camera+' / '+row.query,r.points.filter(p=>p.image_index===2).map(p=>'['+p.pixel_xy.map(v=>v.toFixed(1)).join(', ')+']').join('; ')||'none',row.assessment?.label||'pending',r.preprocessing_seconds.toFixed(2)+' s',r.generation_seconds.toFixed(2)+' s',r.total_seconds.toFixed(2)+' s']){const td=document.createElement('td');td.textContent=value;tr.append(td)}tr.onclick=()=>{selector.value=row.id;select()};document.querySelector('#trialTable tbody').append(tr)}
+text('outcome',data.conclusion||'Pointing outputs are available below. No physical execution was tested.');
+text('timing','Model load: '+data.load.model_load_seconds.toFixed(2)+' s ('+data.load.startup_through_load_seconds.toFixed(2)+' s including imports). First query: '+data.cases[0].result.total_seconds.toFixed(2)+' s. Median subsequent query: '+data.warm_median_seconds.toFixed(2)+' s. Total generation: '+data.total_generation_seconds.toFixed(2)+' s.');
+text('resources',data.resource_description||'Resource summary pending.');
+for(const a of document.querySelectorAll('a.document'))a.onclick=e=>{e.preventDefault();reader.open(a.textContent,a.getAttribute('href'),a)};
+selector.value=data.cases.find(r=>r.query==='closing_contact').id;select();
+</script></body></html>

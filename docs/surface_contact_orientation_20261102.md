@@ -753,3 +753,15 @@ marks, per-trial timing, model-error/depth-error separation, prompts, answers an
 public I/O logs. Browser validation checked all ten plotted coordinates, 51
 document links, aggregate metrics and narrow layout. No robot tests were needed
 for this read-only comparison.
+
+### Molmo2 pointing diagnostic, 2026-11-03
+
+The subsequent requested Molmo2 test is documented in
+[molmo2_pointing_20261103.md](molmo2_pointing_20261103.md), with outputs in
+`results/molmo2-pointing-20261103/watch.html`. Its closing-contact prompt placed
+6/6 marks on the moving door across five recorded instants and the initial wrist
+view, accepting window marks as door marks. A simpler door-location prompt got
+4/6. Warm requests took a median 0.786 seconds. No contact execution was tested,
+and this is not a matched model comparison because the pointing prompt/interface
+differs from the earlier Luna/Sol agent protocol. The production robot pipeline
+was not changed.
