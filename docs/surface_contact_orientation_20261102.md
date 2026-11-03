@@ -571,3 +571,48 @@ states 17 and 49, Luna/high, no inherited memory or operator example, one attemp
 each, 600 controls and 1,800 wall seconds. The shared-host memory/I/O/SSH monitoring
 and small, manually refreshed dashboard remain in use. Outcomes will be recorded
 after completion; this protocol does not claim task success or repeatability.
+
+Completed on frozen runtime `fb60f63`: **0/2 task successes**. Both episodes used
+600 controls and left substantial wall time. State 17 opened from 88.92 to
+119.98 degrees; state 49 from 107.26 to 120.35 degrees. Neither reached a smaller
+opening than its initial state. Native angles are operator-only scoring evidence.
+
+All 35 saved calibrations in 17 and all 18 in 49 contained only agentview/wrist.
+Both actors opened both initial originals. There were 31 and 50 actual multimodal
+image blocks. All targeted contact marks remained in agentview (8/12 calls,
+including previews); neither demonstrated an opposite-face contact or a wrist
+contact mark. State 17 called inspect_video once; state 49 did not. Named rotation
+requests were CCW/CW=7/1 and 11/1 respectively. Both used top-to-bottom hinge
+annotations, yielding downward positive axes; CCW therefore means viewed from
+below. The conversion was consistent with the declared convention, but did not
+resolve the semantic closing direction. This convention still requires careful
+interpretation; no upward-axis or closing-sign heuristic was silently introduced.
+
+State 17's first targeted approach stopped 18.2 mm short at control 134 without
+issuing its stroke. Subsequent direct hand strokes physically opened the door.
+State 49's controls 140–147 reached the hand target within 2.7 mm while opening
+112.20→114.58 degrees; its object tracker reported unresolved motion. Later
+approaches also failed to arrive. Search/IK feasibility, physical hand arrival,
+tracked object motion and semantic goal progress remain distinct. A lack of
+supported tracking did not establish no physical door movement. Remaining wall
+budgets were approximately 1,299 and 918 seconds; the control budget stopped both.
+
+| Case | Actor wall | Robot service | Outside service |
+| --- | --- | --- | --- |
+| 17 | 503.61 s | 126.44 s | 377.17 s |
+| 49 | 886.65 s | 97.78 s | 788.86 s |
+
+Outside-service time includes model calls, transport and local analysis, not
+isolated reasoning time. The nested timing details remain in watch.html. Resource
+monitoring observed 6.02 GiB peak job RAM, 1,955 MiB peak GPU memory, no memory
+pressure/OOM, and 93/93 successful SSH probes. Host-wide I/O pressure peaked at
+10.94% transiently; no responsiveness-triggered interruption occurred.
+
+Validation: 137 targeted tests, Ruff and whitespace checks passed. Source/native
+integrity audits passed for both runs (625 source files), and neither received
+inherited memory or operator examples. The report's `failure-summary.html`,
+`two-camera-summary.json`, per-run `two-camera-audit.json` and original
+`attempt01/initial/rollout.mp4` recordings preserve the evidence. These results
+validate the interface changes, not reliable microwave closure. The remaining
+question is how Luna identifies the closing relation and obtains an observed
+contact face that can generate it; changing the rotation label alone did not do so.
