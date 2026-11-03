@@ -477,3 +477,60 @@ and displayed a missing-document error. The eight-step image walkthrough passed
 interaction and overflow checks at 736, 360 and 320 px; all referenced images
 resolved and no JavaScript exceptions occurred. No new physical experiment was
 needed for these reporting-only changes.
+
+### Fresh Luna goal-reference diagnostics, 2026-11-02
+
+The user reported that Sol/Terra/Astra identified opening in a two-screenshot
+comparison and requested a fresh Luna check. `scripts/check_luna_goal_reference.py`
+ran separate Luna/high sessions on the original state-17 observations 1 and 10
+(controls 60 to 187). Native opening increased 88.92 to 99.77 degrees. Expected
+labels, native angles, old notebooks and source implementation were inaccessible
+to each actor. No robot actions or planning were available. Exact correspondence
+to the user's separate thumbnail crops/timestamps was not established.
+
+| Inputs | Answer | Confidence | Actual image blocks | Actor wall seconds |
+| --- | --- | --- | --- | --- |
+| Two original agentview frames | unchanged | medium | 2 | 14.34 |
+| Same pair plus explicit closed-reference question | uncertain | low | 2 | 30.91 |
+| Additional views and RGB-D, corrected helper | unchanged | high | 12 | 67.72 |
+
+Each row is one fresh sample, not a model success rate. Both pair-only prompts
+used structured reference-description fields; the second added explicit reasoning
+instructions. The final condition combines extra views with numerical access, so
+their individual effects are not isolated. Extra side cameras existed only before
+the motion; after had agentview/frontview/wrist. No missing views were fabricated.
+
+The initial numerical diagnostic is invalid and excluded: the newly written
+sample helper converted the floating-point robot-only depth prior to Boolean,
+which turned NaN into true. It now returns numeric metres or null, without an
+occlusion/identity label. A regression test verifies both NaN and finite semantics.
+The corrected condition above used another fresh actor. Both outputs are retained
+in `results/luna-goal-reference-check-20261102/index.html`, with the invalid result
+explicitly marked. This defect was confined to the diagnostic helper, not the
+production perception service. RGB PNGs exactly match the sensor RGB arrays.
+
+In the corrected result, Luna identified the cabinet opening using a side view,
+but inferred no meaningful motion from near-hinge samples at pixels (410,200) and
+(405,245), reporting only 3.5 and 2.6 mm differences. Near-hinge points can remain
+nearly stationary during rotation. Reusing pixel coordinates also does not track
+the same material point. It did not establish full-panel rotation or relative
+progress toward the closed reference from those measurements. This does not
+establish that the available images lack enough information.
+
+The image-arrow audit also confirmed a concrete conditioning problem. The ground
+operation chooses a signed axis using the projected *initial infinitesimal*
+velocity at the selected contact. There is no universal right-to-clockwise map.
+For this recorded caller hinge/contact hypothesis, the image derivative was
+(+0.0576, -0.9158) pixels per degree. Projecting finite +5 degrees gave
+(+0.816, -4.539) pixels; -5 degrees gave (+0.261, +4.610). Both finite motions
+shift rightward, with their primary difference vertical. These are projections of
+the actor's hypothesis, not physical replays or verified task-direction labels.
+No new direction threshold, fallback or runtime planner change was introduced.
+
+The recorded source video remains the original state-17
+`attempt01/initial/rollout.mp4`; the first wrong direct stroke is controls 160-187
+(8.00-9.35 simulated seconds). Next useful tool-assisted diagnostic: establish
+tracked moving-part correspondences and an explicit fixed goal reference, then
+measure their relationship. Stationary near-hinge samples cannot substitute for
+that measurement. Model labels from this limited test should not become procedural
+memory claiming a successful method.
