@@ -16,6 +16,9 @@ POINTING_HELP = '''- point(observation_id, camera, query): ask the local Molmo2 
   The reply gives points with camera, observation_id, integer contact_pixel_xy,
   raw coordinates and annotated images. Inspect the mark before using its geometry.
   A returned point can seed segment_parts using points_xy and point_labels=[1].
+  For the existing grasp pipeline, use ground to install your selected contact
+  part and model, then call plan_grasp. plan_grasp reads that installed scene;
+  it does not accept camera, observation_id, part_id or target_region_xyxy.
   Use the resulting part mask for grasp generation or moving-part tracking when
   needed; a contact pixel alone does not identify the complete moving part.
   Feed a selected contact_pixel_xy into existing surface, push or hook tools.

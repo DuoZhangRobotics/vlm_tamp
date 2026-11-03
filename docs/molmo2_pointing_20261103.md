@@ -102,3 +102,8 @@ Validation: 13 relevant parser/adapter tests passed, along with Ruff. Browser ch
 was run because this request tested pointing on the recorded inputs.
 
 Primary model/format source: [official Molmo2-8B model card](https://huggingface.co/allenai/Molmo2-8B).
+
+The subsequent integration into Luna's actual callable tools and the three physical evaluations
+are documented in [molmo2_pipeline_20261103.md](molmo2_pipeline_20261103.md). That later experiment
+uses Luna-authored queries and the two native cameras; its outcomes must not be conflated with
+the image-only pointing counts above.
