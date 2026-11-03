@@ -712,3 +712,44 @@ selection, never supplied to Luna. Results are specific to this one recorded vie
 and image-only prompt; they do not evaluate the full SAM/tracking/robot pipeline.
 See `results/luna-other-face-repeat-20261103/index.html`, `protocol.json`,
 `summary.json` and per-repeat prompt, answer, input-audit and surface-audit files.
+
+### Matched GPT-5.6-Sol comparison, 2026-11-03
+
+The user requested five fresh GPT-5.6-Sol trials with the same images, prompt and
+high reasoning as the five Luna repeats. The Sol runner differs only in model ID
+and output directory. All five finished within the same 180-second allowance.
+The requested and recorded model/effort matched `gpt-5.6-sol`/`high`. Prompt and
+source-image hashes matched across all ten runs; sessions were distinct and
+isolation checks passed. Sol received two image blocks in every run. Luna received
+two each, plus its self-generated crop in repeat 1. No earlier answers, successful
+pixels, depth tools, native state or robotics implementation were exposed.
+
+| Model | On door in image | Wrong object | Window depth issue | Usable 3D candidates | Mean / median time | Total time |
+| --- | --- | --- | --- | --- | --- | --- |
+| GPT-5.6-Sol | 3/5 | 2/5 | 0/5 | 3/5 | 37.15 / 31.18 s | 185.74 s |
+| GPT-6-Luna | 3/5 | 2/5 | 2/5 | 1/5 | 22.29 / 22.36 s | 111.45 s |
+
+Sol marks were (242,356), (331,401), (330,325), (230,365), (327,320).
+S1/S4 hit the fixed housing. S2/S3/S5 hit opaque lower/upper door frame material,
+with positive normal-force closing moments and effective lever arms about
+17.1/15.6/16.6 cm; S3 is near a bevel and its local normal is less planar.
+Luna's sole directly grounded candidate had a roughly 1.6 cm effective lever arm.
+These are operator geometric assessments, not measured forces or execution wins.
+
+Sol generated more useful contacts for the current depth interface in this sample,
+but did not reduce the wrong-object count. The difference was opaque-frame choices
+versus Luna's window choices, whose recorded depth reaches background. The latter
+are not necessarily invalid physical contact surfaces; raw depth cannot ground
+them correctly. Thus the result does not establish a general localization ranking
+or solve the transparent-surface limitation. No robot motion, IK or physical task
+success was tested, and the production model/pipeline was not changed.
+
+Agent wall time includes CLI startup, model calls, image inspection and local
+analysis; it excludes preparation, grading and report generation. These are
+same-state two-view contact tests, not before/after motion-classification tests.
+The comparison is in `results/sol56-vs-luna-contact-20261103/watch.html` and
+`comparison.json`, linked from both earlier image-test reports. It shows all ten
+marks, per-trial timing, model-error/depth-error separation, prompts, answers and
+public I/O logs. Browser validation checked all ten plotted coordinates, 51
+document links, aggregate metrics and narrow layout. No robot tests were needed
+for this read-only comparison.
