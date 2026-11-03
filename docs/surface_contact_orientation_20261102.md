@@ -671,3 +671,44 @@ Validation: 137 targeted geometry, contract, motion-tool and recovery tests pass
 Ruff and diff checks passed. Tests cover vertical, horizontal and tilted axes,
 endpoint-order invariance, unchanged hinge lines, and consistent installed-axis
 conventions. Existing physical benchmark episodes were not rerun in this diagnostic.
+
+### Five fresh repeats of the opposite-face mark, 2026-11-03
+
+The user requested a consistency check. Five additional Luna/high sessions used
+byte-identical copies of the favorable pilot's prompt and two input images, with
+no earlier answer, depth tools, simulator state or successful coordinates. All
+five predeclared runs completed in distinct isolated sessions. Prompt/image hashes
+matched. Each opened both originals; repeat 1 also inspected its own enlarged
+crop. Total actor wall time was 111.45 seconds. No robot motion or IK was run.
+
+| Repeat | Original-image pixel | Operator assessment |
+| --- | --- | --- |
+| 1 | (240,370) | Fixed appliance housing, not the moving leaf |
+| 2 | (300,360) | Door-window region; depth reaches background |
+| 3 | (263,366) | Moving door bezel; plausible normal closing push |
+| 4 | (243,424) | Table below the door |
+| 5 | (310,390) | Door-window region; depth reaches background |
+
+Thus 3/5 marks fall on the door in image space when its window is included, but
+only 1/5 supplies an observed 3D door contact directly usable by the current
+pixel/depth interface. Repeat 3 is near the hinge, with an effective normal-force
+moment arm of about 1.6 cm; it is not a proven reachable or successful contact.
+The favorable exploratory pilot is excluded from these five-repeat counts.
+
+The window cases are not simply wrong physical-object selections. The LIBERO
+asset has a transparent `microwindow` visual and a collision box spanning the
+door (`third_party/LIBERO/libero/libero/assets/articulated_objects/microwave.xml`).
+The measured points at repeats 2/5 are about 260/260 mm behind the observed opaque
+door plane. Raw pixel-depth deprojection therefore produces a background target
+although a physical door panel is present. This is a sensor/grounding limitation
+separate from the housing/table pointing errors. No reconstruction, snapping,
+execution gate or fallback was added to address it during this consistency test.
+
+Labels are operator assessments from the original image, measured RGB-D and
+later fixed-camera captures. The housing and table points remain exactly fixed
+while the recorded door rotates; identical pixels are not otherwise claimed to
+track material points. Native hinge data is used only to assess torque after
+selection, never supplied to Luna. Results are specific to this one recorded view
+and image-only prompt; they do not evaluate the full SAM/tracking/robot pipeline.
+See `results/luna-other-face-repeat-20261103/index.html`, `protocol.json`,
+`summary.json` and per-repeat prompt, answer, input-audit and surface-audit files.
