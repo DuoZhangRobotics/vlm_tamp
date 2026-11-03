@@ -2,8 +2,20 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
+
+import numpy as np
 
 VIEW_CONVENTION = 'View from the positive hinge-axis end toward its origin: ccw is positive, cw negative.'
+AXIS_CONVENTION = 'The largest-magnitude world component is positive (exact ties: X, then Y, then Z). This sets sign only; it does not align the hinge with a world axis.'
+
+
+def canonical_axis(axis: Sequence[float]) -> np.ndarray:
+    """Orient an already validated nonzero hinge line independently of point order."""
+    value = np.asarray(axis, dtype=float)
+    value = value / np.linalg.norm(value)
+    component = int(np.argmax(np.abs(value)))
+    return value if value[component] > 0 else -value
 
 
 def signed_rotation(degrees: float | None, direction: str | None = None) -> float | None:

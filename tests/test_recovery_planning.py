@@ -1,11 +1,9 @@
 import copy
-import importlib.util
-from pathlib import Path
 from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from vlm_tamp.signed_contact_motion import signed_scene,plan_signed_arc
+from vlm_tamp.signed_contact_motion import plan_signed_arc
 from vlm_tamp.observed_joint_scene import current_part_points,install_joint_part
 from vlm_tamp.robot_contracts import validate_operation
 from vlm_tamp.timed_execution import schedule_contact,gripper_arm_reference
@@ -103,7 +101,8 @@ def test_registered_joint_installs_without_any_handle_fit(monkeypatch):
     result=install_joint_part(service,estimate,motion_sign=-1)
     assert result['handle_model_required'] is False
     assert service.spec['generic_part_joint_model'] and 'observed_handle_radius_m' not in service.spec
-    assert np.array_equal(service.scene.axis,[0,0,-1])
+    assert np.array_equal(service.scene.axis,[0,0,1])
+    assert service.spec['direction_source']['legacy_motion_sign_recorded_only']==-1
     assert len(service.scene.static_points)==1 and service.scene_reference_control_step==10
 
 

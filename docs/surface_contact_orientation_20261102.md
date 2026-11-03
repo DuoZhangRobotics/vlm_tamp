@@ -616,3 +616,58 @@ inherited memory or operator examples. The report's `failure-summary.html`,
 validate the interface changes, not reliable microwave closure. The remaining
 question is how Luna identifies the closing relation and obtains an observed
 contact face that can generate it; changing the rotation label alone did not do so.
+
+### Canonical hinge coordinates and opposite-face image test, 2026-11-03
+
+At the user's request, new stored/public hinge models use a canonical axis sign:
+normalize the measured line and make its largest absolute world component positive,
+with exact ties resolved X, Y, Z. Near-vertical axes point toward +Z; horizontal
+axes toward +X or +Y. No line is snapped to a world axis. Grounding uses the
+midpoint of the same two measured hinge samples as its origin, so reversing the
+marks changes neither origin nor axis. This is the same geometric line, not a
+new fitted hinge or corrected pose. CW/CCW remains viewed from the positive-axis
+end toward the origin, with CCW positive. The existing motion-fit estimator is
+still scoped to upright hinges; canonical coordinates do not generalize that fit.
+
+Grounding, fitted-joint installation and explicit model replacement use this
+convention. Contract v20 records legacy image hints and `motion_sign` as metadata
+only; they no longer reverse model coordinates. Task intent belongs in CW/CCW or
+signed motion requests. Old result files retain their original conventions and
+are not reinterpreted. No new feasibility check, acceptance threshold, execution
+gate, planner or fallback was added. Private signed-arc planning coordinates can
+still reverse their query axis to encode a negative rotation, without mutating
+the canonical observed model.
+
+`results/luna-other-face-marking-20261103/index.html` records two fresh Luna/high
+image-only sessions at the same saved state-17 capture. Both received identical
+external context; the assigned marking image was either wrist or the previously
+recorded `arm_lower_right` view of the other face. The prompt was identical and
+provided no coordinates, depth, native hinge, previous results or expected mark.
+Each actor actually received two image blocks; isolation checks passed. No robot
+motion, IK, reachability or physical closure was tested. This extra view is a
+separate diagnostic, not a two-camera benchmark result; the main worker still
+allows only agentview/wrist.
+
+- Wrist: Luna selected pixel (95,273), describing an inset door surface. The local
+  observed normal is approximately (-0.0252,-0.0005,+0.9997): mostly upward. A
+  normal push there mostly presses down, with little turning effect. Agent wall
+  time was 59.17 seconds.
+- Other face: Luna selected (272,407) on the visible lower door border. Its local
+  normal is approximately (-0.9993,-0.0239,-0.0284). An inward normal force has a
+  closing tendency about the native evaluator hinge, with effective moment arm
+  0.0378 m. It is nearer the hinge than a typical free-edge contact, so this is
+  a plausible but unexecuted and not necessarily efficient contact. Agent wall
+  time was 17.50 seconds.
+
+Normals were measured after the answers using each selected point's public RGB-D
+and a local 11x11 pixel neighbourhood restricted to 2 cm. The native hinge was
+used only to grade the torque tendency; it was never shown to Luna. These are
+operator diagnostic measurements, not new motion gates or task-success evidence.
+With one sample per view, this is not a reliability estimate. A physical follow-up
+would need to obtain a comparable view through the permitted wrist camera and
+then test contact and execution.
+
+Validation: 137 targeted geometry, contract, motion-tool and recovery tests passed;
+Ruff and diff checks passed. Tests cover vertical, horizontal and tilted axes,
+endpoint-order invariance, unchanged hinge lines, and consistent installed-axis
+conventions. Existing physical benchmark episodes were not rerun in this diagnostic.

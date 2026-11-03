@@ -6,8 +6,10 @@ contact face is visible and mark its original pixels; the other view gives
 context. Wrist calibration belongs to that capture, since the camera moves.
 Use positive joint_degrees with rotation_direction='cw' or 'ccw' for hinge motion.
 View from the returned positive hinge-axis end toward its origin: CCW is positive.
-With ground's legacy image arrow omitted, its axis runs from your first selected
-hinge point toward your second. This convention does not verify opening/closing.
+The largest-magnitude world component of the hinge axis is positive (exact ties:
+X,Y,Z). A near-vertical hinge therefore points up; a horizontal hinge points
+toward +X or +Y. Point order and image arrows do not change that convention.
+It changes sign only, never the fitted hinge line, and does not verify opening/closing.
 Use the preview's contact_effect to distinguish a push into the selected face
 from motion away from it. To push from the other side, observe and select that
 actual face; changing a normal sign does not create contact on a hidden surface.
@@ -46,8 +48,8 @@ The perception tools connect through returned IDs:
    and a motion-supported estimate are different results.
 
 5. apply_joint_estimate: explicitly install a current estimate by ID, then obtain
-   fresh plans. The signed task direction and current contact geometry remain.
-   Without a grounded handle, provide current_part_id and motion_sign (+1 or -1)
+   fresh plans. The canonical axis convention and current contact geometry remain.
+   Without a grounded handle, provide current_part_id
    to build a model from the current observed part for joint-linked pushing.
    A supported joint does not require a vertical handle or establish a pinch.
    A supported unsigned axis fit does not verify opening/closing direction.
@@ -70,8 +72,8 @@ If tracking measured motion but the automatic scene update was unresolved,
 apply_part_motion transports the previous observed part/contact model. Choose
 a reference capture matching scene_reference_control_step and a current capture.
 After a contact skill invalidates the active scene, its retained reference step
-can anchor this measured update. Reusing a fixed joint preserves its signed axis
-unless you explicitly change motion_sign; it supplies no new current pose by itself.
+can anchor this measured update. Reusing a fixed joint preserves its canonical
+axis convention; it supplies no new current pose by itself.
 If current geometry must be refitted instead, refresh_contact keeps the joint.
 Watch grasp_evidence: measured pad gap comes from robot proprioception. If it
 collapses toward fully closed during manipulation, recheck contact rather than

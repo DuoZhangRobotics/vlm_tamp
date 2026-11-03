@@ -25,8 +25,9 @@ Use camera + observation_id + original contact_pixel_xy to identify a mark.
 For hinge motion, use positive joint_degrees plus rotation_direction='cw'/'ccw'.
 For plan_arc use positive degrees with that same rotation_direction field.
 View from the positive hinge-axis end toward its origin: CCW positive, CW negative.
-With ground's image arrow omitted, the axis runs from the first hinge point to the
-second. The returned world axis defines this convention for all camera views.
+The hinge axis has its largest absolute world component positive (ties X,Y,Z).
+Near-vertical means +Z; horizontal means +X or +Y. Point order, image arrows and
+legacy motion_sign do not redefine it. The fitted line is never snapped upright.
 CW/CCW does not mean opening/closing automatically. Inspect contact_effect in a
 push preview: moving away from the selected face requires another observed face
 for pushing or an engaged pulling contact. A reversed normal is not a new face.

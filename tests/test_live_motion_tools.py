@@ -1,6 +1,5 @@
 import copy
 import json
-from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -76,7 +75,7 @@ def model_service():
     from serve_subscription_robot import RobotService
     robot=RobotService.__new__(RobotService)
     robot.part_motion_tools=True;robot.spec={'joint_origin_world_m':[0.,0.,1.],
-        'joint_axis_world':[0.,0.,-1.],'contact_marker':'retained'}
+        'joint_axis_world':[0.,0.,1.],'contact_marker':'retained'}
     robot.scene=object();robot.epoch=7;robot.state={'control_steps':30};robot.contact_scene_kind='articulated'
     value={'estimate':{'accepted':True,'joint_origin_world_m':[.1,.2,1.],'axis_world_unsigned':[0.,0.,1.]},
         'motion_supported':True,'status':'motion_supported','fit_observations':[1,2],
@@ -91,11 +90,11 @@ def model_service():
 def test_estimate_application_preserves_direction_and_invalidates_old_plans():
     robot,_=model_service();result=robot.apply_joint_estimate('joint1')
     assert robot.spec['joint_origin_world_m']==[.1,.2,1.]
-    assert robot.spec['joint_axis_world']==[0.,0.,-1.] and robot.spec['contact_marker']=='retained'
+    assert robot.spec['joint_axis_world']==[0.,0.,1.] and robot.spec['contact_marker']=='retained'
     assert robot.epoch==8 and result['hinge_update_applied'] and result['motion_supported']
     assert result['task_direction_verified_by_motion_fit'] is False
     assert result['axis_location_change_m']>=0
-    assert 'unsigned axis' in result['direction_note']
+    assert 'canonical' in result['direction_note']
     assert not result['robot_motion_executed'] and not result['provisional']
     with pytest.raises(ValueError,match='fresh plan'):robot.execute_plan('old')
     compact=compact_response({'ok':True,'result':result})['result']
@@ -103,12 +102,13 @@ def test_estimate_application_preserves_direction_and_invalidates_old_plans():
     assert compact['source_control_steps']==[10,20,30]
 
 
-@pytest.mark.parametrize('sign,preserved',[(1,False),(-1,True)])
-def test_explicit_axis_reversal_is_reported_without_claiming_direction_preserved(sign,preserved):
+@pytest.mark.parametrize('sign',[1,-1])
+def test_legacy_motion_sign_does_not_redefine_axis_coordinates(sign):
     robot,_=model_service()
     result=robot.apply_joint_estimate('joint1',motion_sign=sign)
-    assert robot.spec['joint_axis_world']==[0.,0.,float(sign)]
-    assert result['direction_preserved'] is preserved
+    assert robot.spec['joint_axis_world']==[0.,0.,1.]
+    assert result['direction_preserved']
+    assert robot.spec['direction_source']['legacy_motion_sign_recorded_only']==sign
 
 
 @pytest.mark.parametrize('status',['motion_estimate_unverified','verification_inconclusive'])
@@ -147,17 +147,17 @@ def test_fixed_world_joint_can_be_reused_without_claiming_current_pose_evidence(
     assert not result['robot_motion_executed']
 
 
-@pytest.mark.parametrize('override,expected',[(None,-1),(1,1),(-1,-1)])
-def test_generic_joint_reinstall_keeps_retained_signed_axis(monkeypatch,override,expected):
+@pytest.mark.parametrize('override',[None,1,-1])
+def test_generic_joint_reinstall_uses_canonical_axis(monkeypatch,override):
     robot,_=model_service();robot.retained_articulated_model=robot.spec
     robot.spec=None;robot.scene=None;robot.contact_scene_kind='surface'
     received=[]
     def install(service,value,part,sign):
-        received.append(sign);return {}
+        received.append(sign);service.spec={'joint_axis_world':[0.,0.,1.]};return {}
     monkeypatch.setattr('vlm_tamp.observed_joint_scene.install_joint_part',install)
     result=robot.apply_joint_estimate('joint1',motion_sign=override)
-    assert received==[expected]
-    assert result['signed_direction_preserved']==(override is None)
+    assert received==[override]
+    assert result['signed_direction_preserved']
 
 
 def test_manual_hinge_replacement_clears_measured_provenance():

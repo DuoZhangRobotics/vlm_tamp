@@ -3,7 +3,8 @@ import copy
 import numpy as np
 from scipy.spatial import cKDTree
 
-from .contact_skills import fit_object_motion,unit
+from .contact_skills import fit_object_motion
+from .joint_rotation import canonical_axis, AXIS_CONVENTION, VIEW_CONVENTION
 from .coupled_scene import Scene,RobotVolumes
 from .part_perception import usable_pixels
 from .rekep_libero.geometry import transform_points
@@ -42,10 +43,9 @@ def current_part_points(engine,part_id,track_id,current_step):
     return transform_points(points,np.asarray(fit['transform'])),evidence
 
 
-def install_joint_part(service,estimate,current_part_id=None,motion_sign=1):
+def install_joint_part(service,estimate,current_part_id=None,motion_sign=None):
     engine=service._perception_tools;part_id=current_part_id or estimate['part_id']
     if part_id not in engine.parts:raise ValueError('Use a registered observed part ID')
-    if motion_sign not in [-1,1]:raise ValueError('motion_sign must be -1 or +1 relative to the fitted unsigned axis')
     points,evidence=current_part_points(engine,part_id,estimate['track_id'],int(service.state['control_steps']))
     if len(points)<12:raise ValueError('Selected part has insufficient measured depth')
     occupied,_=observed_points(service.cameras,service.state['metadata'],spacing=.003)
@@ -57,8 +57,13 @@ def install_joint_part(service,estimate,current_part_id=None,motion_sign=1):
     if camera not in service.cameras:camera=next(iter(service.cameras))
     camera_origin=np.asarray(service.cameras[camera]['camera_to_world'])[:3,3]
     if normal@(camera_origin-center)<0:normal=-normal
-    fit=estimate['estimate'];axis=motion_sign*unit(fit['axis_world_unsigned'])
+    fit=estimate['estimate'];axis=canonical_axis(fit['axis_world_unsigned'])
     spec={'joint_origin_world_m':list(fit['joint_origin_world_m']),'joint_axis_world':axis.tolist(),
+        'direction_source':{'source':'measured hinge line with canonical world-axis sign',
+            'selected_axis':axis.tolist(),'axis_sign_convention':AXIS_CONVENTION,
+            'positive_rotation_meaning':VIEW_CONVENTION,'task_direction_status':'unknown',
+            'coordinate_convention_only':True,'task_direction_verified':False,
+            'legacy_motion_sign_recorded_only':motion_sign},
         'front_plane':{'point_world_m':center.tolist()},'panel_normal_world':normal.tolist(),
         'generic_part_joint_model':True,'part_id':part_id,'joint_estimate_id':estimate['estimate_id'],
         'hinge_evidence':{'status':'registered_motion_estimate','estimate_id':estimate['estimate_id'],

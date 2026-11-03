@@ -437,6 +437,7 @@ class RobotService:
             'selected_parts':evidence['selected_parts'],'planner_model_updated':True,'robot_motion_executed':False}
 
     def export_geometry(self, evidence=None):
+        from vlm_tamp.joint_rotation import AXIS_CONVENTION
         dest = self.public/f'attempt{self.attempt:02d}'/f'geometry{self.calls:03d}'
         dest.mkdir(parents=True, exist_ok=True)
         np.savez_compressed(dest/'points.npz', contact=self.cloud,
@@ -454,6 +455,7 @@ class RobotService:
         return {'model': public_model, 'geometry_epoch': self.epoch,
                 'direction_contract':{'positive_increment':'rotation along the installed signed joint_axis_world',
                     'rotation_view_convention':'View from the positive hinge-axis end toward its origin: ccw is positive, cw negative.',
+                    'axis_sign_convention':AXIS_CONVENTION,
                     'axis_origin_world_m':self.spec['joint_origin_world_m'],
                     'axis_direction_world':self.spec['joint_axis_world'],
                     'grounding_positive_direction_intent':None,
@@ -498,17 +500,15 @@ class RobotService:
             from vlm_tamp.observed_joint_scene import install_joint_part
             previous=self.spec or getattr(self,'retained_articulated_model',None) or {}
             previous_axis=previous.get('joint_axis_world')
-            sign=(1 if previous_axis is None or vector(previous_axis,3)@vector(fit['axis_world_unsigned'],3)>=0 else -1) if motion_sign is None else motion_sign
-            installed=install_joint_part(self,result,current_part_id,sign)
-            installed.update(signed_direction_preserved=motion_sign is None and previous_axis is not None,
+            installed=install_joint_part(self,result,current_part_id,motion_sign)
+            installed.update(signed_direction_preserved=previous_axis is not None and float(np.asarray(previous_axis)@np.asarray(self.spec['joint_axis_world']))>0,
                 motion_supported=supported,provisional=not supported,historical_fixed_joint_reused=bool(reuse_fixed_joint))
             return installed
+        from vlm_tamp.joint_rotation import canonical_axis, AXIS_CONVENTION, VIEW_CONVENTION
         current_axis=vector(self.spec['joint_axis_world'],3);unsigned=vector(fit['axis_world_unsigned'],3)
         denominator=np.linalg.norm(current_axis)*np.linalg.norm(unsigned)
         if denominator<1e-9:raise ValueError('Joint axes must be nonzero')
-        if motion_sign is not None and motion_sign not in [-1,1]:raise ValueError('motion_sign must be -1 or +1')
-        axis_sign=(1. if current_axis@unsigned>=0 else -1.) if motion_sign is None else motion_sign
-        revised_axis=unsigned/np.linalg.norm(unsigned)*axis_sign
+        revised_axis=canonical_axis(unsigned)
         direction_preserved=bool(current_axis@revised_axis>0)
         origin=vector(fit['joint_origin_world_m'],3)
         shift=origin-vector(self.spec['joint_origin_world_m'],3)
@@ -518,7 +518,8 @@ class RobotService:
             'observation_ids':used,'control_steps':controls,'motion_supported':supported,'provisional':not supported,
             'estimated_axis_world_unsigned':unsigned.tolist(),
             'task_direction_verified_by_motion_fit':False,
-            'scope':'Observed-motion hinge hypothesis; contact geometry is retained and the sign follows the caller or previous axis.'}
+            'scope':'Observed-motion hinge hypothesis; contact geometry is retained and the axis sign follows the canonical world convention.',
+            'legacy_motion_sign_recorded_only':motion_sign}
         previous=(self.spec,self.scene,self.epoch)
         try:
             self.spec=copy.deepcopy(self.spec);self.spec['joint_estimation_evidence']=provenance
@@ -526,13 +527,11 @@ class RobotService:
                 'estimate_id':estimate_id,'calibrated_accuracy_guarantee':False}
             self.spec['joint_origin_world_m']=origin.tolist()
             self.spec['joint_axis_world']=revised_axis.tolist()
-            if motion_sign is not None:
-                self.spec['direction_source']={'source':'caller-selected sign of the measured axis',
-                    'selected_axis':revised_axis.tolist(),'task_direction_status':'unknown',
-                    'coordinate_convention_only':True,'task_direction_verified':False,
-                    'positive_rotation_meaning':'caller-selected axis sign; opening/closing is not verified'}
-            elif isinstance(self.spec.get('direction_source'),dict):
-                self.spec['direction_source']['selected_axis']=revised_axis.tolist()
+            self.spec['direction_source']={'source':'measured hinge line with canonical world-axis sign',
+                'selected_axis':revised_axis.tolist(),'task_direction_status':'unknown',
+                'coordinate_convention_only':True,'task_direction_verified':False,
+                'axis_sign_convention':AXIS_CONVENTION,'positive_rotation_meaning':VIEW_CONVENTION,
+                'legacy_motion_sign_recorded_only':motion_sign}
             geometry=self.set_model()
         except Exception:
             self.spec,self.scene,self.epoch=previous
@@ -542,8 +541,7 @@ class RobotService:
             'provisional':not supported,'direction_preserved':direction_preserved,'invalidated_old_plans':True,
             'axis_location_change_m':axis_location_change,
             'task_direction_verified_by_motion_fit':False,
-            'direction_note':('This fit estimates an unsigned axis. The previous positive sign was retained; task direction is not verified.'
-                if direction_preserved else 'This fit estimates an unsigned axis. The caller-supplied motion_sign reversed the positive axis; task direction is not verified.'),
+            'direction_note':'The measured line uses the canonical world-axis sign; opening/closing is not verified.',
             'source_observation_ids':used,'source_control_steps':controls,
             'historical_fixed_joint_reused':max(controls)!=int(self.state['control_steps']),
             'semantic_identity_verified':False,'physical_contact_verified':False,
@@ -753,6 +751,7 @@ class RobotService:
         return self.export_geometry({'applied_rotation_rad': theta})
 
     def set_model(self, hinge_world_m=None, axis_world=None):
+        from vlm_tamp.joint_rotation import canonical_axis, AXIS_CONVENTION, VIEW_CONVENTION
         if self.spec is None:
             raise ValueError('Ground the target first')
         if hinge_world_m is not None:
@@ -763,11 +762,11 @@ class RobotService:
             axis = vector(axis_world,3)
             if np.linalg.norm(axis)<1e-9:
                 raise ValueError('Nonzero axis required')
-            self.spec['joint_axis_world'] = (axis/np.linalg.norm(axis)).tolist()
-            self.spec['direction_source']={'source':'caller-specified axis coordinate',
+            self.spec['joint_axis_world'] = canonical_axis(axis).tolist()
+            self.spec['direction_source']={'source':'caller-specified hinge line with canonical world-axis sign',
                 'selected_axis':self.spec['joint_axis_world'],'task_direction_status':'unknown',
                 'coordinate_convention_only':True,'task_direction_verified':False,
-                'positive_rotation_meaning':'right-hand rotation about the caller-specified axis; task direction unknown'}
+                'axis_sign_convention':AXIS_CONVENTION,'positive_rotation_meaning':VIEW_CONVENTION}
             evidence=self.spec.get('joint_estimation_evidence')
             if evidence:
                 measured=np.asarray(evidence['estimated_axis_world_unsigned'])

@@ -8,7 +8,7 @@ import json
 import math
 from numbers import Real
 
-VERSION = 'robot-request-contract-v19'
+VERSION = 'robot-request-contract-v20'
 GROUND_FIELDS = ('camera', 'contact_box_xyxy', 'moving_panel_box_xyxy',
                  'hinge_pixels_xy', 'initial_image_direction_xy','contact_pixel_xy')
 GROUND_HELP = '''- ground(regions, moving_part_id=null, contact_part_id=null): lift your current
@@ -20,11 +20,14 @@ GROUND_HELP = '''- ground(regions, moving_part_id=null, contact_part_id=null): l
   exact selected samples must have measured non-robot depth; no snapping occurs.
   Current part masks constrain the selected depth points. No upright hinge,
   cylindrical handle, mount or panel completion is assumed.
-  The two ordered 3D hinge samples define the positive axis from the first point
-  toward the second. View from the positive-axis end toward the origin: CCW is
+  The two 3D samples define a hinge line; their order does not set its sign.
+  The largest-magnitude world component is made positive (exact ties: X,Y,Z).
+  Near-vertical axes point toward +Z; horizontal axes toward +X or +Y. The line
+  is not snapped to those directions. View from the positive-axis end: CCW is
   positive, CW negative. Use joint_degrees as a positive magnitude together with
   rotation_direction='cw' or 'ccw' in push/hook_pull. Opening/closing is still
-  unverified. Omit the legacy initial_image_direction_xy field. The hinge remains
+  unverified. Legacy initial_image_direction_xy is recorded only and cannot
+  reverse the axis. Omit it. The hinge remains
   your hypothesis; depth does not identify the hidden physical joint or decide
   opening/closing. Inspect it in other views or use measured part motion.
   refresh_contact also requires contact_pixel_xy and keeps the existing hinge.
@@ -101,8 +104,9 @@ PART_MOTION_HELP = '''- segment_parts(observation_id, camera, points_xy=null, po
 - apply_joint_estimate(estimate_id, allow_unverified=false, reuse_fixed_joint=false,
   current_part_id=null, motion_sign=null):
   Install a registered estimate into the current grounded articulated model.
-  Without a handle model, current_part_id supplies current observed part geometry
-  and motion_sign (+1 or -1) explicitly orients the unsigned fitted axis. This
+  Without a handle model, current_part_id supplies current observed part geometry.
+  The fitted line uses the same canonical world-axis sign as ground; legacy
+  motion_sign is recorded only and cannot redefine the axis. This
   enables joint-linked pushing; it does not fabricate a pinch-grasp handle.
   A supported estimate is the default. An admitted but unverified/inconclusive
   fit requires allow_unverified=true and remains labelled provisional. A fit
@@ -110,7 +114,7 @@ PART_MOTION_HELP = '''- segment_parts(observation_id, camera, points_xy=null, po
   Evidence must belong to this episode. By default it must reach the current
   step. reuse_fixed_joint=true explicitly reuses an older fixed-world joint
   hypothesis; it supplies no new current-pose or contact evidence.
-  The tool retains the signed task direction and contact geometry, changes the
+  The tool retains contact geometry and the canonical sign convention, changes the
   hinge parameters as a new model version, and invalidates old plans. Inspect scene support and obtain
   fresh plans afterwards. Use refresh_contact to update visible contact/panel
   geometry while retaining the joint. Ordinary ground replaces the joint too.
@@ -176,7 +180,7 @@ def ground_parameters(image_sizes=None):
         'contact_pixel_xy':array(2,{'type':'integer','minimum':0},description='Exact contact pixel in this camera; no snapping or alternate point is selected.'),
         'hinge_pixels_xy': array(2, array(2,{'type':'integer','minimum':0}), description='Two distinct original-pixel points along the same hypothesized hinge edge.'),
         'initial_image_direction_xy': {**nullable(array(2, number(), **{'not': {'const': [0, 0]}})),
-            'description': 'Legacy image-arrow sign convention. Omit for CW/CCW requests: the ordered hinge pixels define the positive axis. This never identifies opening/closing.'},
+            'description': 'Legacy image annotation, recorded only. It does not affect the canonical hinge-axis sign. Omit it and use CW/CCW for motion.'},
     }, [key for key in GROUND_FIELDS if key not in {'contact_box_xyxy','initial_image_direction_xy'}])
     part_id=nullable({'type':'string','minLength':1})
     return parameters({'regions': regions,'moving_part_id':part_id,'contact_part_id':part_id}, ['regions'])
@@ -276,9 +280,9 @@ def operation_schemas(image_sizes=None):
         'track_video_motion': ('Track bounded recorded agentview RGB, lifting only supplied measured depth timestamps.',parameters({
             'part_id':text,'observation_ids':{'type':'array','items':integer(0,2**31-1),'minItems':2,'maxItems':16,'uniqueItems':True},
             'association_id':nullable(text),'max_rgb_frames':integer(2,64)},['part_id','observation_ids'])),
-        'apply_joint_estimate': ('Explicitly apply a current registered hinge hypothesis; preserve signed task direction and invalidate plans.',parameters({
+        'apply_joint_estimate': ('Explicitly apply a current registered hinge hypothesis using canonical world-axis sign and invalidate plans.',parameters({
             'estimate_id':text,'allow_unverified':{'type':'boolean'},'reuse_fixed_joint':{'type':'boolean'},
-            'current_part_id':nullable(text),'motion_sign':nullable({'type':'integer','enum':[-1,1]})},['estimate_id'])),
+            'current_part_id':nullable(text),'motion_sign':nullable({'type':'integer','enum':[-1,1], 'description':'Legacy metadata only; the axis sign is canonical. Use CW/CCW in the subsequent motion request.'})},['estimate_id'])),
         'apply_part_motion': ('Apply measured part pose between matching captured states; preserve the fixed joint and issue no motion.',parameters({
             'track_id':text,'reference_observation_id':integer(0,2**31-1),'current_observation_id':integer(0,2**31-1)},
             ['track_id','reference_observation_id','current_observation_id'])),
@@ -286,7 +290,7 @@ def operation_schemas(image_sizes=None):
         'start_tracking': ('Start tracking selected observed moving geometry; no motion.', parameters()),
         'measure_tracking': ('Measure tracked RGB-D motion without changing the planning model.', parameters()),
         'apply_tracking': ('Apply measured geometry motion, optionally with your updated hinge hypothesis.', parameters({'hinge_world_m': nullable(array(3))})),
-        'set_model': ('Set a hinge/axis hypothesis; existing plans become stale.', parameters({'hinge_world_m': nullable(array(3)), 'axis_world': nullable(array(3))})),
+        'set_model': ('Set a hinge-line hypothesis; its axis sign is canonical (largest absolute component positive). Existing plans become stale.', parameters({'hinge_world_m': nullable(array(3)), 'axis_world': nullable(array(3))})),
         'plan_grasp': ('Try up to eight original GraspGen poses by learned score. Filter open-hand scene collisions before IK, then check the arm and approach against the full observed scene. Closure is physical contact; plan manipulation from its measured result.', parameters({'probe_degrees': angle, 'max_candidates': candidates, 'seed': seed,
             'speed':speed,'approach_speed':speed,'hold':{'type':'integer','minimum':0},'close_steps':{'type':'integer','minimum':1},'budget_seconds':number(exclusiveMinimum=0,maximum=1800),'collision_policy':policy})),
         'plan_arc': ('Plan the complete requested relative contact arc; no robot motion. Points overlapping the measured current robot are removed from the planning cloud with zero padding. Future candidate poses do not clear additional points; remaining scene collisions are checked. Contact permission is not proof of a grasp.', parameters({

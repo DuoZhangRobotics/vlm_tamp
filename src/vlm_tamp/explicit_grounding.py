@@ -12,6 +12,7 @@ from .part_perception import region_mask, usable_pixels, projected_selection
 from .rekep_libero.geometry import pose_matrix
 from .rekep_libero.scene_state_v7 import observed_points
 from .surface_contact_tools import selected_pixel_point
+from .joint_rotation import canonical_axis, AXIS_CONVENTION, VIEW_CONVENTION
 
 
 def ground_pixels(cameras, metadata, choices, *, fixed_joint=None, panel_mask=None, contact_mask=None):
@@ -33,28 +34,18 @@ def ground_pixels(cameras, metadata, choices, *, fixed_joint=None, panel_mask=No
         hinge=np.asarray([selected_pixel_point(view,p) for p in choices['hinge_pixels_xy']])
         axis=hinge[1]-hinge[0];length=float(np.linalg.norm(axis))
         if length==0:raise ValueError('The two hinge pixels resolve to the same 3D point')
-        axis/=length;origin=hinge[0]
-        source={'source':'ordered caller hinge pixels lifted through measured depth',
+        axis=canonical_axis(axis);origin=hinge.mean(0)
+        source={'source':'caller hinge pixels lifted through measured depth; canonical world-axis sign',
             'task_direction_status':'unknown','coordinate_convention_only':True,
-            'task_direction_verified':False}
-        hint=choices.get('initial_image_direction_xy')
-        if hint is not None:
-            camera_from_world=np.linalg.inv(pose_matrix(view['camera_to_world']))
-            optical=camera_from_world[:3,:3]@anchor+camera_from_world[:3,3]
-            velocity=camera_from_world[:3,:3]@np.cross(axis,anchor-origin)
-            k=np.asarray(view['intrinsic']);p=k@optical;v=k@velocity
-            image_direction=v[:2]*p[2]-p[:2]*v[2]
-            agreement=float(image_direction@np.asarray(hint,float))
-            if agreement!=0:
-                axis*=np.sign(agreement)
-                source.update(source='caller image arrow applied to the caller hinge line',
-                    task_direction_status='caller_specified',coordinate_convention_only=False)
-        source.update(selected_axis=axis.tolist(),positive_rotation_meaning=
-            'right-hand rotation about the reported axis; the caller supplies opening/closing intent')
+            'task_direction_verified':False,'axis_sign_convention':AXIS_CONVENTION,
+            'legacy_image_hint_recorded_only':choices.get('initial_image_direction_xy')}
+        source.update(selected_axis=axis.tolist(),positive_rotation_meaning=VIEW_CONVENTION)
     else:
         origin=np.asarray(fixed_joint['joint_origin_world_m'])
-        axis=np.asarray(fixed_joint['joint_axis_world'])
+        axis=canonical_axis(fixed_joint['joint_axis_world'])
         hinge=None;source=copy.deepcopy(fixed_joint.get('direction_source',{}))
+        source.update(selected_axis=axis.tolist(),axis_sign_convention=AXIS_CONVENTION,
+            positive_rotation_meaning=VIEW_CONVENTION)
     spec={
         'schema_version':'articulated-explicit-pixels-1.0','task_type':'articulated',
         'joint_family':'revolute','camera':choices['camera'],

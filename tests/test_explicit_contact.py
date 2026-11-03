@@ -37,12 +37,13 @@ def test_raw_grounding_keeps_exact_contact_nonvertical_hinge_and_selected_cloud(
     assert candidate['spec']['direction_source']['task_direction_status']=='unknown'
 
 
-def test_arrow_reversal_changes_only_the_caller_axis_sign():
+def test_image_arrows_do_not_redefine_canonical_hinge_coordinates():
     view,choices=capture();choices['initial_image_direction_xy']=[1,0]
     first=ground_pixels({'test':view},{},choices)
     choices['initial_image_direction_xy']=[-1,0]
     second=ground_pixels({'test':view},{},choices)
-    np.testing.assert_allclose(first['spec']['joint_axis_world'],-np.array(second['spec']['joint_axis_world']))
+    np.testing.assert_allclose(first['spec']['joint_axis_world'],second['spec']['joint_axis_world'])
+    assert first['spec']['direction_source']['legacy_image_hint_recorded_only']==[1,0]
     np.testing.assert_array_equal(first['spec']['joint_origin_world_m'],second['spec']['joint_origin_world_m'])
     np.testing.assert_array_equal(first['cloud'],second['cloud'])
 
