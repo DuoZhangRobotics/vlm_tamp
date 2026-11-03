@@ -15,6 +15,22 @@ from collections import Counter
 
 INDEX = """Robot interface — compact view
 
+This experiment exposes two synchronized RGB-D cameras: agentview and wrist.
+Open both originals before choosing a contact view; then mark ONE visible face
+in either original image. The fixed agentview supplies task context; wrist supplies
+local contact detail. The wrist moves with the robot. No extra orbit views or
+triangulation are needed. If neither view resolves the face, choose an observation
+motion using the ordinary pose tools; it consumes the normal motion budget.
+Use camera + observation_id + original contact_pixel_xy to identify a mark.
+For hinge motion, use positive joint_degrees plus rotation_direction='cw'/'ccw'.
+For plan_arc use positive degrees with that same rotation_direction field.
+View from the positive hinge-axis end toward its origin: CCW positive, CW negative.
+With ground's image arrow omitted, the axis runs from the first hinge point to the
+second. The returned world axis defines this convention for all camera views.
+CW/CCW does not mean opening/closing automatically. Inspect contact_effect in a
+push preview: moving away from the selected face requires another observed face
+for pushing or an engaged pulling contact. A reversed normal is not a new face.
+
 Use: python3 robot.py OPERATION '{"argument": value}'
 Read a contract before first use: python3 robot.py help OPERATION
 Read its exact argument schema: python3 robot.py schema OPERATION
@@ -209,7 +225,7 @@ def observation(value):
     if 'camera_overview' in value:result['camera_overview']=value['camera_overview']
     images = value.get('images')
     if isinstance(images, dict):
-        names = [n for n in ('frontview', 'agentview') if n in images]
+        names = [n for n in ('agentview', 'wrist') if n in images]
         names += [n for n in images if n not in names]
         result['images'] = {n: images[n] for n in names[:2]}
         result['available_camera_count'] = len(images)
@@ -259,6 +275,9 @@ def skill_feedback(value: dict) -> dict:
     current=value.get('observation',{}).get('control_steps')
     arrival=value.get('motion_arrival',value.get('approach_arrival',{}))
     return {'task_goal':value.get('task_instruction'),
+        'requested_rotation_direction':value.get('requested_rotation_direction'),
+        'rotation_view_convention':value.get('rotation_view_convention'),
+        'contact_effect':value.get('selection_geometry',{}).get('contact_effect'),
         'task_success':value.get('task_success'),
         'task_progress_assessment':'completed' if value.get('task_success') else 'not_measured_by_motion_tool',
         'requested_direction_world':value.get('contact',{}).get('direction_world'),
@@ -328,6 +347,7 @@ def compact_response(response):
             'continue_push_available','next_operation','grasp_scene_refresh_required','scene_refresh_scope',
             'commanded_contact_distance_m','attempted_stroke_distance_m','measured_contact_progress_m','contact_progress_error_m','stroke_distance_tolerance_m','hand_travel_shortfall_m',
             'robot_motion_executed','requested_contact_speed_m_s','requested_distance_m','requested_joint_degrees',
+            'requested_rotation_direction','rotation_view_convention',
             'measured_object_motion_along_request','progress_units','motion_measurement_scope','direction_source','task_direction_verified',
             'contact','momentum','report','images','timing_seconds',
             'observed_joint_change_degrees','observed_joint_change_source','progress_measured_at_control_step',
@@ -343,7 +363,7 @@ def compact_response(response):
                 'requested_motion_dot_outward_normal','current_contact_signed_plane_offset_m','pose_source',
                 'pose_control_step','surface_pose_current','surface_reference_control_step','wrist_twist','joint_prediction'))
         if value.get('selection_geometry'):
-            result['selection_geometry']=pick(value['selection_geometry'],('surface_normal_world',
+            result['selection_geometry']=pick(value['selection_geometry'],('surface_normal_world','contact_effect',
                 'initial_robot_contact_signed_plane_offset_m','requested_motion_dot_outward_normal',
                 'same_plane_side_camera_candidates','normal_source','contact_role'))
         result['feedback_count']=sum('object_motion' in s for s in value.get('stages',[]))

@@ -8,20 +8,23 @@ import json
 import math
 from numbers import Real
 
-VERSION = 'robot-request-contract-v18'
+VERSION = 'robot-request-contract-v19'
 GROUND_FIELDS = ('camera', 'contact_box_xyxy', 'moving_panel_box_xyxy',
                  'hinge_pixels_xy', 'initial_image_direction_xy','contact_pixel_xy')
 GROUND_HELP = '''- ground(regions, moving_part_id=null, contact_part_id=null): lift your current
   contact_pixel_xy and two hinge_pixels_xy through calibrated RGB-D. Supply
   camera, moving_panel_box_xyxy, contact_pixel_xy, hinge_pixels_xy and
-  initial_image_direction_xy. Optionally select contact_box_xyxy/contact_part_id
+  optionally select contact_box_xyxy/contact_part_id
   for raw grasp-target points; otherwise the model contains only the moving part.
   All pixels are integer ORIGINAL image coordinates (x right, y down). The
   exact selected samples must have measured non-robot depth; no snapping occurs.
   Current part masks constrain the selected depth points. No upright hinge,
   cylindrical handle, mount or panel completion is assumed.
-  The two ordered 3D hinge samples define a line. Your nonzero image-motion
-  arrow selects its sign. Null leaves task direction unknown. The hinge remains
+  The two ordered 3D hinge samples define the positive axis from the first point
+  toward the second. View from the positive-axis end toward the origin: CCW is
+  positive, CW negative. Use joint_degrees as a positive magnitude together with
+  rotation_direction='cw' or 'ccw' in push/hook_pull. Opening/closing is still
+  unverified. Omit the legacy initial_image_direction_xy field. The hinge remains
   your hypothesis; depth does not identify the hidden physical joint or decide
   opening/closing. Inspect it in other views or use measured part motion.
   refresh_contact also requires contact_pixel_xy and keeps the existing hinge.
@@ -173,8 +176,8 @@ def ground_parameters(image_sizes=None):
         'contact_pixel_xy':array(2,{'type':'integer','minimum':0},description='Exact contact pixel in this camera; no snapping or alternate point is selected.'),
         'hinge_pixels_xy': array(2, array(2,{'type':'integer','minimum':0}), description='Two distinct original-pixel points along the same hypothesized hinge edge.'),
         'initial_image_direction_xy': {**nullable(array(2, number(), **{'not': {'const': [0, 0]}})),
-            'description': 'Intended initial CONTACT-POINT motion in image axes (x right, y down). A finite nonzero vector selects the rotation sign. Null leaves opening/closing direction unknown; the ordered hinge pixels define the axis convention. Scene depth never guesses the task direction.'},
-    }, [key for key in GROUND_FIELDS if key!='contact_box_xyxy'])
+            'description': 'Legacy image-arrow sign convention. Omit for CW/CCW requests: the ordered hinge pixels define the positive axis. This never identifies opening/closing.'},
+    }, [key for key in GROUND_FIELDS if key not in {'contact_box_xyxy','initial_image_direction_xy'}])
     part_id=nullable({'type':'string','minLength':1})
     return parameters({'regions': regions,'moving_part_id':part_id,'contact_part_id':part_id}, ['regions'])
 
@@ -213,6 +216,8 @@ def operation_schemas(image_sizes=None):
         'target_region_xyxy':nullable(box),'direction_world':nullable(array(3)),
         'distance_m':number(exclusiveMinimum=0),
         'joint_degrees':nullable(angle),
+        'rotation_direction':nullable({'type':'string','enum':['cw','ccw'],
+            'description':'Relative to the installed hinge axis: viewed from its positive end toward the origin, ccw is positive and cw negative. Supply joint_degrees as a positive magnitude. Neither means opening/closing automatically.'}),
         'joint_model_epoch':nullable(integer(0,2**31-1)),
         'contact_speed_m_s':number(exclusiveMinimum=0),
         'approach_wait_steps':{'type':'integer','minimum':0,'description':'Maximum extra 20 Hz controls to wait for each approach reference; default 20 (one second). Ends early on measured arrival; all steps count toward the episode.'},
@@ -285,6 +290,7 @@ def operation_schemas(image_sizes=None):
         'plan_grasp': ('Try up to eight original GraspGen poses by learned score. Filter open-hand scene collisions before IK, then check the arm and approach against the full observed scene. Closure is physical contact; plan manipulation from its measured result.', parameters({'probe_degrees': angle, 'max_candidates': candidates, 'seed': seed,
             'speed':speed,'approach_speed':speed,'hold':{'type':'integer','minimum':0},'close_steps':{'type':'integer','minimum':1},'budget_seconds':number(exclusiveMinimum=0,maximum=1800),'collision_policy':policy})),
         'plan_arc': ('Plan the complete requested relative contact arc; no robot motion. Points overlapping the measured current robot are removed from the planning cloud with zero padding. Future candidate poses do not clear additional points; remaining scene collisions are checked. Contact permission is not proof of a grasp.', parameters({
+            'rotation_direction':nullable({'type':'string','enum':['cw','ccw'],'description':'View from the positive hinge-axis end toward its origin. Supply degrees as a positive magnitude.'}),
             'degrees':angle,'refined':{'type':'boolean'},'grasp_constraint':grasp,
             'position_tolerance_m':nullable({'type':'number','exclusiveMinimum':0}),
             'orientation_tolerance_deg':nullable({'type':'number','minimum':0,'maximum':180}),
@@ -369,6 +375,12 @@ def validate_operation(operation, arguments, image_sizes=None):
         if operation == 'ground' and list(error.absolute_path) == ['regions', 'initial_image_direction_xy']:
             message = 'Use a finite nonzero contact-point image-motion vector [dx,dy], or null when unresolved; [0,0] is not an unknown direction.'
         raise RequestValidationError(operation, field, 'schema_mismatch', message[:1000])
+    if operation in {'push','hook_pull','plan_arc'} and arguments.get('rotation_direction') is not None:
+        from .joint_rotation import signed_rotation
+        key='degrees' if operation=='plan_arc' else 'joint_degrees'
+        try:signed_rotation(arguments.get(key),arguments['rotation_direction'])
+        except ValueError as error:
+            raise RequestValidationError(operation,key,'rotation_magnitude_required',str(error)) from error
     if operation == 'ground':
         validate_ground_regions(arguments['regions'], image_sizes=image_sizes, schema_checked=True)
     if operation in {'push','hook_pull','select_surface_contact'}:
@@ -427,7 +439,7 @@ def validate_ground_regions(regions, *, image_sizes=None, schema_checked=False):
             raise RequestValidationError('ground', 'regions.'+key, 'inverted_or_empty_box', 'Use [left,top,right,bottom] with positive width and height.')
     if regions['hinge_pixels_xy'][0] == regions['hinge_pixels_xy'][1]:
         raise RequestValidationError('ground', 'regions.hinge_pixels_xy', 'coincident_hinge_points', 'Select two distinct points along the same hypothesized hinge edge.')
-    direction = regions['initial_image_direction_xy']
+    direction = regions.get('initial_image_direction_xy')
     if direction is not None and not any(direction):
         raise RequestValidationError('ground', 'regions.initial_image_direction_xy', 'unresolved_direction', 'Use a nonzero intended contact-point motion vector, or null when unresolved.')
     if image_sizes:

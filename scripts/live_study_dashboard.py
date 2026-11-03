@@ -171,7 +171,7 @@ def _run_data(study,run,entry,active):
     if progress is not None:
         progress=f'{math.degrees(progress):.2f} degrees' if result.get('progress_units')=='radians' else f'{progress*1000:.2f} mm'
     requested=result.get('requested_joint_degrees')
-    requested=(f'{requested} degrees' if requested is not None else
+    requested=(f'{requested} degrees ({result.get("requested_rotation_direction") or "signed axis"})' if requested is not None else
                f"{1000*result['requested_distance_m']:.1f} mm" if result.get('requested_distance_m') is not None else '—')
     skill={'Operation':last.get('request',{}).get('operation','—'),'Mode':result.get('mode',args.get('mode','—')),
            'Requested contact speed (m/s)':result.get('requested_contact_speed_m_s','—'),

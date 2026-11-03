@@ -534,3 +534,40 @@ tracked moving-part correspondences and an explicit fixed goal reference, then
 measure their relationship. Stationary near-hinge samples cannot substitute for
 that measurement. Model labels from this limited test should not become procedural
 memory claiming a successful method.
+
+### Two-camera single-view marking and CW/CCW, 2026-11-03
+
+The user selected two native cameras and single-view contact marking for the next
+experiment. The profiled worker now captures only `agentview` and `wrist`, including
+depth, calibration and robot depth priors. These same arrays feed numerical geometry,
+tracking and planning. Auxiliary fixed views cannot be requested through this worker.
+The compact reply exposes both originals. Luna chooses one view and one observed
+contact pixel; no paired marking or triangulation is required. The three-camera
+grounding tool is no longer implicitly enabled by the part-motion toolbox.
+
+`push` and `hook_pull` accept a positive `joint_degrees` magnitude plus
+`rotation_direction="cw"|"ccw"`; `plan_arc` uses `degrees` with the same direction
+field. Viewed from the positive hinge-axis end toward its origin, CCW is positive.
+Grounding may omit the image arrow; its ordered hinge samples then define the axis
+from first to second. Legacy signed degrees and explicit image hints remain supported
+for old callers, but fresh documentation directs Luna to the named rotation interface.
+The axis/sign does not identify opening versus closing.
+
+Contact previews now explain whether motion enters, leaves or is tangent to the
+selected face. Opposite-side camera candidates are geometric plane-side evidence,
+not certified visibility. No normal flip, contact substitution, execution gate,
+extra collision check or numerical fallback was introduced. The original request
+and converted signed angle are both retained in feedback and selection history.
+
+The operator-only preflight exported exactly two camera bundles and produced
+opposite CW/CCW tangents with both previews returning `preview_ready`; no push was
+executed. All assertions passed. Its report writer initially failed on a NumPy array;
+the saved sensor/model/preview files were rechecked and the diagnostic writer was
+corrected to use the existing serializer. This was not a robot/tool failure. The
+preflight selections are excluded from fresh Luna inputs.
+
+Fresh evaluations are declared in `results/luna-two-camera-rerun-20261103`: closing
+states 17 and 49, Luna/high, no inherited memory or operator example, one attempt
+each, 600 controls and 1,800 wall seconds. The shared-host memory/I/O/SSH monitoring
+and small, manually refreshed dashboard remain in use. Outcomes will be recorded
+after completion; this protocol does not claim task success or repeatability.

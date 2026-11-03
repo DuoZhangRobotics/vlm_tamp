@@ -13,6 +13,8 @@ from PIL import Image
 from .coupled_worker import CoupledWorker,checked_joint_target
 from .execution_limits import DEFAULT_CONTROL_STEPS, checked_control_steps
 
+SENSOR_CAMERAS = ('agentview', 'wrist')
+
 
 class ProfiledWorker(CoupledWorker):
     def __init__(self,fast=True):
@@ -40,11 +42,15 @@ class ProfiledWorker(CoupledWorker):
                 if name.startswith(('agentview_','robot0_eye_in_hand_')):
                     inner.modify_observable(name,'enabled',False);disabled.append(name)
         result['io_policy']={'mode':'batched' if self.fast else 'baseline',
-            'automatic_camera_observables_disabled':disabled,'explicit_planning_views_unchanged':True,
+            'automatic_camera_observables_disabled':disabled,'explicit_planning_cameras':list(SENSOR_CAMERAS),
             'physics_and_controller_unchanged':True,'video_every_joint_command':True}
         return result
     def _sensor_arrays(self):
-        with self.timed('capture_all_calibrated_rgbd_and_robot_priors'):return super()._sensor_arrays()
+        previous=getattr(self,'selected_capture_cameras',None)
+        self.selected_capture_cameras=list(SENSOR_CAMERAS) if previous is None else previous
+        try:
+            with self.timed('capture_all_calibrated_rgbd_and_robot_priors'):return super()._sensor_arrays()
+        finally:self.selected_capture_cameras=previous
     def _state_metadata(self):
         with self.timed('full_robot_metadata'):return super()._state_metadata()
     def _response_state(self):
@@ -63,12 +69,11 @@ class ProfiledWorker(CoupledWorker):
         with self.timed('write_action_and_contact_logs'):return super()._write_action_log()
     def observe(self,output_dir,camera_names=None):
         if camera_names is not None:
-            from .rekep_libero.sim_worker_v3 import ARM_VIEW_POLICIES
             if (not isinstance(camera_names,list) or not camera_names
                     or len(set(camera_names))!=len(camera_names)
-                    or any(n not in {'agentview','wrist','frontview',*ARM_VIEW_POLICIES} for n in camera_names)):
-                raise ValueError('Choose distinct calibrated cameras')
-        self.selected_capture_cameras=camera_names
+                    or any(n not in SENSOR_CAMERAS for n in camera_names)):
+                raise ValueError('This experiment exposes only agentview and wrist RGB-D')
+        self.selected_capture_cameras=list(SENSOR_CAMERAS) if camera_names is None else camera_names
         try:return self._observe_selected(output_dir)
         finally:self.selected_capture_cameras=None
     def _observe_selected(self,output_dir):
@@ -78,8 +83,11 @@ class ProfiledWorker(CoupledWorker):
             self._require_env();output=Path(output_dir).resolve();output.mkdir(parents=True,exist_ok=True)
             if (output/'obs.npz').exists():raise FileExistsError('Observation already exists')
             arrays,cameras=self._sensor_arrays();metadata=self._state_metadata()
-            metadata.update(cameras=cameras,primary_camera='frontview' if self.task_index==0 else 'agentview',
+            metadata.update(cameras=cameras,primary_camera=next(iter(cameras)),
                 instruction=self.instruction,no_simulator_inventory=True,schema_version='rekep-libero-observation-1.0')
+            metadata['observation_policy']={'allowed_cameras':list(SENSOR_CAMERAS),
+                'scope':'actor, perception, tracking and planning share these sensor views',
+                'additional_virtual_views':False}
             with self.timed('write_lossless_observation'):
                 # The same arrays, without compression on the control path.
                 np.savez(output/'obs.npz',**arrays)
@@ -87,7 +95,7 @@ class ProfiledWorker(CoupledWorker):
                 # obs.npz. Separate PNG copies are needed only for initial
                 # grounding/cache validation and the final retained view.
                 if output.name in {'initial','opened','final'}:
-                    for name in ['agentview','wrist','frontview']:
+                    for name in cameras:
                         Image.fromarray(arrays[name+'_rgb']).save(output/(name+'.png'))
                     Image.fromarray(arrays[metadata['primary_camera']+'_rgb']).save(output/'rgb.png')
                 (output/'metadata.json').write_text(json.dumps(metadata,indent=2)+'\n')

@@ -1,8 +1,6 @@
 """Shared admission and diagnostics protect every caller before numerical work."""
 import copy
 import json
-from pathlib import Path
-from types import SimpleNamespace
 
 import jsonschema
 import numpy as np
@@ -46,9 +44,9 @@ def test_invalid_grounding_is_a_request_error_not_search_failure(field,value):
     assert diagnostic['expensive_work_started'] is False
 
 
-def test_missing_direction_and_flat_argument_envelope_are_not_defaulted():
+def test_ordered_hinge_axis_needs_no_image_direction_and_envelope_stays_strict():
     request=regions();del request['initial_image_direction_xy']
-    with pytest.raises(RequestValidationError):validate_operation('ground',{'regions':request},SIZES)
+    validate_operation('ground',{'regions':request},SIZES)
     with pytest.raises(RequestValidationError):validate_operation('ground',regions(),SIZES)
     with pytest.raises(RequestValidationError):validate_operation('ground(regions)',{'regions':regions()},SIZES)
 

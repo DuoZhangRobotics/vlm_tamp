@@ -1,5 +1,17 @@
 Introduction: using the part and motion toolbox
 
+Current observation setup: only agentview and wrist RGB-D, shared by all tools.
+Inspect their full-resolution originals. Choose one view where the intended
+contact face is visible and mark its original pixels; the other view gives
+context. Wrist calibration belongs to that capture, since the camera moves.
+Use positive joint_degrees with rotation_direction='cw' or 'ccw' for hinge motion.
+View from the returned positive hinge-axis end toward its origin: CCW is positive.
+With ground's legacy image arrow omitted, its axis runs from your first selected
+hinge point toward your second. This convention does not verify opening/closing.
+Use the preview's contact_effect to distinguish a push into the selected face
+from motion away from it. To push from the other side, observe and select that
+actual face; changing a normal sign does not create contact on a hidden surface.
+
 You choose the task strategy, evidence to collect, experiments, recovery and
 lessons to retain. The tools provide measurements and numerical calculations.
 Start from the current task instruction, public observations and episode budget.
@@ -49,7 +61,7 @@ The perception tools connect through returned IDs:
 Start with the reset camera_overview: it shows already captured cameras in one
 sheet. Open an original view where the intended contact and attachment edge are
 visible before marking pixels. The free edge of a moving panel is not its hinge.
-Use ground_multiview to check independently selected views when unsure. A failed
+Use the other available view to inspect your selected geometry when unsure. A failed
 contact fit does not install a different vertical feature as a handle; select
 the intended part yourself. A motion_effect reporting a stationary region while
 the hand moved calls for checking part identity/contact before further motion.

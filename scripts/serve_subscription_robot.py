@@ -71,7 +71,7 @@ class RobotService:
     def __init__(self, output, workspace, state_index, attempts, *, fit_diagnostics=False, dino_tools=False, scene_variant='nominal', completion_checks=False, learning_practice=False, initial_attempts=None, stop_on_success=False, persistent_episode=False, surface_contact_tools=False, numerical_backend='curobo_v2', task=DEFAULT_TASK, landmark_evidence=False, multiview_grounding=False, part_motion_tools=False, maximum_control_steps=DEFAULT_CONTROL_STEPS,reference_mode=None):
         self.task, self.task_spec = task, task_spec(task)
         self.landmark_evidence = bool(landmark_evidence)
-        self.multiview_grounding = bool(multiview_grounding or part_motion_tools)
+        self.multiview_grounding = bool(multiview_grounding)
         self.part_motion_tools=bool(part_motion_tools);self._perception_tools=None
         if task != DEFAULT_TASK and scene_variant != 'nominal':
             raise ValueError('Existing scene perturbations are specific to the opening scene; use nominal for other tasks')
@@ -453,6 +453,9 @@ class RobotService:
         length=float(np.linalg.norm(tangent)) if tangent is not None else 0.
         return {'model': public_model, 'geometry_epoch': self.epoch,
                 'direction_contract':{'positive_increment':'rotation along the installed signed joint_axis_world',
+                    'rotation_view_convention':'View from the positive hinge-axis end toward its origin: ccw is positive, cw negative.',
+                    'axis_origin_world_m':self.spec['joint_origin_world_m'],
+                    'axis_direction_world':self.spec['joint_axis_world'],
                     'grounding_positive_direction_intent':None,
                     'requested_task_motion':self.spec.get('motion'),
                     'task_direction_status':'unverified','task_direction_verified':False,
@@ -967,7 +970,9 @@ class RobotService:
 
     def plan_arc(self, degrees, refined=False, grasp_constraint=None,
                  position_tolerance_m=None, max_wrist_reorientation_deg=None,
-                 orientation_tolerance_deg=None,collision_policy=None,budget_seconds=None):
+                 orientation_tolerance_deg=None,collision_policy=None,budget_seconds=None,rotation_direction=None):
+        from vlm_tamp.joint_rotation import signed_rotation
+        degrees=signed_rotation(degrees,rotation_direction)
         if getattr(self,'contact_scene_kind','articulated')!='articulated':
             raise ValueError('Arc planning needs an associated joint model. Install a current part/joint estimate, apply measured motion to retained geometry, or ground the mechanism. Free pose/joint planning applies to a selected surface.')
         angle = float(degrees)
@@ -1150,6 +1155,7 @@ class RobotService:
         distance_m: float = 0.03,
         joint_degrees: float | None = None,
         joint_model_epoch: int | None = None,
+        rotation_direction: str | None = None,
         mode: str = 'controlled',
         contact_speed_m_s: float = 0.03,
         contact_surface: str = 'fingertips',
@@ -1185,6 +1191,7 @@ class RobotService:
         distance_m: float = 0.03,
         joint_degrees: float | None = None,
         joint_model_epoch: int | None = None,
+        rotation_direction: str | None = None,
         contact_speed_m_s: float = 0.03,
         preview: bool = False,
         budget_seconds: float = 120.0,

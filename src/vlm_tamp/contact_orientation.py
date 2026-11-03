@@ -132,10 +132,19 @@ def selection_geometry(
             }
         )
     views.sort(key=lambda row: -(row["normal_view_alignment"] or 0.0))
+    component=float(normal_vector(direction) @ normal)
+    effect=('into_selected_face' if component<0 else 'away_from_selected_face' if component>0 else 'tangent_to_selected_face')
+    advice=('The requested motion enters this face. Approach from its outward side for a normal push.' if component<0 else
+        'The requested motion leaves this face. A normal push in that direction needs contact on the opposite observed face; an engaged grasp/hook could pull. Do not just flip the normal or reuse a hidden-face pixel.' if component>0 else
+        'The requested motion is tangent to this face; normal contact alone does not provide that push direction.')
     return {
         "surface_normal_world": normal.tolist(),
         "initial_robot_contact_signed_plane_offset_m": side,
-        "requested_motion_dot_outward_normal": float(normal_vector(direction) @ normal),
+        "requested_motion_dot_outward_normal": component,
+        "contact_effect":{'motion_relative_to_face':effect,'explanation':advice,
+            'opposite_side_camera_candidates':[row['camera'] for row in views if row['signed_plane_offset_m']<0],
+            'candidate_scope':'Camera positions on the other side of the measured plane; visibility is not certified.',
+            'execution_veto_applied':False,'task_direction_verified':False},
         "camera_plane_relations": views,
         "same_plane_side_camera_candidates": [
             row["camera"] for row in views if row["same_plane_side_as_contact"]

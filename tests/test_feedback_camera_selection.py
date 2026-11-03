@@ -48,11 +48,13 @@ def test_unassociated_push_keeps_fixed_context_without_tracking_features():
     value=tracker({'tracked_a':500,'tracked_b':400})
     names=feedback_camera_names(value,'contact_view',{'contact_view','agentview','frontview','wrist','tracked_a','tracked_b'})
     assert names==['contact_view','agentview','frontview','wrist']
-def test_explicit_capture_can_use_more_than_four_existing_calibrated_views(monkeypatch):
+def test_explicit_capture_uses_only_the_declared_two_camera_setup(monkeypatch):
+    import pytest
     from vlm_tamp.profiled_sim_worker import ProfiledWorker
-    from vlm_tamp.rekep_libero.sim_worker_v3 import ARM_VIEW_POLICIES
     worker=ProfiledWorker()
-    names=['agentview','wrist','frontview',*list(ARM_VIEW_POLICIES)[:3]]
+    names=['agentview','wrist']
     monkeypatch.setattr(worker,'_observe_selected',lambda output:{'cameras':worker.selected_capture_cameras.copy()})
     assert worker.observe('unused',camera_names=names)['cameras']==names
     assert worker.selected_capture_cameras is None
+    with pytest.raises(ValueError,match='only agentview and wrist'):
+        worker.observe('unused',camera_names=['agentview','wrist','frontview'])

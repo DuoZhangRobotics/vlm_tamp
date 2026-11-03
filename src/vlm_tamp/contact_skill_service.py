@@ -161,6 +161,7 @@ def run_skill(
     distance_m: float = 0.03,
     joint_degrees: float | None = None,
     joint_model_epoch: int | None = None,
+    rotation_direction: str | None = None,
     mode: str = 'controlled',
     contact_speed_m_s: float = 0.03,
     contact_surface: str = 'fingertips',
@@ -185,6 +186,8 @@ def run_skill(
 ) -> dict[str, Any]:
     """Execute the explicitly selected contact model; preserve scene and task-direction uncertainty."""
     started=time.perf_counter();timing=Counter();stages=[];executed=False
+    from .joint_rotation import signed_rotation, VIEW_CONVENTION
+    joint_degrees=signed_rotation(joint_degrees,rotation_direction)
     physical_push=kind=='push' and mode=='controlled'
     hand_distance_request=physical_push and joint_degrees is None
     if service.sim is None:raise ValueError('Reset before using contact skills')
@@ -250,6 +253,8 @@ def run_skill(
         'selected_surface_normal_world':surface_normal.tolist() if surface_normal is not None else None,
         'requested_distance_m':distance_m if joint_degrees is None else None,
         'requested_joint_degrees':joint_degrees,'preview':preview,'motion_backend':'cartesian_ik',
+        'requested_rotation_direction':rotation_direction,
+        'rotation_view_convention':VIEW_CONVENTION if joint_degrees is not None else None,
         'motion_settings':{'approach_speed_rad_s':approach_speed_rad_s,'stroke_length_m':stroke_length_m,
             'approach_wait_steps':approach_wait_steps,
             'initial_search_seconds':search_seconds,'subsequent_plan_seconds':stroke_plan_seconds,'max_ineffective_strokes':max_ineffective_strokes,'withdrawal_distance_m':withdrawal_distance_m},

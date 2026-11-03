@@ -238,7 +238,7 @@ class SimulatorWorker:
             raise FileExistsError(f"Observation already exists: {output}; choose a new directory")
         arrays, cameras = self._sensor_arrays()
         metadata = self._state_metadata()
-        metadata.update(cameras=cameras, primary_camera="frontview" if self.task_index == 0 else "agentview",
+        metadata.update(cameras=cameras, primary_camera="frontview" if self.task_index == 0 and "frontview" in cameras else next(iter(cameras)),
                         instruction=self.instruction, no_simulator_inventory=True,
                         schema_version="rekep-libero-observation-1.0")
         np.savez_compressed(output / "obs.npz", **arrays)

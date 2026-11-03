@@ -461,7 +461,7 @@ def main():
         document=document.replace('Clearly distinguish the supplied example from anything you discovered.',
             'Distinguish supplied tool contracts from anything you discovered.')
     document+='\nUse the current instruction returned by reset. Earlier examples or experience may describe a different task or motion direction.\n'
-    if a.multiview_grounding or a.part_motion_tools:
+    if a.multiview_grounding:
         from vlm_tamp.robot_contracts import MULTIVIEW_GROUND_HELP
         document+='\nOptional calibrated multiview geometry:\n'+MULTIVIEW_GROUND_HELP
     if a.part_motion_tools:
@@ -742,7 +742,7 @@ success evidence. All earlier failures remain in the study.\n'''
     write['public_interface']=interface or {'mode':'full'}
     write['visual_inspection']=visual_interface or {'enabled':False}
     write['landmark_evidence']=bool(a.landmark_evidence)
-    write['multiview_grounding']=bool(a.multiview_grounding or a.part_motion_tools)
+    write['multiview_grounding']=bool(a.multiview_grounding)
     write['part_motion_tools']=bool(a.part_motion_tools)
     write['part_motion_introduction']={
         'file':'pipeline-introduction.txt','included_in':'tools.txt',

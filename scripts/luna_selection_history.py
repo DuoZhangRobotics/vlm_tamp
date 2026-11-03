@@ -4,7 +4,6 @@ Images are existing captures. No inference, simulation, geometry correction or
 robot request is performed. Continuations never inherit an old pixel as a new
 annotation. Optional evaluator references are read only from a separate export.
 """
-import json
 import math
 import os
 from pathlib import Path
@@ -174,7 +173,11 @@ def selection_history(study, run, events):
                     direction=vector(contact.get('direction_world'),3)
                     direction_source='tool-computed tangent for Luna’s signed joint request'
                 row.update(direction_world=direction,direction_source=direction_source if direction is not None else None,
-                    requested_distance_m=result.get('requested_distance_m',args.get('distance_m')),requested_joint_degrees=args.get('joint_degrees'))
+                    requested_distance_m=result.get('requested_distance_m',args.get('distance_m')),
+                    requested_joint_degrees=result.get('requested_joint_degrees',args.get('joint_degrees')),
+                    requested_rotation_direction=args.get('rotation_direction'),
+                    rotation_view_convention=result.get('rotation_view_convention'),
+                    contact_effect=result.get('selection_geometry',{}).get('contact_effect'))
                 if point is not None and direction is not None:
                     length=math.sqrt(sum(x*x for x in direction))
                     if length:

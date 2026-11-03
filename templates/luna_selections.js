@@ -132,6 +132,8 @@ class Viewer{
   if(r.direction_world)direction=`${r.direction_source}: [${r.direction_world.map(x=>Number(x.toFixed(4))).join(', ')}]. `+(r.direction_arrow?'Red arrow: projection of a 5 cm direction guide, not measured motion.':'No world-to-image direction projection is available.');;
   if(typeof r.requested_distance_m==='number')direction+=' Requested hand travel: '+(1000*r.requested_distance_m).toFixed(1)+' mm.';
   if(r.requested_joint_degrees!==undefined&&r.requested_joint_degrees!==null)direction+=' Requested joint increment: '+r.requested_joint_degrees+'°.';
+  if(r.requested_rotation_direction)direction+=' Luna requested '+r.requested_rotation_direction.toUpperCase()+'. '+(r.rotation_view_convention||'');
+  if(r.contact_effect)direction+=' '+r.contact_effect.explanation;
   if(this.get('direction').checked){
    for(const arrow of [r.direction_arrow,r.image_direction_hint])if(arrow){const n=line(arrow.start,arrow.end,'#ef4444',3);n.setAttribute('marker-end',`url(#${this.uid}-arrow)`)}
   }
