@@ -90,7 +90,7 @@ def compare_projected_mask(projected,target_mask):
         'scope':'Containment can also explain overlap; this is correspondence evidence, not proof of identical physical parts.'}
 
 
-def overlay(path,view,mask,*,points=None):
+def overlay(path,view,mask,*,points=None,point_radius=2):
     from PIL import Image,ImageDraw
     rgb=np.asarray(view['rgb'],np.uint8).copy()
     rgb[mask]=np.rint(.55*rgb[mask]+.45*np.array([30,220,130])).astype(np.uint8)
@@ -98,7 +98,9 @@ def overlay(path,view,mask,*,points=None):
     if points is not None:
         draw=ImageDraw.Draw(image)
         for x,y in points:
-            if np.isfinite([x,y]).all():draw.ellipse([x-2,y-2,x+2,y+2],outline='yellow',width=1)
+            if np.isfinite([x,y]).all():
+                draw.ellipse([x-point_radius,y-point_radius,x+point_radius,y+point_radius],
+                    outline='yellow',width=1 if point_radius==2 else 2)
     image.save(path)
 
 

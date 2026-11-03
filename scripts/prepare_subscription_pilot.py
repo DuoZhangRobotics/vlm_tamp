@@ -429,6 +429,7 @@ def main():
     p.add_argument('--landmark-evidence',action='store_true')
     p.add_argument('--multiview-grounding',action='store_true')
     p.add_argument('--part-motion-tools',action='store_true')
+    p.add_argument('--pointing-tools',action='store_true')
     p.add_argument('--guidelines-source');p.add_argument('--evaluation-case',action='store_true')
     p.add_argument('--attempts',type=int,choices=range(1,21),default=2)
     p.add_argument('--learning-practice',action='store_true')
@@ -471,6 +472,9 @@ def main():
         (out/'pipeline-introduction.txt').write_text(part_motion_introduction)
         document=part_motion_introduction+'\n'+document
         document+='\nOptional part masks, cross-view correspondence and measured articulation:\n'+PART_MOTION_HELP
+    if a.pointing_tools:
+        from vlm_tamp.robot_contracts import POINTING_HELP
+        document+='\nOptional local visual pointing for your own descriptions:\n'+POINTING_HELP
     if a.landmark_evidence:
         document+='''
 Optional measured landmark feedback:
@@ -744,6 +748,7 @@ success evidence. All earlier failures remain in the study.\n'''
     write['landmark_evidence']=bool(a.landmark_evidence)
     write['multiview_grounding']=bool(a.multiview_grounding)
     write['part_motion_tools']=bool(a.part_motion_tools)
+    write['pointing_tools']={'enabled':bool(a.pointing_tools),'backend':'allenai/Molmo2-8B' if a.pointing_tools else None,'agent_authors_query':True,'controls_motion':False}
     write['part_motion_introduction']={
         'file':'pipeline-introduction.txt','included_in':'tools.txt',
         'sha256':hashlib.sha256(part_motion_introduction.encode()).hexdigest(),

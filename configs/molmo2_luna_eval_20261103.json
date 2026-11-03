@@ -1,0 +1,8 @@
+{
+  "description": "Fresh Luna evaluations with an explicit persistent Molmo2 pointing tool. Luna writes visual requests and chooses the primitive. Two native RGB-D views, 600 control steps, no inherited notebooks or operator coordinates.",
+  "cases": [
+    {"task": "close_microwave", "state_index": 17, "evaluation_group": "molmo2_pointing"},
+    {"task": "close_microwave", "state_index": 49, "evaluation_group": "molmo2_pointing"},
+    {"task": "open_microwave", "state_index": 13, "evaluation_group": "molmo2_pointing"}
+  ]
+}

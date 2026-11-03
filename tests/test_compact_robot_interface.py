@@ -50,7 +50,7 @@ def test_camera_selection_preserves_arrays_and_access_to_all_views(tmp_path):
         'sensor_arrays': 'sensors.npz', 'joint_positions': [0.] * 7, 'control_steps': 17,
         'remaining_control_steps': 583, 'camera_calibration': 'calibration.json'}}
     display = present(tmp_path, 'observe', {}, value)
-    assert list(display['result']['images']) == ['frontview', 'agentview']
+    assert list(display['result']['images']) == ['agentview', 'wrist']
     assert display['result']['available_camera_count'] == 4
     assert display['result']['sensor_arrays'] == 'sensors.npz'
     assert json.loads((tmp_path / display['full_response']).read_text()) == value

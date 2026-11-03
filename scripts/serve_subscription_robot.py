@@ -1,4 +1,4 @@
-"""Trusted numerical robot service; no model calls and no source-file RPC.
+"""Trusted robot service with explicit optional learned pointing and numerical tools.
 
 Luna sees only the public output directory, not this program or the experiment
 repository. Policy choices (regions, probes, model updates and continuation)
@@ -68,11 +68,12 @@ def public_state(state):
 
 
 class RobotService:
-    def __init__(self, output, workspace, state_index, attempts, *, fit_diagnostics=False, dino_tools=False, scene_variant='nominal', completion_checks=False, learning_practice=False, initial_attempts=None, stop_on_success=False, persistent_episode=False, surface_contact_tools=False, numerical_backend='curobo_v2', task=DEFAULT_TASK, landmark_evidence=False, multiview_grounding=False, part_motion_tools=False, maximum_control_steps=DEFAULT_CONTROL_STEPS,reference_mode=None):
+    def __init__(self, output, workspace, state_index, attempts, *, fit_diagnostics=False, dino_tools=False, scene_variant='nominal', completion_checks=False, learning_practice=False, initial_attempts=None, stop_on_success=False, persistent_episode=False, surface_contact_tools=False, numerical_backend='curobo_v2', task=DEFAULT_TASK, landmark_evidence=False, multiview_grounding=False, part_motion_tools=False, maximum_control_steps=DEFAULT_CONTROL_STEPS,reference_mode=None,pointing_socket=None):
         self.task, self.task_spec = task, task_spec(task)
         self.landmark_evidence = bool(landmark_evidence)
         self.multiview_grounding = bool(multiview_grounding)
         self.part_motion_tools=bool(part_motion_tools);self._perception_tools=None
+        self.pointing_socket=Path(pointing_socket) if pointing_socket else None
         if task != DEFAULT_TASK and scene_variant != 'nominal':
             raise ValueError('Existing scene perturbations are specific to the opening scene; use nominal for other tasks')
         self.output, self.workspace = Path(output).resolve(), Path(workspace).resolve()
@@ -133,6 +134,7 @@ class RobotService:
         write_json(self.output/'inherited-tools.json', {
             'source_code_visible_to_agent': False,
             'separately_billed_model_calls_allowed': False,
+            'visual_pointing': 'explicit local Molmo2 requests' if self.pointing_socket else 'disabled',
             'geometry_priors': ['literal caller RGB-D selections; no upright/cylinder/shape prior',
                 'task direction is caller-selected; an unresolved hint leaves it unknown',
                 'bounded observed-point association and functional-finger contact'],
@@ -473,13 +475,17 @@ class RobotService:
                 'fit_diagnostics': evidence}
 
     def _part_tool(self,name,arguments):
-        if not getattr(self,'part_motion_tools',False):raise ValueError('Part/motion perception tools are not enabled')
+        if name=='point':
+            if not getattr(self,'pointing_socket',None):raise ValueError('Molmo2 pointing is not enabled')
+        elif not getattr(self,'part_motion_tools',False):raise ValueError('Part/motion perception tools are not enabled')
         if not self.sim:raise ValueError('Reset before using recorded-sensor perception tools')
         if self._perception_tools is None:
             from vlm_tamp.perception_tools import PerceptionTools
+            from vlm_tamp.pointing_worker import PointingClient
+            pointer=PointingClient(self.pointing_socket) if getattr(self,'pointing_socket',None) else None
             self._perception_tools=PerceptionTools(self.observation_records,
                 self.public/f'attempt{self.attempt:02d}'/'perception',self.workspace,attempt=self.attempt,
-                video_root=self.episode/'initial'/'frames')
+                video_root=self.episode/'initial'/'frames',pointer=pointer)
         return getattr(self._perception_tools,name)(self.calls,**arguments)
 
     def apply_joint_estimate(self,estimate_id,allow_unverified=False,reuse_fixed_joint=False,current_part_id=None,motion_sign=None):
@@ -1538,6 +1544,8 @@ class RobotService:
             'plan_sequence':self.plan_sequence,'execute_sequence':self.execute_sequence,
             'ik':self.ik_solutions,'execute':self.execute_plan,'gripper':self.gripper}
         if self.dino_tools:operations.update(dino_landmarks=self.dino_landmarks,dino_match=self.dino_match)
+        if getattr(self,'pointing_socket',None):
+            operations['point']=lambda **kwargs:self._part_tool('point',kwargs)
         if getattr(self,'multiview_grounding',False):operations['ground_multiview']=self.ground_multiview
         if getattr(self,'part_motion_tools',False):
             for name in ['segment_parts','associate_views','track_part_motion','track_video_motion','estimate_and_verify_joint']:
@@ -1581,6 +1589,7 @@ def main():
     p.add_argument('--landmark-evidence',action='store_true')
     p.add_argument('--multiview-grounding',action='store_true')
     p.add_argument('--part-motion-tools',action='store_true')
+    p.add_argument('--pointing-socket',help='Existing persistent Molmo2 worker endpoint')
     p.add_argument('--fit-diagnostics',action='store_true')
     p.add_argument('--dino-tools',action='store_true')
     p.add_argument('--completion-checks',action='store_true')
@@ -1598,7 +1607,7 @@ def main():
         initial_attempts=args.initial_attempts,stop_on_success=args.stop_on_success,
         persistent_episode=args.persistent_episode,surface_contact_tools=args.surface_contact_tools,
         numerical_backend=args.numerical_backend,task=args.task,landmark_evidence=args.landmark_evidence,
-        multiview_grounding=args.multiview_grounding,part_motion_tools=args.part_motion_tools,maximum_control_steps=args.control_steps,reference_mode=args.reference_mode)
+        multiview_grounding=args.multiview_grounding,part_motion_tools=args.part_motion_tools,maximum_control_steps=args.control_steps,reference_mode=args.reference_mode,pointing_socket=args.pointing_socket)
     requests=Path(args.workspace)/'requests';replies=Path(args.workspace)/'replies'
     requests.mkdir(exist_ok=True);replies.mkdir(exist_ok=True)
     seen=set()

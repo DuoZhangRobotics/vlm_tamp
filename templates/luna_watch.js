@@ -100,6 +100,18 @@ function renderDetail(data,row){
  image('frame',null);image('overlay',null);
  selectionViewer.setData(data.selection_history||[],row.id);
  el('skill').replaceChildren();table(el('skill'),Object.entries(data.skill||{}));
+ text('pointingAvailability',(data.pointing_tools?.enabled?'Molmo2 pointing is available. ':'Molmo2 pointing is not enabled. ')+(data.pointing_calls||[]).length+' calls. Marks identify image locations; executed contact and task success are separate.');
+ el('pointingHistory').replaceChildren();
+ for(const call of data.pointing_calls||[]){
+  const d=node('details');d.dataset.openKey='pointing:'+call.event;
+  d.append(node('summary','Event '+call.event+' · '+call.camera+' · '+num(call.wall_seconds)+' s · '+call.status),node('p','Luna request: '+call.query));
+  const t=call.timing_seconds||{};
+  table(d,[['Capture',call.observation_id],['Returned pixels',call.points.map(p=>p.camera+': '+JSON.stringify(p.contact_pixel_xy)+' (raw '+JSON.stringify(p.pixel_xy)+')').join('; ')||'none'],['Preprocess / generate / total (s)',[t.preprocessing,t.generation,t.total].map(num).join(' / ')]]);
+  d.append(node('pre',call.raw_text||''));link(d,'Exact model input/output',call.record);
+  const pictures=[];for(const path of call.images||[]){const img=node('img');img.alt='Molmo2 returned mark, event '+call.event;img.dataset.path=path;img.hidden=true;d.append(img);pictures.push(img)}
+  d.ontoggle=()=>{if(d.open)for(const img of pictures){img.src=img.dataset.path;img.hidden=false}};
+  el('pointingHistory').append(d);
+ }
  el('contactHistory').replaceChildren();table(el('contactHistory'),[
   ['Event / tool','Outcome','Total','Scene prep','Contact search','Stroke plan','Execute + capture','Feedback','Reused','Builds / searches'],
   ...(data.contact_calls||[]).map(c=>{const t=c.timing_seconds||{};return [c.event+' / '+c.operation,

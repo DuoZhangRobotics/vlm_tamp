@@ -8,7 +8,7 @@ import time
 
 from report_contact_skills import read, read_events, file_stamp, contact_image, brief_evidence
 from report_restriction_fixes import cached_profile_run
-from luna_selection_history import selection_history
+from luna_selection_history import selection_history, public_file
 
 INTERVAL_SECONDS = 60
 _PUBLISH = {}
@@ -139,9 +139,27 @@ def _run_data(study,run,entry,active):
     outcome=(f'{success}/{len(attempts)} success' if attempts else 'Interrupted' if interruption else 'In progress' if active else 'No terminal result')
     controls=attempts[-1].get('control_steps') if attempts else status.get('control_steps')
     addenda=read(run/'evaluator-diagnostics.json',{}).get('events',{})
-    issues=[];skills=[];contact_calls=[]
+    issues=[];skills=[];contact_calls=[];pointing_calls=[]
     for event in events:
         op=event['request']['operation'];response=event.get('response',{});value=response.get('result',{})
+        if op=='point':
+            images=[]
+            for image_path in value.get('images',[]):
+                picture=contact_image(run,image_path,False)
+                if picture is not None:images.append(_relative(picture,study))
+            record={'event':event['sequence'],'request':event['request'],
+                    'response':response,'wall_seconds':event.get('wall_seconds')}
+            for label,field in [('model_request','request_file'),('model_output','model_output_file')]:
+                source=public_file(run,value[field]) if value.get(field) else None
+                if source is not None:record[label]=read(source,{})
+            destination=run/'pointing-records'/f'event{event["sequence"]:03d}.json'
+            _json(destination,record)
+            pointing_calls.append({'event':event['sequence'],
+                'query':event['request'].get('arguments',{}).get('query'),
+                'camera':value.get('camera'),'observation_id':value.get('observation_id'),
+                'status':value.get('status',response.get('error')),'points':value.get('points',[]),
+                'raw_text':value.get('raw_text'),'images':images,'record':_relative(destination,study),
+                'wall_seconds':event.get('wall_seconds'),'timing_seconds':value.get('timing_seconds',{})})
         if op in {'push','continue_push','push_stroke','hook_pull','execute_sequence','execute','gripper'}:skills.append(event)
         if op in {'push','continue_push','push_stroke','hook_pull'}:
             contact_calls.append({'event':event['sequence'],'operation':op,'mode':value.get('mode'),
@@ -284,6 +302,7 @@ def _run_data(study,run,entry,active):
           'control_steps':controls,'maximum_control_steps':status.get('maximum_control_steps',600),
           'links':links,'frame':frame,'wrist_view':wrist,'contact_overlay':overlay,'videos':videos,'skill':skill,
           'timing':timing,'contact_calls':contact_calls,'issues':issues[-8:],'reported_issue_count':len(issues),
+          'pointing_calls':pointing_calls,'pointing_tools':protocol.get('pointing_tools',{'enabled':False}),
           'selection_history':selection_history(study,run,events),
           'attempts':[{'attempt':a.get('attempt'),'task':a.get('task'),'state_index':a.get('state_index'),
                        'success':a.get('official_task_success'),'controls':a.get('control_steps')} for a in attempts]}

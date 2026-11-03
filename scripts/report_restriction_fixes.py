@@ -13,7 +13,7 @@ ROOT=Path(__file__).resolve().parents[1]
 def cached_profile_run(run,events,actor_wall):
     """Timing artifacts are complete before the corresponding event is appended."""
     source={'events':file_stamp(run/'tool-events.jsonl'),
-            'actor_exit':file_stamp(run/'agent-exit.json'),'profile_version':3}
+            'actor_exit':file_stamp(run/'agent-exit.json'),'profile_version':4}
     source=json.loads(json.dumps(source))
     path=run/'timing-breakdown.json';previous=read(path,{})
     if previous.get('_profile_source')==source:return previous
@@ -24,10 +24,11 @@ def cached_profile_run(run,events,actor_wall):
 
 
 def profile_run(run,events,actor_wall):
-    operations=Counter();issues=Counter();ik=Counter();grasp=Counter();contact=Counter();arcs=Counter()
+    operations=Counter();issues=Counter();ik=Counter();grasp=Counter();contact=Counter();arcs=Counter();pointing=Counter()
     for event in events:
         operations[event['request']['operation']]+=event.get('wall_seconds',0.)
         result=event.get('response',{}).get('result',{})
+        if event['request']['operation']=='point':pointing.update(result.get('timing_seconds',{}))
         if event['request']['operation'] in {'push','continue_push','push_stroke','hook_pull'}:
             contact.update(result.get('timing_seconds',{}))
             for stage in result.get('planning_stages',[]):
@@ -73,6 +74,7 @@ def profile_run(run,events,actor_wall):
         'nested_grasp_generation_and_selection_seconds':dict(grasp_phases),
         'nested_arc_goal_ik_and_connection_seconds':dict(arc_details),
         'nested_contact_skill_seconds':dict(contact),'nested_sequence_planning_seconds':dict(arcs),
+        'nested_visual_pointing_seconds':dict(pointing),
         'nested_sections_overlap_do_not_sum':True}
 
 

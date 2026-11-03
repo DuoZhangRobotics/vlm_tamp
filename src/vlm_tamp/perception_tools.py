@@ -23,11 +23,12 @@ def save(path,value):
 
 
 class PerceptionTools:
-    def __init__(self,observations,output,workspace,*,attempt=1,segmenter=None,tracker=None,video_root=None):
+    def __init__(self,observations,output,workspace,*,attempt=1,segmenter=None,tracker=None,video_root=None,pointer=None):
         self.observations=observations;self.output=Path(output);self.workspace=Path(workspace)
         self.output.mkdir(parents=True,exist_ok=True);self.attempt=attempt
         self.segmenter=segmenter or MobileSAMBackend();self.tracker=tracker or CoTrackerBackend()
         self.video_root=Path(video_root) if video_root is not None else None
+        self.pointer=pointer
         self.parts={};self.associations={};self.tracks={};self.estimates={};self.cache=OrderedDict()
 
     def _record(self,observation_id):
@@ -55,6 +56,12 @@ class PerceptionTools:
         return view
 
     def _relative(self,path):return str(Path(path).relative_to(self.workspace))
+
+    def point(self,event_id,observation_id,camera,query):
+        """Use the explicitly configured local visual pointer on saved RGB."""
+        if self.pointer is None:raise ValueError('Molmo2 pointing is not enabled in this run')
+        from .pointing_tools import point
+        return point(self,event_id,observation_id,camera,query)
 
     def segment_parts(self,event_id,observation_id,camera,points_xy=None,point_labels=None,box_xyxy=None,label=None):
         began=time.perf_counter();view=self._view(observation_id,camera)

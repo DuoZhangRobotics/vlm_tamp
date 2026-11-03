@@ -60,6 +60,12 @@ chronological strip of recorded agentview RGB. Optional region_xyxy crops the
 original images. Use it to inspect motion between captures; no new physics or
 sensor capture is performed. Equal start/end requests one recorded control step.
 Geometry: ground, refresh_contact, set_model, inspect_scene
+Visual pointing when enabled: point(observation_id, camera, query) asks the local
+Molmo2 model to mark a visible location in either current camera. Describe the
+part and intended action (grasp, push, hook, track or place). Inspect its returned
+overlay; use contact_pixel_xy in the existing contact tools or seed segment_parts.
+You choose motion direction and the complete moving-part mask. A point is not a
+grasp pose, hinge estimate or proof of contact. Reuse established contacts.
 ground accepts moving_part_id/contact_part_id from current segment_parts masks.
 push and hook_pull accept those same IDs. select_surface_contact accepts
 contact_part_id. Reuse the selected part; region_xyxy is optional with a part ID.
@@ -413,6 +419,10 @@ def compact_response(response):
             'joint_origin_world_m', 'joint_axis_world', 'source_anchor_world_m',
             'panel_normal_world', 'observed_handle_radius_m', 'constraint','task_motion_intent',
             'task_direction_verified','generic_part_joint_model'))
+    if 'pointing_backend' in value:
+        result.update(pick(value,('pointing_backend','status','query','observation_id','camera',
+            'points','images','raw_text','request_file','model_output_file','timing_seconds',
+            'robot_motion_executed','planner_model_updated','scope')))
     if isinstance(value.get('grounding_review'),dict):
         result['grounding_review']=pick(value['grounding_review'],('accepted','status','failed_checks',
             'measurements','observation_id','reason','calibration_source','semantic_identity_verified',

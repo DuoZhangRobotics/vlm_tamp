@@ -5,6 +5,25 @@ import pytest
 import live_study_dashboard as dashboard
 
 
+def test_pointing_queries_and_model_time_survive_dashboard_export(tmp_path, monkeypatch):
+    study, run, _ = fixture(tmp_path, monkeypatch)
+    (run / 'protocol.json').write_text(json.dumps({'pointing_tools': {'enabled': True}}))
+    event = {'sequence': 4, 'request': {'operation': 'point', 'arguments': {
+        'observation_id': 1, 'camera': 'wrist', 'query': 'Point to a retaining edge.'}},
+        'wall_seconds': .9, 'response': {'ok': True, 'result': {
+            'pointing_backend': 'allenai/Molmo2-8B', 'camera': 'wrist', 'observation_id': 1,
+            'status': 'parsed', 'raw_text': '<points coords="2 1 500 500">edge</points>',
+            'points': [{'camera': 'wrist', 'contact_pixel_xy': [256, 256]}],
+            'timing_seconds': {'generation': .7, 'preprocessing': .05, 'total': .9}}}}
+    (run / 'tool-events.jsonl').write_text(json.dumps(event) + '\n')
+    dashboard.publish(study, force=True)
+    data = json.loads((run / 'watch-data.json').read_text())
+    assert data['pointing_tools']['enabled']
+    assert data['pointing_calls'][0]['query'] == 'Point to a retaining edge.'
+    assert data['timing']['nested_visual_pointing_seconds']['generation'] == .7
+    assert (study / data['pointing_calls'][0]['record']).is_file()
+
+
 def test_varied_practice_uses_compact_dashboard_and_preserves_episode_scores(tmp_path: Path) -> None:
     """The four-episode runner publishes small static HTML and counts each outcome."""
     from run_varied_contact_practice import save_study_manifest, render

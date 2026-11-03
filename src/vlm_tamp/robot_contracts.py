@@ -8,7 +8,26 @@ import json
 import math
 from numbers import Real
 
-VERSION = 'robot-request-contract-v20'
+VERSION = 'robot-request-contract-v21'
+POINTING_HELP = '''- point(observation_id, camera, query): ask the local Molmo2 model to mark a
+  visible location in agentview or wrist. It sees both original RGB images from
+  that observation, and your exact query. Describe the object/part and intended
+  use: grasping, pushing, hooking, tracking or placement. Choose the marking view.
+  The reply gives points with camera, observation_id, integer contact_pixel_xy,
+  raw coordinates and annotated images. Inspect the mark before using its geometry.
+  A returned point can seed segment_parts using points_xy and point_labels=[1].
+  Use the resulting part mask for grasp generation or moving-part tracking when
+  needed; a contact pixel alone does not identify the complete moving part.
+  Feed a selected contact_pixel_xy into existing surface, push or hook tools.
+  Targeted push/hook also need your selected region or current part ID; pointing
+  alone does not supply that mask or region.
+  You choose the contact, attachment model and motion direction. Molmo2 does not
+  supply a grasp pose or certify engagement, reachability or opening/closing.
+  The model remains loaded; every query has fresh context. Reuse an established
+  contact instead of pointing again for each stroke. No motion, scene update,
+  depth reconstruction or automatic substitute point is produced. If no point
+  is returned, the raw answer remains visible. Window marks are allowed.
+'''
 GROUND_FIELDS = ('camera', 'contact_box_xyxy', 'moving_panel_box_xyxy',
                  'hinge_pixels_xy', 'initial_image_direction_xy','contact_pixel_xy')
 GROUND_HELP = '''- ground(regions, moving_part_id=null, contact_part_id=null): lift your current
@@ -251,6 +270,9 @@ def operation_schemas(image_sizes=None):
             parameters(contact_arguments,['observation_id','camera','contact_pixel_xy','contact_name'])),
         'reset': ('Reset the supplied episode and return current sensor observations.', parameters()),
         'observe': ('Read current RGB-D and robot state without motion.', parameters()),
+        'point': ('Ask the persistent local Molmo2 model for a visible location using your description; return original-image pixels and overlays without motion.', parameters({
+            'observation_id':integer(0,2**31-1),'camera':{'type':'string','enum':['agentview','wrist']},
+            'query':{'type':'string','minLength':1}},['observation_id','camera','query'])),
         'inspect_video': ('Inspect a bounded interval of already recorded agentview RGB frames; no motion or new capture.', parameters({
             'start_control_step':integer(0,2**31-1),'end_control_step':integer(0,2**31-1),
             'max_frames':integer(2,12),'region_xyxy':nullable(box)},['start_control_step','end_control_step'])),

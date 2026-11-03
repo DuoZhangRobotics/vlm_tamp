@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -69,6 +70,7 @@ def main():
     p.add_argument('--landmark-evidence',action='store_true',help='Expose measured landmark displacement summaries; does not change pose fitting')
     p.add_argument('--multiview-grounding',action='store_true',help='Enable caller-selected calibrated multiview hinge/handle checking')
     p.add_argument('--part-motion-tools',action='store_true',help='Enable part masks, calibrated associations and independently initialized motion fits')
+    p.add_argument('--pointing-socket',default=os.environ.get('VLM_TAMP_POINTING_SOCKET'),help='Explicit shared Molmo2 worker endpoint')
     p.add_argument('--guidelines-source');p.add_argument('--evaluation-case',action='store_true')
     p.add_argument('--scene-variant',default='nominal')
     p.add_argument('--attempts',type=int,choices=range(1,21),default=2)
@@ -123,6 +125,7 @@ def main():
         *(['--landmark-evidence'] if a.landmark_evidence else []),
         *(['--multiview-grounding'] if a.multiview_grounding else []),
         *(['--part-motion-tools'] if a.part_motion_tools else []),
+        *(['--pointing-tools'] if a.pointing_socket else []),
         *(['--dino-tools'] if a.dino_tools else []),
         *(['--completion-checks'] if a.completion_checks else []),
         *(['--abstract-experience'] if a.abstract_experience else []),
@@ -202,6 +205,7 @@ def main():
                 *(['--landmark-evidence'] if a.landmark_evidence else []),
                 *(['--multiview-grounding'] if a.multiview_grounding else []),
                 *(['--part-motion-tools'] if a.part_motion_tools else []),
+                *(['--pointing-socket',str(Path(a.pointing_socket).resolve())] if a.pointing_socket else []),
                 '--numerical-backend',a.numerical_backend,
                 *(['--fit-diagnostics'] if a.fit_diagnostics else []),
                 *(['--completion-checks'] if a.completion_checks else []),
