@@ -15,6 +15,10 @@ class Chain:
 @pytest.mark.parametrize('native_success',[False,True])
 @pytest.mark.parametrize('unresolved_pulse',[False,True])
 def test_advisory_release_flow_and_native_success_termination(tmp_path,monkeypatch,reuse,native_success,unresolved_pulse):
+    import vlm_tamp.visual_inspection as inspection
+    monkeypatch.setattr(inspection,'motion_comparison',lambda root,attempt,before,after:{
+        'available':False,'before_observation_id':before,'after_observation_id':after,
+        'reason':'fixture has no recorded images'})
     chain=Chain()
     scene=SimpleNamespace(static_points=np.empty((0,3)),moving_reference=np.array([[0.,0.,0.]]),
         contact_reference=np.array([[0.,0.,0.]]),axis=np.array([0.,0.,1.]),origin=np.zeros(3),
@@ -77,6 +81,8 @@ def test_advisory_release_flow_and_native_success_termination(tmp_path,monkeypat
         def episode_status(self):return {'remaining_wall_seconds':1000}
         def issue(self,refs,gripper,label,**kwargs):
             assert gripper==0 and len(refs)>0
+            before_observation=self.latest_observation['observation_id']
+            before_control=self.state['control_steps']
             self.last_label=label
             for q in refs:self.events.append({'measured_joints':q.tolist()})
             self.state['control_steps']+=len(refs)
@@ -84,8 +90,12 @@ def test_advisory_release_flow_and_native_success_termination(tmp_path,monkeypat
             self.state['metadata']['eef_pose_world_xyzw']=chain.forward(refs[-1]).tolist()
             success=native_success and label.startswith('push-stroke')
             if success:self.sim=None;self.ik=None
+            self.latest_observation={'control_steps':self.state['control_steps'],'observation_id':self.calls}
             return {'execution':{'issued_commands':len(refs),'all_commands_issued':True,**({'arrival':{'goal_reached':True}} if kwargs.get('arrival') else {})},
                 'observation':{'control_steps':self.state['control_steps'],'observation_id':self.calls},
+                'visual_comparison':{'available':True,'before_observation_id':before_observation,
+                    'after_observation_id':self.calls,'video_lookup':{'arguments':{
+                        'start_control_step':before_control,'end_control_step':self.state['control_steps']}}},
                 'task_success':success,'episode_done':success}
         def capture(self):raise AssertionError('Advisory scene warnings must not force a perception recovery gate')
     service=Service()
@@ -118,3 +128,7 @@ def test_advisory_release_flow_and_native_success_termination(tmp_path,monkeypat
             assert result['release_motion_reference']=='before_pulse'
             assert result['motion_warnings'][0]['reason']=='object_motion_unresolved'
     assert ('free-approach' in names)==(not reuse)
+    assert result['visual_comparison']['before_observation_id']==1
+    assert result['visual_comparison']['after_observation_id']==result['observation']['observation_id']
+    assert len(result['phase_visual_comparisons'])==len(result['stages'])
+    assert all('visual_comparison' in stage for stage in result['stages'])

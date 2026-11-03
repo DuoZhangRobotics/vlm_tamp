@@ -496,7 +496,6 @@ def run_skill(
             reply=service.issue(refs,0,label,camera_names=view_names,track_scene=False,
                 **({'push_feedback':feedback} if feedback is not None else {}),
                 **({'arrival':arrival} if arrival is not None else {}))
-            if 'visual_comparison' in reply:result['visual_comparison']=reply['visual_comparison']
             if feedback is not None:
                 feedback_history=reply['execution'].get('push_feedback',{}).pop('_continuation_history',[])
             if reply['execution']['issued_commands']:geometry_current=False
@@ -505,6 +504,7 @@ def run_skill(
             phase=time.perf_counter()
             stage={'stage':label,'artifact_id':service.calls,'control_steps':service.state['control_steps'],
                 'execution':reply['execution'],'measured_contact_speed':measured_contact_speed(events,service.ik.chain if service.ik else chain,contact_local,q)}
+            if 'visual_comparison' in reply:stage['visual_comparison']=reply['visual_comparison']
             if 'arrival' in reply['execution']:
                 stage['arrival']=reply['execution']['arrival']
                 result['approach_arrival' if label=='free-approach' or label.startswith('contact-reacquisition-') else 'motion_arrival']=stage['arrival']
@@ -943,6 +943,10 @@ def run_skill(
         result['feedback_count']=sum('object_motion' in s for s in stages)
         if result.get('observed_progress') is not None:
             result['measured_object_motion_along_request']=result['observed_progress']
+        from .visual_inspection import action_comparisons
+        comparison_started=time.perf_counter()
+        result.update(action_comparisons(service.workspace,service.attempt,stages))
+        timing['visual_feedback_summary_seconds']+=time.perf_counter()-comparison_started
         result['timing_seconds']={'total':time.perf_counter()-started,**dict(timing)}
         result['timing_seconds']['other_seconds']=max(0.,result['timing_seconds']['total']-sum(timing.values()))
         result['report']=str((root/'result.json').relative_to(service.workspace))

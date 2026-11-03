@@ -1,11 +1,12 @@
 import hashlib
 import json
+from pathlib import Path
 
 import numpy as np
 from PIL import Image
 import pytest
 
-from vlm_tamp.visual_inspection import dispatch, install, motion_comparison
+from vlm_tamp.visual_inspection import action_comparisons, dispatch, install, motion_comparison
 
 
 def fixture(root, obs=1, step=60, attempt=1):
@@ -60,6 +61,44 @@ def test_motion_comparison_does_not_treat_missing_calibration_as_a_fixed_view(tm
     fixture(tmp_path,1);fixture(tmp_path,2)
     result=motion_comparison(tmp_path,1,1,2)
     assert not result['available'] and result['reason']=='no_common_fixed_camera'
+
+
+def test_complete_action_keeps_approach_motion_and_separate_stroke(tmp_path: Path) -> None:
+    for obs, step in [(1, 60), (6, 129), (7, 152)]:
+        fixture(tmp_path, obs, step)
+        camera = {'camera_to_world': np.eye(4).tolist(), 'intrinsic': np.eye(3).tolist()}
+        path = tmp_path / f'robot_data/attempt01/obs{obs:03d}/calibration.json'
+        path.write_text(json.dumps({'frontview': camera}))
+    original = hashes(tmp_path)
+    approach = motion_comparison(tmp_path, 1, 1, 6)
+    stroke = motion_comparison(tmp_path, 1, 6, 7)
+    result = action_comparisons(tmp_path, 1, [
+        {'stage': 'free-approach', 'visual_comparison': approach},
+        {'stage': 'push-stroke-1', 'visual_comparison': stroke},
+    ])
+    whole = result['visual_comparison']
+    assert whole['before_observation_id'] == 1 and whole['after_observation_id'] == 7
+    assert whole['video_lookup']['arguments']['start_control_step'] == 60
+    assert whole['video_lookup']['arguments']['end_control_step'] == 152
+    assert [(p['stage'], p['start_control_step'], p['end_control_step'])
+            for p in result['phase_visual_comparisons']] == [
+                ('free-approach', 60, 129), ('push-stroke-1', 129, 152)]
+    assert hashes(tmp_path) == original
+    assert not (tmp_path / 'requests').exists()
+    from vlm_tamp.compact_robot_interface import compact_response
+    displayed = compact_response({'ok': True, 'result': {'skill': 'push', **result}})
+    assert displayed['feedback']['phase_visual_comparisons'] == result['phase_visual_comparisons']
+    assert displayed['feedback']['visual_comparison']['scope'] == 'entire_executed_tool_call'
+
+
+def test_single_phase_reuses_existing_pair_without_rendering_another(tmp_path: Path) -> None:
+    comparison = {'available': False, 'before_observation_id': 1, 'after_observation_id': 2,
+                  'reason': 'no_common_fixed_camera'}
+    result = action_comparisons(tmp_path, 1, [{'stage': 'push-stroke-1', 'visual_comparison': comparison}])
+    assert result['visual_comparison']['before_observation_id'] == 1
+    assert not result['visual_comparison']['available']
+    assert not (tmp_path / 'visual_inspections').exists()
+    assert action_comparisons(tmp_path, 1, [{'stage': 'unexecuted'}]) == {}
 
 
 def test_crops_are_exact_and_canvas_coordinates_recover_original_pixels(tmp_path):

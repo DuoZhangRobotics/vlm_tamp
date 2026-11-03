@@ -240,6 +240,29 @@ def motion_comparison(root: Path | str, attempt: int, before: int, after: int) -
         'interpretation':'Inspect the moving part relative to fixed surroundings. Images are evidence; no opening/closing label is inferred.'}
 
 
+def action_comparisons(root: Path | str, attempt: int, stages: list[dict]) -> dict:
+    """Preserve each motion phase and compare the complete executed tool call."""
+    measured = [(stage['stage'], stage['visual_comparison']) for stage in stages
+                if 'visual_comparison' in stage]
+    if not measured:
+        return {}
+    first, last = measured[0][1], measured[-1][1]
+    whole = (dict(first) if len(measured) == 1 else
+             motion_comparison(root, attempt, first['before_observation_id'], last['after_observation_id']))
+    whole['scope'] = 'entire_executed_tool_call'
+    phases = []
+    for name, comparison in measured:
+        interval = comparison.get('video_lookup', {}).get('arguments', {})
+        phases.append({'stage': name,
+            'before_observation_id': comparison['before_observation_id'],
+            'after_observation_id': comparison['after_observation_id'],
+            'start_control_step': interval.get('start_control_step'),
+            'end_control_step': interval.get('end_control_step'),
+            'comparison_image': comparison.get('comparison_image'),
+            'available': comparison.get('available', False)})
+    return {'visual_comparison': whole, 'phase_visual_comparisons': phases}
+
+
 def overview(root,arguments):
     from PIL import Image,ImageDraw
     root=Path(root).resolve()

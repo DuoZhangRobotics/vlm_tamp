@@ -46,6 +46,11 @@ rotation only. Neither sign is automatically labeled as opening or closing.
 When direction is uncertain, a short probe and fixed-view comparison can resolve
 it before a long stroke. Inspect feedback.visual_comparison after motion; hand
 travel, stroke_executed and continuation availability do not establish goal progress.
+For a combined contact action, that comparison covers the whole call. Inspect
+phase_visual_comparisons to separate approach, stroke and withdrawal: an approach
+can move the object in a different direction from the requested stroke.
+The requested push/pull direction describes the stroke, not incidental motion
+during approach. Do not learn that direction's effect from the whole-call change alone.
 
 Python analysis: from robot import call, brief
 call(operation, **arguments) returns the ORIGINAL full response for calculations.
@@ -283,6 +288,7 @@ def skill_feedback(value: dict) -> dict:
     arrival=value.get('motion_arrival',value.get('approach_arrival',{}))
     return {'task_goal':value.get('task_instruction'),
         'requested_rotation_direction':value.get('requested_rotation_direction'),
+        'requested_motion_scope':'manipulation_stroke; approach/repositioning has separate effects',
         'rotation_view_convention':value.get('rotation_view_convention'),
         'contact_effect':value.get('selection_geometry',{}).get('contact_effect'),
         'task_success':value.get('task_success'),
@@ -298,8 +304,11 @@ def skill_feedback(value: dict) -> dict:
         'current_control_step':current,
         'object_measurement_is_current':current is not None and latest.get('control_step')==current,
         'visual_comparison':value.get('visual_comparison'),
+        'phase_visual_comparisons':value.get('phase_visual_comparisons',[]),
         'interpretation':('A preview issues no motion.' if value.get('preview') else
-            'Hand travel is not object progress. Compare the moving part against its fixed goal reference in the paired images; unresolved tracking does not confirm the requested direction.')}
+            'Hand travel is not object progress. The whole-call images include approach/repositioning; '
+            'use the stroke phase images to assess the requested direction separately. Compare the moving '
+            'part against its fixed goal reference; unresolved tracking does not confirm task direction.')}
 
 
 def compact_response(response):
@@ -375,7 +384,7 @@ def compact_response(response):
                 'same_plane_side_camera_candidates','normal_source','contact_role'))
         result['feedback_count']=sum('object_motion' in s for s in value.get('stages',[]))
         result['stages']=[pick(s,('stage','artifact_id','control_steps','measured_contact_speed',
-            'robot_reference_tracking','arrival',
+            'robot_reference_tracking','arrival','visual_comparison',
             'requested_motion_m','requested_contact_speed_m_s','observed_contact_progress_m','engagement','object_motion',
             'planning_timing_seconds','scene_update','material_point_offset_m','physical_motion','control_budget_truncated')) for s in value.get('stages',[])[-3:]]
         diagnostic=value.get('diagnostic',{})
@@ -492,6 +501,7 @@ def compact_response(response):
     if value.get('available') is False and 'robot_motion_issued' in value:
         result.update(pick(value,('available','reason','available_control_interval','new_sensor_capture','robot_motion_issued')))
     if 'visual_comparison' in value:result['visual_comparison']=value['visual_comparison']
+    if 'phase_visual_comparisons' in value:result['phase_visual_comparisons']=value['phase_visual_comparisons']
     if 'scene_observation_support' in value:result['scene_observation_support']=evidence(value['scene_observation_support'])
     if isinstance(value.get('result'), dict):
         result['planning'] = pick(value['result'], ('status', 'planner', 'grasp_constraint',
