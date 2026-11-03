@@ -14,7 +14,8 @@ from .rigid_hinge_tracking import estimate_rigid_hinge
 from .part_perception import usable_pixels
 
 
-def query_points(view,mask,maximum=200):
+def query_points(view: dict, mask: np.ndarray, maximum: int = 200) -> np.ndarray:
+    """Fill feature gaps across the selected part instead of exhausting the first image rows."""
     mask=np.asarray(mask,bool)&usable_pixels(view)
     gray=cv2.cvtColor(view['rgb'],cv2.COLOR_RGB2GRAY)
     points=cv2.goodFeaturesToTrack(gray,maxCorners=maximum,qualityLevel=.006,minDistance=5,
@@ -22,12 +23,16 @@ def query_points(view,mask,maximum=200):
     points=points.reshape(-1,2).tolist() if points is not None else []
     # Both backends receive exactly this same deterministic query set.
     y,x=np.where(mask)
-    if len(x):
-        for index in np.linspace(0,len(x)-1,min(len(x),maximum*4),dtype=int):
-            point=np.array([x[index],y[index]],float)
-            if not points or np.min(np.linalg.norm(np.asarray(points)-point,axis=1))>=5:
-                points.append(point.tolist())
-            if len(points)>=maximum:break
+    if len(x) and len(points)<maximum:
+        indices=np.linspace(0,len(x)-1,min(len(x),maximum*4),dtype=int)
+        candidates=np.column_stack((x[indices],y[indices])).astype(float)
+        if not points:
+            points.append(candidates[0].tolist())
+        distances=np.min(np.sum((candidates[:,None]-np.asarray(points)[None])**2,axis=2),axis=1)
+        while len(points)<maximum and distances.max()>=25:
+            index=int(np.argmax(distances));point=candidates[index]
+            points.append(point.tolist())
+            distances=np.minimum(distances,np.sum((candidates-point)**2,axis=1))
     return np.asarray(points,np.float32).reshape(-1,2)
 
 
@@ -102,7 +107,7 @@ def lift_tracks(views,tracks,visible):
     """Use each frame's measured world points; never lift an occluded prediction."""
     world=np.full((*tracks.shape[:2],3),np.nan,float);valid=np.zeros(tracks.shape[:2],bool)
     for frame,view in enumerate(views):
-        height,width=view['rgb'].shape[:2];points=tracks[frame]
+        height,width=np.asarray(view['world_points']).shape[:2];points=tracks[frame]
         finite=np.isfinite(points).all(1)
         xy=np.rint(np.where(finite[:,None],points,-100)).astype(int)
         inside=finite&visible[frame]&(xy[:,0]>=0)&(xy[:,0]<width)&(xy[:,1]>=0)&(xy[:,1]<height)

@@ -127,3 +127,7 @@ when the reference itself is occluded. That representation has not been introduc
 Reference correspondence also needs improvement, and future recordings need to retain the depth
 at the action boundaries required for evaluation. None of these should be replaced by a guessed
 closing sign or an automatic switch to another tracker.
+
+Follow-up: [whole-door tracking and reference-selection results](whole_part_gap_20261103.md).
+That recorded test is complete; it improves accepted pose accuracy but does not yet resolve
+the closing-reference ambiguity or intermittent tracking support.

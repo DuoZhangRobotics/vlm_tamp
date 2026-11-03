@@ -12,7 +12,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from typing import Iterator
+from typing import Callable, Iterator
 
 import numpy as np
 
@@ -53,6 +53,8 @@ class RecordedService:
         self.calls = 0
         self.records = {}
         self.catalog = []
+        self.extra_operations: dict[str, Callable] = {}
+        self.additional_help = ''
         provenance = []
         for capture in sorted(source.glob('obs*')):
             identifier = int(capture.name[3:])
@@ -82,6 +84,8 @@ class RecordedService:
     def dispatch(self, operation: str, arguments: dict) -> dict:
         """Forward model requests unchanged and expose literal saved depth samples."""
         self.calls += 1
+        if operation in self.extra_operations:
+            return self.extra_operations[operation](**arguments)
         if operation == 'observe':
             identifier = arguments['observation_id']
             record = self.perception._record(identifier)
@@ -143,14 +147,15 @@ def model_worker(study: Path) -> Iterator[Path]:
             local.rmdir()
 
 
-def select_references(study: Path, state: int, endpoint: Path) -> None:
+def select_references(study: Path, state: int, endpoint: Path, *, prompt: str = PROMPT,
+                      service_factory: Callable = RecordedService, seconds: int = 600) -> None:
     """Give one fresh Luna agent the recordings and freeze its own final references."""
     source_run = ROOT / (f'results/luna-molmo2-integration-v3-20261103/trials/'
                          f'baseline-r1-close_microwave-state{state:03d}-600')
     output = study / f'state{state:03d}'
     output.mkdir()
     work = Path(tempfile.mkdtemp(prefix='vlm-goal-references-'))
-    service = RecordedService(source_run / 'agent-workspace/robot_data/attempt01', work, output, endpoint)
+    service = service_factory(source_run / 'agent-workspace/robot_data/attempt01', work, output, endpoint)
     for name in ['requests', 'replies']:(work/name).mkdir()
     (work / 'robot.py').write_text(CLIENT)
     (work / 'tools.txt').write_text('''Recorded observations only; no robot motion is available.
@@ -159,12 +164,12 @@ python3 robot.py observe '{"observation_id":1}' returns saved image paths.
 python3 robot.py point '{"observation_id":1,"camera":"agentview","query":"your description"}' calls local Molmo2. Inspect the returned annotated image. Proposals are not semantic guarantees.
 python3 robot.py sample_points '{"observation_id":1,"camera":"agentview","points_xy":[[x,y]]}' reads literal recorded XYZ/depth support. It does not snap a point or identify a closed configuration.
 Use the point tool for each reference role. You decide which proposal or explicitly chosen pixel to retain. Different cameras/captures are allowed for the two roles; camera calibration places samples in a common world frame.
-''')
+'''+service.additional_help)
     isolation = verify_isolation(work, [source_run/'evaluation-private.json', source_run/'agent-workspace/findings.txt',
         source_run/'attempt01/initial/evaluation_contact_diagnostics.json', ROOT/'src/vlm_tamp/contact_skills.py',
         Path.home()/'.codex/sessions'], readonly_paths=[work/'captures'])
     write(output / 'isolation.json', isolation)
-    (output / 'prompt.txt').write_text(PROMPT)
+    (output / 'prompt.txt').write_text(prompt)
     command = codex_arguments(work, output/'agent-last.txt', model='gpt-6-luna', reasoning='high',
                               readonly_paths=[work/'captures'], ephemeral=False)
     write(output / 'agent-command.json', command)
@@ -173,12 +178,12 @@ Use the point tool for each reference role. You decide which proposal or explici
         process = subprocess.Popen(command, stdin=subprocess.PIPE, text=True, cwd=work,
                                    env=clean_environment(), stdout=log, stderr=errors)
         try:
-            process.stdin.write(PROMPT)
+            process.stdin.write(prompt)
             process.stdin.close()
             handled = set()
             while process.poll() is None:
-                if time.monotonic() - start > 600:
-                    raise TimeoutError('Reference-selection session exceeded its 600-second allowance')
+                if time.monotonic() - start > seconds:
+                    raise TimeoutError(f'Reference-selection session exceeded its {seconds}-second allowance')
                 for request in sorted((work/'requests').glob('*.json'), key=lambda p: p.stat().st_mtime):
                     if request.name not in handled:
                         handle_request(service, request, work/'replies')

@@ -472,7 +472,7 @@ def plan_engagement(
 def fit_object_motion(first,second):
     """Robust 3D rigid fit to independently tracked, measured RGB-D pairs."""
     a=np.asarray(first,float).reshape(-1,3);b=np.asarray(second,float).reshape(-1,3)
-    finite=np.isfinite(a).all(1)&np.isfinite(b).all(1);a,b=a[finite],b[finite]
+    finite=np.isfinite(a).all(1)&np.isfinite(b).all(1);original_indices=np.flatnonzero(finite);a,b=a[finite],b[finite]
     result={'accepted':False,'pairs':len(a),'source':'RGB-D feature correspondences','simulator_object_state_used':False,
         'support_rule':'at least 8 spatially spread inliers and a strict majority of the measured correspondences',
         'inlier_residual_threshold_m':.004,'minimum_spatial_span_m':.025}
@@ -497,6 +497,7 @@ def fit_object_motion(first,second):
     if span<.025:return {**result,'reason':'insufficient_spatial_baseline','span_m':span}
     transform=np.eye(4);transform[:3,:3]=r;transform[:3,3]=t
     return {**result,'accepted':True,'reason':'measured_rigid_motion','inliers':int(best.sum()),
+        'inlier_indices':original_indices[best].tolist(),
         'rms_m':float(np.sqrt(np.mean(error**2))),'span_m':span,'transform':transform.tolist()}
 
 
