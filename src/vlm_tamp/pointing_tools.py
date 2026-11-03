@@ -27,13 +27,8 @@ def point(tools: Any, event_id: int, observation_id: int, camera: str, query: st
     images = [np.asarray(Image.open(path).convert('RGB')) for path in paths]
     target = CAMERAS.index(camera) + 1
     prompt = (
-        'These are synchronized views of the same physical state. '
-        'Image 1 is the external agentview camera. Image 2 is the robot wrist camera. '
-        f'The requested marking view is image {target} ({camera}).\n'
-        f'Request from the robot agent: {query}\n'
-        f'Point to the requested visible location in image {target}, using your native pointing format. '
-        'If the requested location is not visible, say so. A point does not certify reachability, '
-        'contact engagement, or an executable motion.')
+        'Image 1 is agentview. Image 2 is wrist.\n'
+        f'{query}\nOnly mark image {target}.')
     prepared = time.perf_counter()
     model = tools.pointer.point(paths, prompt)
     inferred = time.perf_counter()

@@ -60,8 +60,8 @@ chronological strip of recorded agentview RGB. Optional region_xyxy crops the
 original images. Use it to inspect motion between captures; no new physics or
 sensor capture is performed. Equal start/end requests one recorded control step.
 Geometry: ground, refresh_contact, set_model, inspect_scene
-Visual pointing when enabled: point(observation_id, camera, query) asks the local
-Molmo2 model to mark a visible location in either current camera. Describe the
+Visual pointing when enabled: use point(observation_id, camera, query) to locate
+new visual contacts or functional parts with the local Molmo2 model. Describe the
 part and intended action (grasp, push, hook, track or place). Inspect its returned
 overlay; use contact_pixel_xy in the existing contact tools or seed segment_parts.
 You choose motion direction and the complete moving-part mask. A point is not a
