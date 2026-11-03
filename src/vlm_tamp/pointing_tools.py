@@ -27,8 +27,8 @@ def point(tools: Any, event_id: int, observation_id: int, camera: str, query: st
     images = [np.asarray(Image.open(path).convert('RGB')) for path in paths]
     target = CAMERAS.index(camera) + 1
     prompt = (
-        'Image 1 is agentview. Image 2 is wrist.\n'
-        f'{query}\nOnly mark image {target}.')
+        f'Point to: {query}\n'
+        f'Image 1 is agentview. Image 2 is wrist. Only point in image {target}.')
     prepared = time.perf_counter()
     model = tools.pointer.point(paths, prompt)
     inferred = time.perf_counter()

@@ -53,7 +53,7 @@ def test_point_reads_only_rgb_and_preserves_luna_query(tmp_path: Path) -> None:
     result = tools.point(8, 7, 'wrist', query)
     assert result['points'][0]['contact_pixel_xy'] == [20, 30]
     assert result['points'][0]['pixel_xy'] == [20.25, 30.25]
-    assert query in tools.pointer.calls[0][1]
+    assert tools.pointer.calls[0][1].startswith('Point to: ' + query + '\n')
     assert [p.name for p in tools.pointer.calls[0][0]] == ['agentview.png', 'wrist.png']
     request = json.loads((tmp_path / result['request_file']).read_text())
     assert request['query'] == query
