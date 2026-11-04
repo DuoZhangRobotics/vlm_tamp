@@ -1,4 +1,6 @@
-Use the public robot tools to accomplish the supplied task within its existing control and wall-time limits. Start with reset and inspect both native camera views. This is a fresh episode with no inherited practice memory.
+Use the public robot tools to accomplish the supplied task within its existing control and wall-time limits. This is a fresh episode with no inherited practice memory.
+
+The robot tools are command-line operations in your current workspace. Read tools.txt using the terminal. Call them through the terminal as `python3 robot.py OPERATION '{"argument": value}'`; start with `python3 robot.py reset '{}'`. Read an operation's contract with `python3 robot.py help OPERATION`. Use the image viewer to open returned image paths and inspect both native camera views. Robot operations are exposed through robot.py, not through MCP resource discovery. Running this provided tool client is direct tool use; do not replace it with a generated policy program.
 
 This evaluation exercises targeted pushing with a planned free-space approach and a separate contact approach. You choose the observed part, contact pixel, robot contact face, motion and any recovery. Molmo2 point can propose visible locations from your descriptions. Inspect the current RGB-D surface measurement and the tool preview; numerical feasibility does not determine the task direction. You may change your own selection after inspecting evidence. No successful coordinates, rotation sign or action sequence is supplied.
 
