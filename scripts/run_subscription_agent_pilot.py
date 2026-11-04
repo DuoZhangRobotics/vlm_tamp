@@ -84,6 +84,10 @@ def main():
     p.add_argument('--checkpoint-controls',type=int,default=459)
     p.add_argument('--compact-interface',action='store_true')
     p.add_argument('--visual-inspection',action='store_true',help='Enable local public-observation comparison helper')
+    p.add_argument('--structured-agent',action='store_true',help='One JSON tool request per bounded visual context; no agent robot scripts')
+    p.add_argument('--visual-interface',action='store_true',help='Observed-cloud views and whole-hand pose previews')
+    p.add_argument('--memory-mode',choices=['recent','anchored'],default='recent')
+    p.add_argument('--memory-slots',type=int,default=8)
     p.add_argument('--numerical-backend',choices=['legacy','curobo_v2'],default='curobo_v2')
     p.add_argument('--successful-method-file')
     p.add_argument('--memory-store',help='Read-only public episodic library; no implementation or evaluation files')
@@ -102,6 +106,8 @@ def main():
     if a.episode_seconds<=0:raise ValueError('Use a positive per-attempt time budget')
     if a.persistent_episode and (not a.stop_on_success or (a.attempts!=1 and not a.learning_practice)):
         raise ValueError('Persistence requires native-success termination and either one attempt or declared practice')
+    if a.structured_agent and (not a.persistent_episode or a.attempts!=1 or a.learning_practice):
+        raise ValueError('This bounded-context runner requires one persistent evaluation episode')
     validate_attempt_budget(a.attempts,learning_practice=a.learning_practice,evaluation_case=a.evaluation_case,initial_attempts=a.initial_attempts)
     if a.learning_practice and not a.prompt_file:
         raise ValueError('Learning practice requires an explicit practice prompt')
@@ -143,6 +149,14 @@ def main():
         *(['--evaluation-case'] if a.evaluation_case else []),'--attempts',str(a.attempts),
         *(['--memory-store',str(Path(a.memory_store).resolve())] if a.memory_store else [])],check=True,cwd=ROOT,env=env)
     protocol=json.loads((out/'protocol.json').read_text())
+    if a.visual_interface:
+        from vlm_tamp.robot_contracts import export_schemas,operation_schemas
+        index=json.loads((work/'tools/schema-index.json').read_text())
+        visual_names=['scene_views','mark_scene_point','preview_hand']
+        index=export_schemas(work/'tools/schemas',[*index['operations'],*visual_names])
+        (work/'tools/schema-index.json').write_text(json.dumps(index,indent=2)+'\n')
+        for name in visual_names:
+            (work/'tools'/f'{name}.txt').write_text(operation_schemas()[name]['function']['description']+'\n')
     if a.clean_start:
         if protocol.get('frozen_agent_guidelines_sha256') or protocol.get('example_supplied'):
             raise RuntimeError('Clean-start workspace unexpectedly contains prior guidance')
@@ -158,6 +172,9 @@ def main():
     protocol['persistent_episode']=a.persistent_episode
     protocol['surface_contact_tools']=a.surface_contact_tools
     protocol['controller_reference_mode']=a.reference_mode
+    protocol['structured_agent']=a.structured_agent
+    protocol['visual_interface']=a.visual_interface
+    protocol['bounded_memory']={'mode':a.memory_mode,'slots':a.memory_slots} if a.structured_agent else None
     if a.checkpoint_source:
         protocol['physical_prefix_initialization']={'source':str(Path(a.checkpoint_source).resolve()),
             'control_step':a.checkpoint_controls,'historical_annotations_supplied':False}
@@ -214,6 +231,7 @@ def main():
                 *(['--stop-on-success'] if a.stop_on_success else []),
                 *(['--persistent-episode'] if a.persistent_episode else []),
                 *(['--surface-contact-tools'] if a.surface_contact_tools else []),
+                *(['--visual-interface'] if a.visual_interface else []),
                 *(['--dino-tools'] if a.dino_tools else [])],
                 cwd=ROOT,env=env,stdout=service_log,stderr=subprocess.STDOUT)
             deadline=time.monotonic()+60
@@ -221,7 +239,12 @@ def main():
                 if backend.poll() is not None:raise RuntimeError('Numerical service failed; inspect service.log')
                 if time.monotonic()>deadline:raise TimeoutError('Numerical service startup timed out')
                 time.sleep(.1)
-            if a.persistent_episode:
+            if a.structured_agent:
+                from vlm_tamp.actor_structured import run_structured_actor
+                code=run_structured_actor(work,out,env,prompt,a.agent_seconds,
+                    model=a.model,reasoning=a.reasoning,memory_mode=a.memory_mode,
+                    memory_slots=a.memory_slots,visual_interface=a.visual_interface)
+            elif a.persistent_episode:
                 from vlm_tamp.episode_persistence import run_persistent_agent
                 code=run_persistent_agent(work,out,env,readonly,prompt,a.agent_seconds,
                     learning_practice=a.learning_practice,episode_seconds=a.episode_seconds,

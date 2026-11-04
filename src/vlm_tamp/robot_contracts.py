@@ -8,7 +8,7 @@ import json
 import math
 from numbers import Real
 
-VERSION = 'robot-request-contract-v21'
+VERSION = 'robot-request-contract-v22'
 POINTING_HELP = '''- point(observation_id, camera, query): ask the local Molmo2 model to mark a
   visible location in agentview or wrist. It sees both original RGB images from
   that observation, and your exact query. Describe the object/part and intended
@@ -16,8 +16,9 @@ POINTING_HELP = '''- point(observation_id, camera, query): ask the local Molmo2 
   The reply gives points with camera, observation_id, integer contact_pixel_xy,
   raw coordinates and annotated images. Inspect the mark before using its geometry.
   A returned point can seed segment_parts using points_xy and point_labels=[1].
-  For the existing grasp pipeline, use ground to install your selected contact
-  part and model, then call plan_grasp. plan_grasp reads that installed scene;
+  For grasping, use select_surface_contact to install an observed object patch,
+  or ground for an articulated handle, then call plan_grasp. No joint is needed
+  for a surface-selected grasp. plan_grasp reads that installed scene;
   it does not accept camera, observation_id, part_id or target_region_xyxy.
   Use the resulting part mask for grasp generation or moving-part tracking when
   needed; a contact pixel alone does not identify the complete moving part.
@@ -257,6 +258,16 @@ def operation_schemas(image_sizes=None):
         'preview':{'type':'boolean'},'budget_seconds':number(minimum=.001,maximum=1800)}
     policy={'type':'string','enum':['veto']}
     definitions = {
+        'scene_views': ('Render XY/YZ/XZ projections from the current agentview and wrist RGB-D. No extra camera, hidden geometry, native contact markers or motion. Optional center/span zooms the display only.', parameters({
+            'center_world_m':nullable(array(3)), 'span_m':nullable(number(exclusiveMinimum=0))})),
+        'mark_scene_point': ('Select an observed sample in a scene projection, returning its exact source camera/pixel and world XYZ. No nearest-pixel substitution. For explicit free_space mode, the first click fixes two coordinates and the second view supplies only the missing axis; its shared-axis click component is not used. Old marks keep their old observation identity.', parameters({
+            'view_id':text, 'pixel_xy':array(2,integer(0,639)),
+            'mode':{'type':'string','enum':['surface','free_space']},
+            'depth_view_id':nullable(text),'depth_pixel_xy':nullable(array(2,integer(0,639)))},['view_id','pixel_xy'])),
+        'preview_hand': ('Render the whole requested gripper pose in the two native images. Choose aperture=current for contact poses or aperture=open for an open-gripper grasp approach. Open geometry uses the calibrated robot-only FK, with no motion. Supply pose_world_xyzw OR position_world_m plus approach_world and jaw_world. TCP +Z follows approach; TCP +X is the jaw direction projected orthogonal to approach. Returns the resulting pose. No IK or collision verdict.', parameters({
+            'pose_world_xyzw':nullable(array(7)), 'position_world_m':nullable(array(3)),
+            'approach_world':nullable(array(3)), 'jaw_world':nullable(array(3)),
+            'aperture':{'type':'string','enum':['current','open']}})),
         'compare_surface_geometry': ('Compare two currently measured surfaces, including different parts. Returns relative plane angles and offsets; no motion or native goal threshold is supplied.',
             parameters({'first_id':text,'second_id':text},['first_id','second_id'])),
         'push': ('Acquire exactly your contact_pixel_xy with your chosen contact_name, then push in simulation. Supply explicit direction_world or a signed associated joint_degrees increment, including for previews; no task direction is inferred from a surface normal. Free approach checks arm/palm/fingers and reaches the outward side of the supplied face (opposite requested push direction for point-only requests); contact IK is solved first and approach travel is the minimum outward translation of that solved hand to clear the reference plane, with no added distance or collision padding. A straight contact approach then permits finger contact. Preview includes approach_plan and approach_images. After contact acquisition, direction/distance strokes execute hand travel independently of object tracking. Joint-progress requests instead use incremental strokes and stop continuation when object motion cannot be measured. preview=true issues no motion.',
@@ -316,7 +327,7 @@ def operation_schemas(image_sizes=None):
         'measure_tracking': ('Measure tracked RGB-D motion without changing the planning model.', parameters()),
         'apply_tracking': ('Apply measured geometry motion, optionally with your updated hinge hypothesis.', parameters({'hinge_world_m': nullable(array(3))})),
         'set_model': ('Set a hinge-line hypothesis; its axis sign is canonical (largest absolute component positive). Existing plans become stale.', parameters({'hinge_world_m': nullable(array(3)), 'axis_world': nullable(array(3))})),
-        'plan_grasp': ('Try up to eight original GraspGen poses by learned score. Filter open-hand scene collisions before IK, then check the arm and approach against the full observed scene. Closure is physical contact; plan manipulation from its measured result.', parameters({'probe_degrees': angle, 'max_candidates': candidates, 'seed': seed,
+        'plan_grasp': ('Try up to eight original GraspGen poses by learned score on a patch installed by select_surface_contact or an articulated handle installed by ground. Surface grasps require no joint model and use no angular probe. Filter open-hand scene collisions before IK, then check the arm and approach against the full observed scene. Closure is physical contact; plan manipulation from its measured result.', parameters({'probe_degrees': angle, 'max_candidates': candidates, 'seed': seed,
             'speed':speed,'approach_speed':speed,'hold':{'type':'integer','minimum':0},'close_steps':{'type':'integer','minimum':1},'budget_seconds':number(exclusiveMinimum=0,maximum=1800),'collision_policy':policy})),
         'plan_arc': ('Plan the complete requested relative contact arc; no robot motion. Points overlapping the measured current robot are removed from the planning cloud with zero padding. Future candidate poses do not clear additional points; remaining scene collisions are checked. Contact permission is not proof of a grasp.', parameters({
             'rotation_direction':nullable({'type':'string','enum':['cw','ccw'],'description':'View from the positive hinge-axis end toward its origin. Supply degrees as a positive magnitude.'}),

@@ -40,7 +40,7 @@ class ArticulatedWorker(SimulatorWorkerV8):
         if scene_variant not in VARIANTS:raise ValueError('Unknown predeclared scene variant')
         if scene_variant!='nominal' and task_name!='KITCHEN_SCENE7_open_the_microwave':
             raise ValueError('These scene variants are defined only for the microwave opening task')
-        if suite_name not in {'libero_goal', 'libero_90', 'libero_10'}:
+        if suite_name not in {'libero_goal', 'libero_spatial', 'libero_90', 'libero_10'}:
             raise ValueError('Unsupported official task suite')
         if (Path(output_dir)/'obs.npz').exists():
             raise FileExistsError('Preserve existing observations')

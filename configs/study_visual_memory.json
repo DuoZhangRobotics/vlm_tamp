@@ -1,0 +1,24 @@
+{
+  "model": "gpt-6-luna",
+  "reasoning": "high",
+  "control_steps": 600,
+  "episode_seconds": 1800,
+  "memory_slots": 8,
+  "cases": [
+    {"task": "close_microwave", "state_index": 17, "family": "revolute closure"},
+    {"task": "close_top_drawer", "state_index": 0, "family": "prismatic closure"},
+    {"task": "push_plate", "state_index": 0, "family": "planar pushing"},
+    {"task": "place_bowl", "state_index": 0, "family": "pick and place"}
+  ],
+  "conditions": [
+    {"name": "rgb_recent", "visual_interface": false, "memory_mode": "recent"},
+    {"name": "cloud_anchors", "visual_interface": true, "memory_mode": "anchored"}
+  ],
+  "order": "alternate condition order between cases",
+  "scope": "paired pilot of combined visual interface and episodic memory; one fresh attempt per task/condition",
+  "source_cameras": ["agentview", "wrist"],
+  "inherited_memory": false,
+  "demonstrations": false,
+  "native_contact_feedback": false,
+  "policy_code_execution": false
+}

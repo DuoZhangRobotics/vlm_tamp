@@ -68,12 +68,14 @@ def public_state(state):
 
 
 class RobotService:
-    def __init__(self, output, workspace, state_index, attempts, *, fit_diagnostics=False, dino_tools=False, scene_variant='nominal', completion_checks=False, learning_practice=False, initial_attempts=None, stop_on_success=False, persistent_episode=False, surface_contact_tools=False, numerical_backend='curobo_v2', task=DEFAULT_TASK, landmark_evidence=False, multiview_grounding=False, part_motion_tools=False, maximum_control_steps=DEFAULT_CONTROL_STEPS,reference_mode=None,pointing_socket=None):
+    def __init__(self, output, workspace, state_index, attempts, *, fit_diagnostics=False, dino_tools=False, scene_variant='nominal', completion_checks=False, learning_practice=False, initial_attempts=None, stop_on_success=False, persistent_episode=False, surface_contact_tools=False, numerical_backend='curobo_v2', task=DEFAULT_TASK, landmark_evidence=False, multiview_grounding=False, part_motion_tools=False, maximum_control_steps=DEFAULT_CONTROL_STEPS,reference_mode=None,pointing_socket=None,visual_interface=False):
         self.task, self.task_spec = task, task_spec(task)
         self.landmark_evidence = bool(landmark_evidence)
         self.multiview_grounding = bool(multiview_grounding)
         self.part_motion_tools=bool(part_motion_tools);self._perception_tools=None
         self.pointing_socket=Path(pointing_socket) if pointing_socket else None
+        self.visual_interface=bool(visual_interface)
+        self.visual_views={}
         if task != DEFAULT_TASK and scene_variant != 'nominal':
             raise ValueError('Existing scene perturbations are specific to the opening scene; use nominal for other tasks')
         self.output, self.workspace = Path(output).resolve(), Path(workspace).resolve()
@@ -843,9 +845,10 @@ class RobotService:
             'policy':'Contact stroke length/speed and search budgets are explicit experiment settings. Numerical uncertainty does not prove physical infeasibility.'}
 
     def _select_contact(self, probe_degrees, max_candidates, seed, options=None):
-        if getattr(self,'contact_scene_kind','articulated')!='articulated':
-            raise ValueError('Grasp planning needs a current handle/joint model. Use ground, or refresh_contact when a fixed joint is retained. Push/hook can plan directly from a current visible region.')
-        if not np.isfinite(probe_degrees) or float(probe_degrees)==0 or int(max_candidates)<1:
+        surface=getattr(self,'contact_scene_kind','articulated')=='surface'
+        if surface and self.config.get('grasp_selection_method')!='graspgen_direct':
+            raise ValueError('A selected surface uses the existing direct GraspGen solver; no handle model is fabricated')
+        if int(max_candidates)<1 or (not surface and (not np.isfinite(probe_degrees) or float(probe_degrees)==0)):
             raise ValueError('Use a finite nonzero signed angle and a positive candidate count')
         if self.scene is None:
             raise ValueError('Ground the target first')
@@ -902,7 +905,7 @@ class RobotService:
         try:
             with measured_phase('selection'):
                 selected = select_grasp(generated, self.anchors, approach_state, self.ik, self.record,
-                    approach_scene, closed_scene, self.spec, np.radians(float(probe_degrees)), folder/'selection',
+                    approach_scene, closed_scene, self.spec, 0. if surface else np.radians(float(probe_degrees)), folder/'selection',
                     {**self.config,**(options or {}),'maximum_grasp_poses':int(max_candidates)})
         except Exception as error:
             source=folder/'selection/grasp-attempts.json'
@@ -933,7 +936,7 @@ class RobotService:
             'environment_collision_policy':collision_policy or self.config.get('environment_collision_policy','veto')})
         result=self.keep_plan(selected['approach'], {'status':'solved',
             'grasp_pose_world_xyzw':selected['pose_world_xyzw'], 'proposal_source':selected['source'],
-            'initial_contact_probe_degrees':probe_degrees}, 'approach', {'grasp_joints':selected['joints'],'approach_speed':speed,'contact_depth_offset_m':selected.get('contact_depth_offset_m',0.)})
+            'initial_contact_probe_degrees':probe_degrees if self.contact_scene_kind=='articulated' else None}, 'approach', {'grasp_joints':selected['joints'],'approach_speed':speed,'contact_depth_offset_m':selected.get('contact_depth_offset_m',0.)})
         result['budget_timing_assumptions']=selected['budget_timing_assumptions']
         result['approach_selection']=selected.get('approach_selection')
         result['search_summary']=selected.get('search_summary')
@@ -948,6 +951,8 @@ class RobotService:
 
     def plan_sequence(self,degrees,max_candidates=8,seed=0,grasp_constraint=None,
                       speed=.35,approach_speed=None,hold=6,close_steps=40,budget_seconds=30.,collision_policy=None):
+        if getattr(self,'contact_scene_kind','articulated')!='articulated':
+            raise ValueError('A grasp-and-arc sequence requires an explicitly associated joint model')
         if grasp_constraint not in {'point','rigid','jaw_axis'}:raise ValueError('Unknown grasp constraint')
         approach_speed=float(self.config.get('grasp_approach_speed_rad_s',.6) if approach_speed is None else approach_speed)
         selected=self._select_contact(degrees,max_candidates,seed,{
@@ -1543,6 +1548,11 @@ class RobotService:
             'refresh_contact':self.refresh_contact,
             'plan_sequence':self.plan_sequence,'execute_sequence':self.execute_sequence,
             'ik':self.ik_solutions,'execute':self.execute_plan,'gripper':self.gripper}
+        if getattr(self,'visual_interface',False):
+            from vlm_tamp.visual_scene import scene_views,mark_scene_point,preview_hand
+            operations.update(scene_views=lambda **kw:scene_views(self,**kw),
+                mark_scene_point=lambda **kw:mark_scene_point(self,**kw),
+                preview_hand=lambda **kw:preview_hand(self,**kw))
         if self.dino_tools:operations.update(dino_landmarks=self.dino_landmarks,dino_match=self.dino_match)
         if getattr(self,'pointing_socket',None):
             operations['point']=lambda **kwargs:self._part_tool('point',kwargs)
@@ -1576,7 +1586,19 @@ class RobotService:
                     **({'completion_claim':result} if self.completion_checks else {})}
         if operation not in operations:
             raise ValueError('Unknown operation')
-        return operations[operation](**arguments)
+        result=operations[operation](**arguments)
+        if getattr(self,'visual_interface',False) and self.ik is not None:
+            from vlm_tamp.visual_scene import preview_hand
+            pose=None;aperture='current'
+            if operation in {'plan_pose','plan_contact_pose','plan_grasp'} and result.get('plan_id'):
+                pose=self.ik.chain.forward(self.plans[result['plan_id']]['path'][-1]).tolist()
+                aperture='open' if operation=='plan_grasp' else 'current'
+            elif operation=='push' and arguments.get('preview') and result.get('robot_valid_plan_available'):
+                pose=result.get('search',{}).get('contact_tcp_pose_world_xyzw')
+            if pose is not None:
+                result['hand_preview']=preview_hand(self,pose_world_xyzw=pose,aperture=aperture)
+                result['hand_preview']['pose_source']='existing numerical plan endpoint; no additional planning'
+        return result
 
 
 def main():
@@ -1590,6 +1612,7 @@ def main():
     p.add_argument('--multiview-grounding',action='store_true')
     p.add_argument('--part-motion-tools',action='store_true')
     p.add_argument('--pointing-socket',help='Existing persistent Molmo2 worker endpoint')
+    p.add_argument('--visual-interface',action='store_true')
     p.add_argument('--fit-diagnostics',action='store_true')
     p.add_argument('--dino-tools',action='store_true')
     p.add_argument('--completion-checks',action='store_true')
@@ -1607,7 +1630,7 @@ def main():
         initial_attempts=args.initial_attempts,stop_on_success=args.stop_on_success,
         persistent_episode=args.persistent_episode,surface_contact_tools=args.surface_contact_tools,
         numerical_backend=args.numerical_backend,task=args.task,landmark_evidence=args.landmark_evidence,
-        multiview_grounding=args.multiview_grounding,part_motion_tools=args.part_motion_tools,maximum_control_steps=args.control_steps,reference_mode=args.reference_mode,pointing_socket=args.pointing_socket)
+        multiview_grounding=args.multiview_grounding,part_motion_tools=args.part_motion_tools,maximum_control_steps=args.control_steps,reference_mode=args.reference_mode,pointing_socket=args.pointing_socket,visual_interface=args.visual_interface)
     requests=Path(args.workspace)/'requests';replies=Path(args.workspace)/'replies'
     requests.mkdir(exist_ok=True);replies.mkdir(exist_ok=True)
     seen=set()
