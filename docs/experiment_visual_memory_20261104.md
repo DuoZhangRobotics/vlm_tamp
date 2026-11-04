@@ -63,7 +63,10 @@ The corrected study is `results/luna-visual-memory-native-images-20261104/watch.
 microwave closure (state 17), drawer closure (state 0), plate sliding (state 0), and bowl placement
 (state 0). Each has a fresh baseline and enhanced attempt. Condition order alternates by case.
 All eight episodes use Luna/high, 600 controls and 1800 seconds, with native success as the
-terminal outcome. The numerical sources are hashed before the batch and checked unchanged.
+terminal outcome. Controls are simulator commands at 20 Hz, including 60 reset/settling controls:
+600 controls represent 30 seconds of simulated time and leave 27 seconds after reset. Model
+decisions, rendering and planning consume wall time but do not themselves advance physics.
+The numerical sources are hashed before the batch and checked unchanged.
 
 The comparison tests the combined visual and memory change, not their separate causal effects.
 One initial state per task is a pilot, not a statistically reliable generalization result.
@@ -95,3 +98,10 @@ executed anchor. This retained old help responses and failed previews indefinite
 anchors; the baseline's final model input reached 99,651 tokens. The corrected memory keeps
 non-motion replies only in the immediate tail. Complete executed transitions remain unchanged.
 These are interface corrections shared by both replacement conditions, not planner changes.
+
+The corrected study paused at its first completed episode because the new report expected an
+already-generated timing file. Reporting now calls the existing cached profiler to generate
+that artifact from recorded events. The normal completed baseline is preserved; the remaining
+seven episodes resume without repeating it. This reporting/scheduler source revision is
+recorded explicitly in the study manifest. Actor inputs, numerical modules, conditions and
+budgets are unchanged across that boundary. Both resource-monitor sessions are retained.

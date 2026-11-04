@@ -15,7 +15,7 @@ from run_varied_contact_practice import actor_command, audit_memory_input
 from select_recorded_goal_references import model_worker
 from report_visual_memory import render
 from supervise_luna_dashboard_study import wait_for_capacity
-from vlm_tamp.coupled_storage import write_json
+from vlm_tamp.coupled_storage import read_json,write_json
 
 ROOT=Path(__file__).resolve().parents[1]
 PLANNER_REFERENCE_COMMIT='e2c9860'
@@ -48,23 +48,41 @@ def main() -> None:
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--study',type=Path,required=True)
     parser.add_argument('--config',type=Path,default=ROOT/'configs/study_visual_memory.json')
+    parser.add_argument('--resume',action='store_true',help='Continue only after a fully recorded episode boundary')
     args=parser.parse_args();study=args.study.resolve();study.mkdir(exist_ok=True)
-    (study/'trials').mkdir()
     config=json.loads(args.config.read_text());frozen=source_hashes()
     numerical={name:hashlib.sha256((ROOT/name).read_bytes()).hexdigest() for name in NUMERICAL_FILES}
     for name,digest in numerical.items():
         committed=subprocess.check_output(['git','show',PLANNER_REFERENCE_COMMIT+':'+name],cwd=ROOT)
         if hashlib.sha256(committed).hexdigest()!=digest:
             raise RuntimeError('Numerical backend changed outside this interface study: '+name)
-    manifest={'config':config,'runs':plan_runs(config),'completed_runs':[],
-        'active_run':None,'complete':False,'started_at':time.time(),'source_sha256':frozen,
-        'planner_reference_commit':PLANNER_REFERENCE_COMMIT,
-        'numerical_sha256':numerical,'config_sha256':hashlib.sha256(args.config.read_bytes()).hexdigest(),
-        'scope':'One-seed paired pilot of the combined visual and memory changes; not a statistical generalization claim'}
+    if args.resume:
+        manifest=read_json(study/'visual-memory-manifest.json')
+        if manifest['active_run'] is not None or manifest['complete']:
+            raise ValueError('Resume requires an incomplete study at a completed episode boundary')
+        if manifest['source_sha256']!=frozen or manifest['numerical_sha256']!=numerical:
+            raise RuntimeError('Resume sources differ from the explicitly recorded study sources')
+        if manifest['config_sha256']!=hashlib.sha256(args.config.read_bytes()).hexdigest():
+            raise RuntimeError('Resume configuration changed')
+        completed=manifest['completed_runs']
+        if manifest['runs']!=plan_runs(config) or [r['run'] for r in completed]!=[
+                r['run'] for r in manifest['runs'][:len(completed)]]:
+            raise RuntimeError('Completed episodes must be an unchanged prefix of the declared study')
+        worker_output=study/f'worker-session-{int(time.time())}';worker_output.mkdir()
+        manifest.setdefault('orchestration_resumes',[]).append({'time':time.time(),
+            'completed_episodes_preserved':len(completed),'worker_output':str(worker_output)})
+    else:
+        (study/'trials').mkdir()
+        worker_output=study
+        manifest={'config':config,'runs':plan_runs(config),'completed_runs':[],
+            'active_run':None,'complete':False,'started_at':time.time(),'source_sha256':frozen,
+            'planner_reference_commit':PLANNER_REFERENCE_COMMIT,
+            'numerical_sha256':numerical,'config_sha256':hashlib.sha256(args.config.read_bytes()).hexdigest(),
+            'scope':'One-seed paired pilot of the combined visual and memory changes; not a statistical generalization claim'}
     write_json(study/'visual-memory-manifest.json',manifest);render(study)
     wait_for_capacity(study,'visual-memory-model-load')
-    with model_worker(study) as endpoint:
-        for entry in manifest['runs']:
+    with model_worker(worker_output) as endpoint:
+        for entry in manifest['runs'][len(manifest['completed_runs']):]:
             if source_hashes()!=frozen:raise RuntimeError('Frozen study sources changed')
             wait_for_capacity(study,entry['run'])
             out=study/'trials'/entry['run']

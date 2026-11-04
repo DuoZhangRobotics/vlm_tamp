@@ -10,6 +10,7 @@ import shutil
 
 from report_part_goal_gap import resources
 from report_contact_skills import brief_evidence
+from report_restriction_fixes import cached_profile_run
 from vlm_tamp.coupled_storage import read_json,write_json
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -43,7 +44,7 @@ def case_summary(study: Path, entry: dict) -> dict:
                 'executed':memory['total_executed_transitions'],'limit':memory['slot_limit']},
         learner_findings=(run/'agent-workspace/findings.txt').read_text(),
         numerical_backend_unchanged=read_json(run/'source-integrity.json')['numerical_backend_unchanged'])
-    result['timing_details']=read_json(run/'timing-breakdown.json')
+    result['timing_details']=cached_profile_run(run,events,entry['actor_wall_seconds'])
     usages=[event['usage'] for file in sorted((run/'decisions').glob('*/events.jsonl'))
             for event in map(json.loads,file.read_text().splitlines()) if event.get('type')=='turn.completed']
     result['model_usage']={'calls_with_usage':len(usages),
@@ -59,7 +60,8 @@ def render(study: Path, *, with_resources: bool = False) -> None:
     study=Path(study);manifest=read_json(study/'visual-memory-manifest.json')
     completed={r['run']:r for r in manifest['completed_runs']}
     cases=[case_summary(study,completed.get(entry['run'],entry)) for entry in manifest['runs']]
-    audit=resources(study,[('visual_memory',study)]) if with_resources else []
+    phases=[(folder.name,folder) for folder in sorted(study.glob('resource-session-*'))]
+    audit=resources(study,[*phases,('current',study)]) if with_resources else []
     write_json(study/'summary.json',{'cases':cases,'complete':manifest['complete'],
         'active_run':manifest['active_run'],'config':manifest['config'],'resources':audit,
         'interruption':manifest.get('interruption'),'replacement_study':manifest.get('replacement_study'),
