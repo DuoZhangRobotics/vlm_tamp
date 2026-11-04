@@ -16,6 +16,9 @@ from vlm_tamp.rekep_libero.curobo_model import export_model
 from vlm_tamp.rekep_libero.curobo_v2_worker import Worker
 from vlm_tamp.rekep_libero.geometry import pose_matrix
 from vlm_tamp.rekep_libero.robot_chain_v4 import RobotChain
+from test_vamp_sphere_policy import robot as calibrated_robot_fixture, scene_for
+
+calibrated_robot = calibrated_robot_fixture
 
 
 @pytest.fixture
@@ -79,3 +82,30 @@ def test_unreachable_native_local_goal_returns_failure_without_a_retry(local_wor
         local=True,environment_collision=False)
     assert result['success']==[False]
     assert not result['sampled_optimizer_used'] and not result['continuation_fallback_used']
+
+
+def test_measured_finger_model_matches_native_and_gpu_across_arm_poses(local_worker,calibrated_robot,tmp_path):
+    """Both backends place the same finger spheres as the arm configuration changes."""
+    import hashlib
+    from vlm_tamp.vamp_sphere_model import finger_environment_model,native_spheres
+    from vlm_tamp.mcvamp_contact_numerical import NativeScene
+    worker,chain=local_worker
+    record,metadata,_,_,world=calibrated_robot
+    model=finger_environment_model(metadata,world)
+    q=chain.reference_joints.copy()
+    for increment in (0.,.12,-.08):
+        q[0]=chain.reference_joints[0]+increment
+        spheres=native_spheres(q);base,first,second=spheres[[37,40,45],:3]
+        u,v=first-base,second-base;a,b,c,r=model['coefficients'][1]
+        point=world[:3,:3]@(base+a*u+b*v+c*np.cross(u,v))+world[:3,3]
+        scene=scene_for(point,'stationary')
+        for checked in (True,False):
+            with NativeScene(scene,record,metadata,metadata['joint_positions'],.1,
+                             articulated=False,check_fingers=checked) as native:
+                path=tmp_path/'observed.npz';np.savez(path,**native.ik_clouds_world)
+                worker.configure_scene(str(path),hashlib.sha256(path.read_bytes()).hexdigest(),
+                                       finger_model=native.finger_model)
+                result=worker.collision_diagnostics(q[None])
+                cost=float(np.max(result['environment_cost_per_sphere']))
+                assert cost==pytest.approx(r if checked else 0.,abs=3e-6)
+                assert native.validate(q)['accepted']==(not checked)

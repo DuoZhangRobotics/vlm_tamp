@@ -45,6 +45,31 @@ def frame_with_z(normal: Sequence[float]) -> np.ndarray:
     return np.column_stack((x_axis, np.cross(z_axis, x_axis), z_axis))
 
 
+def approach_geometry(point: Sequence[float], normal: Sequence[float],
+                      hand_spheres_tcp: Sequence[Sequence[float]],
+                      contact_normal_local: Sequence[float] | None) -> dict[str, Any]:
+    """Use one hand extent as approach travel, with no obstacle inflation.
+
+    A signed face normal selects the outside. A point-only request instead uses
+    its explicit motion direction and an orientation-independent hand extent.
+    """
+    outward = normal_vector(normal)
+    hand = np.asarray(hand_spheres_tcp, float)
+    if contact_normal_local is not None:
+        projection = hand[:,:3]@normal_vector(contact_normal_local)
+        distance = float(np.max(projection+hand[:,3])-np.min(projection-hand[:,3]))
+    else:
+        distance = float(np.linalg.norm(np.max(hand[:,:3]+hand[:,3:4],axis=0)
+                                        -np.min(hand[:,:3]-hand[:,3:4],axis=0)))
+    return {'contact_point_world_m': np.asarray(point).tolist(),
+            'precontact_point_world_m': (np.asarray(point)+distance*outward).tolist(),
+            'outward_direction_world': outward.tolist(), 'approach_direction_world': (-outward).tolist(),
+            'approach_distance_m': distance, 'distance_source': 'measured-aperture hand sphere extent',
+            'collision_padding_m': 0., 'free_space_finger_collision_checked': True,
+            'contact_motion_finger_collision_checked': False,
+            'task_direction_verified': False}
+
+
 def normal_angle(normal_a: Sequence[float], normal_b: Sequence[float]) -> float:
     """Return the signed-face separation angle, preserving opposite faces as pi."""
     dot = normal_vector(normal_a) @ normal_vector(normal_b)

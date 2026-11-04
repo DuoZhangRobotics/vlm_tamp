@@ -17,13 +17,21 @@ comparison is more informative than assuming a long hand stroke is task progress
   contact_constraint="point", surface_normal_world=null): use the exact original-image integer
   pixel and a contact_name from reset's contact_landmarks_in_tcp. Select the
   observed part with a region or current part mask. No nearby pixel, wrist
-  menu, stand-off or replacement contact is chosen. Point IK leaves wrist
+  menu or replacement contact is chosen. Point IK leaves wrist
   orientation free. For a selected observed face, contact_constraint="surface_normal"
   with its signed outward surface_normal_world aligns the chosen robot pad against
   that face while leaving twist free. This does not set direction_world or the goal.
   plan_contact_pose also accepts a full quaternion_xyzw when you choose one.
-  VAMP plans the free-space approach, checking arm/palm and allowing all finger
-  contacts. Planning and execution use the same aperture. preview issues no motion.
+  For push, VAMP plans free travel to the outward side with arm, palm and finger
+  collisions enabled. The approach distance is one measured-aperture hand extent;
+  it adds no collision padding. A separate straight contact approach follows at
+  3 cm/s, with finger contact allowed and arm/palm checked. The selected face normal
+  chooses the approach side; point-only pushes approach opposite the explicitly
+  requested push direction without inventing a surface normal. The observed scene
+  stays fixed during contact approach. Physics resolves the subsequent push.
+  Preview returns approach_plan and both-camera approach_images, explicitly
+  marked as planned paths. Planning and execution use the same aperture.
+  preview issues no motion; it does not prove task direction or physical contact.
   Approach execution waits when measured joint lag exceeds the existing
   one-control increment (0.05 rad at 1 rad/s, 20 Hz). At the final goal it uses
   the existing measured-arrival tolerance: 4 mm and 0.05 rad orientation.

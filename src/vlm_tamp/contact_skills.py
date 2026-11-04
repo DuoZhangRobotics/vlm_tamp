@@ -213,10 +213,10 @@ def predicted_scene(scene,displacement,angle=0.):
     return new
 
 
-def skill_native_scene(scene,record,metadata,start,*,allow_contact=True):
+def skill_native_scene(scene,record,metadata,start,*,allow_contact=True,check_fingers=False):
     """Use configured collision surfaces with zero added clearance (user policy)."""
     context=NativeScene(scene,record,metadata,start,.05,articulated=False,
-        allow_contact=allow_contact,gripper_padding=0.,collision_policy='veto')
+        allow_contact=allow_contact,gripper_padding=0.,collision_policy='veto',check_fingers=check_fingers)
     context.record['contact_skill_clearance']={'requested_m':0.,'used_m':0.,
         'source':'explicit user request: test without added collision padding',
         'zero_boundary_collisions_ignored':False}
@@ -323,6 +323,8 @@ def cartesian_path(
     contact_local: ArrayLike | None = None,
     allow_partial: bool = False,
     environment_collision: bool = True,
+    move_target: bool = True,
+    motion_stage: str = 'stroke',
 ) -> np.ndarray:
     """Cartesian IK waypoints; no CPU pose adjustment or dense path recheck."""
     timing=timing if timing is not None else Counter()
@@ -341,11 +343,15 @@ def cartesian_path(
         scene.skill_partial_plan={'reason':reason,'completed_waypoints':len(path)-1,'requested_waypoints':count,
             'global_infeasibility_proved':False}
         if allow_partial and len(path)>1:return np.asarray(path)
-        raise SkillStop(reason,completed_waypoints=len(path)-1,requested_waypoints=count)
+        raise SkillStop(reason,motion_stage=motion_stage,completed_waypoints=len(path)-1,
+            requested_waypoints=count,remaining_seconds=budget.remaining,
+            requested_contact_point_world_m=last.tolist(),
+            ik_diagnostic=ik.events[-1] if getattr(ik,'events',[]) else {},
+            timing_seconds=dict(timing),global_infeasibility_proved=False)
     for fraction in np.linspace(0,1,count+1)[1:]:
-        if budget.remaining<=0:return incomplete('stroke_planning_budget_exhausted')
+        if budget.remaining<=0:return incomplete(motion_stage+'_planning_budget_exhausted')
         began=time.perf_counter()
-        if environment_collision:
+        if environment_collision and move_target:
             transform=np.eye(4)
             if angle:
                 rotation=Rotation.from_rotvec(np.asarray(scene.axis)*angle*fraction).as_matrix()
@@ -409,13 +415,24 @@ def plan_engagement(
             raise SkillStop('no_hookable_feature',reason_detail='Selected depth samples contain no retaining thickness')
         if name is None or not name.endswith('_pad_collision'):
             raise ValueError('Choose an inward-facing pad contact_name for a non-pinching hook')
-    with skill_native_scene(scene,record,metadata,q) as context:
+    approach={};approach_point=point.copy()
+    with skill_native_scene(scene,record,metadata,q,allow_contact=kind!='push',check_fingers=kind=='push') as context:
         ik.configure_scene(context)
         phase=time.perf_counter()
         constraint=evidence.get('contact_constraint','point')
         normal_arguments=({'contact_constraint':constraint,'surface_normal_world':evidence['surface_normal_world']}
             if constraint=='surface_normal' else {})
-        candidate,solutions=contact_solutions(ik,metadata,point,name,**normal_arguments)
+        if kind=='push':
+            from .surface_contact_tools import contact_pose_candidates
+            from .contact_orientation import approach_geometry
+            selected_contact=contact_pose_candidates(metadata,point,contact_name=name,**normal_arguments)[0]
+            approach=approach_geometry(point,
+                evidence['surface_normal_world'] if constraint=='surface_normal' else -unit(evidence['direction_world']),
+                context.finger_model['hand_spheres_tcp'],
+                selected_contact['contact_normal_local'] if constraint=='surface_normal' else None)
+            approach['side_source']='selected_surface_normal' if constraint=='surface_normal' else 'opposite_requested_push_direction'
+            approach_point=np.asarray(approach['precontact_point_world_m'])
+        candidate,solutions=contact_solutions(ik,metadata,approach_point,name,**normal_arguments)
         timing['ik_seconds']+=time.perf_counter()-phase
         selection={}
         reference_normal=evidence.get('surface_normal_world') if constraint=='surface_normal' else evidence.get('normal_toward_camera_world')
@@ -435,7 +452,23 @@ def plan_engagement(
             attempts.append({'joints':solution['joints'],'planning':report})
             if not report['exact_solution']:continue
             refs=schedule(path,maximum_joint_speed=scene.skill_approach_speed_rad_s,endpoint_hold_steps=0)
+            free_path=path.copy();free_refs=refs
             tcp=pose_matrix(ik.chain.forward(path[-1]))
+            insertion=np.empty((0,7));insertion_path=np.empty((0,7))
+            if kind=='push':
+                scene.skill_contact_normal_local=candidate['contact_normal_local']
+                local=np.asarray(candidate['contact_local_m'])
+                target=tcp.copy();target[:3,3]+=point-(tcp[:3,3]+tcp[:3,:3]@local)
+                insertion_timing=Counter()
+                insertion_path=cartesian_path(ik,scene,record,metadata,path[-1],matrix_pose(target),budget,
+                    contact_local=local,timing=insertion_timing,environment_collision=True,move_target=False,
+                    motion_stage='contact_approach')
+                timing.update(insertion_timing)
+                timing['contact_approach_ik_seconds']+=insertion_timing['ik_seconds']
+                from .timed_execution import schedule_contact
+                insertion=schedule_contact(insertion_path,ik.chain,local,contact_speed_m_s=.03)
+                path=np.vstack([path,insertion_path[1:]])
+                refs=np.vstack([refs,insertion]);tcp=pose_matrix(ik.chain.forward(path[-1]))
             orientation={}
             if constraint=='surface_normal':
                 from .contact_orientation import contact_orientation_report
@@ -447,8 +480,9 @@ def plan_engagement(
                 if evidence.get('joint_associated'):
                     from .contact_orientation import joint_push_prediction
                     orientation['joint_prediction']=joint_push_prediction(point,scene.origin,scene.axis,evidence['direction_world'])
-            return {'path':path,'references':refs,'free_references':refs,
-                'insertion_references':np.empty((0,7)),'direct_contact_approach':True,
+            return {'path':path,'references':refs,'free_references':free_refs,
+                'free_path':free_path,'insertion_path':insertion_path,
+                'insertion_references':insertion,'direct_contact_approach':kind!='push','approach':approach,
                 'contact_local':np.asarray(candidate['contact_local_m']),'contact_world':point,
                 'contact_normal_local':np.asarray(candidate['contact_normal_local']) if 'contact_normal_local' in candidate else None,
                 'contact_constraint':constraint,'contact_orientation':orientation,
@@ -466,6 +500,7 @@ def plan_engagement(
         selection_geometry=selection,
         attempts=attempts,search_complete=True,global_infeasibility_proved=False,
         selected_pixel=evidence.get('contact_pixel_xy'),selected_contact=name,
+        approach=approach,
         timing_seconds=dict(timing),search_work={'contact_points':1,'ik_queries':1,'ik_solutions':len(solutions)})
 
 

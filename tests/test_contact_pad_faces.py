@@ -65,9 +65,11 @@ def test_passive_body_tip_remains_available_but_is_labelled() -> None:
 def test_collision_export_reports_masks_without_modifying_them() -> None:
     """Only configured robot volumes contribute masks to the public metadata."""
     solver = PandaIK.__new__(PandaIK)
-    solver.model = SimpleNamespace(geom_contype=np.array([0, 1]), geom_conaffinity=np.array([1, 1]))
+    solver.model = SimpleNamespace(geom_contype=np.array([0, 1]), geom_conaffinity=np.array([1, 1]),
+                                   geom_bodyid=np.array([0,1]))
     solver.data = SimpleNamespace(
-        geom_xmat=np.tile(np.eye(3).reshape(1, 9), (2, 1)), geom_xpos=np.zeros((2, 3))
+        geom_xmat=np.tile(np.eye(3).reshape(1, 9), (2, 1)), geom_xpos=np.zeros((2, 3)),
+        xmat=np.tile(np.eye(3).reshape(1, 9), (2, 1)),xpos=np.array([[.1,0,0],[.2,0,0]])
     )
     solver._collision_volumes_local = [
         {
@@ -80,5 +82,6 @@ def test_collision_export_reports_masks_without_modifying_them() -> None:
         for index in range(2)
     ]
     volumes = solver.collision_volumes()
+    assert volumes[0]['body_pose_world_xyzw']==[.1,0.,0.,0.,0.,0.,1.]
     assert [row["physical_collision_masks"]["contype"] for row in volumes] == [0, 1]
     np.testing.assert_array_equal(solver.model.geom_contype, [0, 1])

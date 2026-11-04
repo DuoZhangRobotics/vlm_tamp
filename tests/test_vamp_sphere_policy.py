@@ -10,24 +10,33 @@ from vlm_tamp.coupled_scene import Scene
 from vlm_tamp.mcvamp_contact_numerical import NativeScene, clear_native_cache
 from vlm_tamp.rekep_libero.robot_chain_v4 import RobotChain
 from vlm_tamp.rekep_libero.geometry import pose_matrix
-from vlm_tamp.vamp_sphere_model import native_spheres, ARM_SPHERE_RANGES, PALM_SPHERE_RANGE
+from vlm_tamp.vamp_sphere_model import native_spheres, ARM_SPHERE_RANGES, PALM_SPHERE_RANGE, finger_environment_model
 
 ROOT=Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture
 def robot():
-    vamp=pytest.importorskip('vamp')
+    pytest.importorskip('vamp')
     record=json.loads((ROOT/'tests/fixtures/calibrated_panda.json').read_text())
     # Robot-base transform from the retained calibration; no object geometry.
     world=np.eye(4);world[:3,3]=[-.66,0.,.912]
     record['calibration']={'world_to_robot':np.linalg.inv(world).tolist()}
     chain=RobotChain(record);q=chain.reference_joints;tcp=pose_matrix(chain.forward(q))
     metadata={'joint_positions':q.tolist(),'eef_pose_world_xyzw':chain.forward(q).tolist(),
+        'gripper_qpos':[.04,-.04],
         'robot_collision_volumes_world':[
             {'robot_geom_name':f'gripper0_finger{i}_pad_collision',
              'vertices_world':[(tcp[:3,3]+tcp[:3,:3]@np.array([offset,0,0])).tolist()]}
             for i,offset in [(1,-.02),(2,.02)]]}
+    from scipy.spatial.transform import Rotation
+    from vlm_tamp.rekep_libero.geometry import matrix_pose
+    for index,side in [(1,-1),(2,1)]:
+        local=np.eye(4);local[:3,:3]=Rotation.from_euler('z',90,degrees=True).as_matrix()
+        local[:3,3]=[side*.04,0.,-.0446]
+        metadata['robot_collision_volumes_world'].append({
+            'robot_geom_name':f'gripper0_finger{index}_collision',
+            'body_pose_world_xyzw':matrix_pose(tcp@local).tolist()})
     values=native_spheres(q);values[:,:3]=values[:,:3]@world[:3,:3].T+world[:3,3]
     yield record,metadata,values,chain,world
     clear_native_cache()
@@ -74,6 +83,46 @@ def test_native_self_collision_matches_upstream_without_custom_geometry(robot):
     with NativeScene(scene_for([5,5,5],'stationary'),record,metadata,metadata['joint_positions'],.1,articulated=False) as context:
         for q in np.random.default_rng(73).uniform(chain.limits[:,0],chain.limits[:,1],(24,7)):
             assert context.validate(q)['accepted']==bool(vamp.panda.validate(q.tolist(),empty,True))
+
+
+@pytest.mark.parametrize('role',['stationary','moving','contact'])
+def test_free_approach_checks_measured_fingers_and_contact_phase_releases_them(robot,role):
+    """The same physical finger obstacle changes policy only at the phase boundary."""
+    record,metadata,values,chain,world=robot
+    model=finger_environment_model(metadata,world)
+    tcp=pose_matrix(metadata['eef_pose_world_xyzw'])
+    finger=np.asarray(model['hand_spheres_tcp'])[-3]
+    point=tcp[:3,:3]@finger[:3]+tcp[:3,3]
+    assert np.min(np.linalg.norm(values[1:55,:3]-point,axis=1)-values[1:55,3])>0
+    for checked in (True,False,True):
+        with NativeScene(scene_for(point,role),record,metadata,metadata['joint_positions'],.1,
+                         articulated=False,check_fingers=checked,allow_contact=not checked) as context:
+            result=context.validate(metadata['joint_positions'])
+            assert result['accepted']==(not checked),result
+            assert context.validate_hand_pose(metadata['eef_pose_world_xyzw'])['accepted']==(not checked)
+            if checked:
+                assert result['blocking_robot_part'].startswith('gripper0_finger')
+                np.testing.assert_allclose(result['blocking_sphere_world_m'][:3],point,atol=2e-6)
+            assert context.record['finger_environment_collision_checked']==checked
+
+
+def test_measured_aperture_changes_finger_centers_without_inflating_spheres(robot):
+    """Robot link transforms, including aperture, determine both planners' geometry."""
+    import copy
+    from vlm_tamp.rekep_libero.geometry import matrix_pose
+    record,metadata,values,chain,world=robot
+    first=finger_environment_model(metadata,world)
+    moved=copy.deepcopy(metadata);tcp=pose_matrix(metadata['eef_pose_world_xyzw'])
+    for volume in moved['robot_collision_volumes_world']:
+        if volume['robot_geom_name']=='gripper0_finger1_collision':
+            transform=pose_matrix(volume['body_pose_world_xyzw'])
+            transform[:3,3]+=tcp[:3,0]*.02
+            volume['body_pose_world_xyzw']=matrix_pose(transform).tolist()
+    second=finger_environment_model(moved,world)
+    a,b=[np.asarray(m['hand_spheres_tcp']) for m in (first,second)]
+    np.testing.assert_allclose(b[-4:-2,:3]-a[-4:-2,:3],[[.02,0,0]]*2,atol=1e-8)
+    np.testing.assert_array_equal(a[:,3],b[:,3])
+    np.testing.assert_allclose(a[-2:],b[-2:],atol=1e-8)
 
 
 def test_hand_pose_filter_uses_stock_palm_and_never_fingers(robot):

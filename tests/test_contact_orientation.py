@@ -18,6 +18,20 @@ from vlm_tamp.robot_contracts import validate_operation
 from test_curobo_arc_worker import worker_scene as worker_fixture
 from test_retained_push_contact import contact_service as service_fixture, call
 
+
+@pytest.mark.parametrize('normal',[[1.,0,0],[-1.,0,0],[0,0,1.],[0,1.,0]])
+def test_approach_uses_the_selected_side_and_robot_extent(normal: list[float]) -> None:
+    """Flipping a face reverses approach without changing task or object identity."""
+    from vlm_tamp.contact_orientation import approach_geometry
+    hand=np.array([[0,0,-.08,.02],[0,0,-.01,.012]])
+    point=np.array([.3,-.5,1.1])
+    result=approach_geometry(point,normal,hand,[0,0,1])
+    assert result['approach_distance_m']==pytest.approx(.102)
+    np.testing.assert_allclose(result['precontact_point_world_m'],point+.102*np.asarray(normal))
+    np.testing.assert_allclose(result['approach_direction_world'],-np.asarray(normal))
+    assert result['collision_padding_m']==0
+    assert not result['task_direction_verified']
+
 worker_scene = worker_fixture
 contact_service = service_fixture
 

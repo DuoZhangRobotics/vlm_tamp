@@ -26,7 +26,7 @@ constexpr float angular_weighted_tolerance = 1e-6F;
 using Block = Panda::ConfigurationBlock<lanes>;
 // Sphere indices are the pinned upstream panda_spherized.urdf order:
 // 0 fixed base; 1..36 arm; 37..54 palm; 55..58 fingers.
-// Fingers have no environment veto, including stationary surfaces.
+// Contact motion exempts fingers; free approach uses their measured aperture.
 constexpr int first_arm_sphere=1, first_palm_sphere=37, first_finger_sphere=55;
 struct Scene {
     std::shared_ptr<CAPT> stationary, moving, contact;
@@ -39,6 +39,8 @@ struct Scene {
     float orientation_tolerance=0.F;
     std::array<float,7> lower,upper;
     bool articulated=false, allow_contact=true, allow_palm_contact=false;
+    bool check_fingers=false;
+    std::array<std::array<float,4>,4> finger_model{};
     float goal_angle=0;
     bool aligned_jaws=true;
     int grasp_constraint=0;
@@ -63,11 +65,20 @@ std::shared_ptr<CAPT> tree(const float* xyz,int n,float radius) {
 bool gripper_scene_clear(Scene& s,const Eigen::Matrix3f& rotation,
                          const Eigen::Vector3f& translation) {
     const std::array<std::shared_ptr<CAPT>,3> trees={s.stationary,s.moving,s.contact};
-    for(size_t i=0;i<s.gripper.size();++i) {
-        const auto& g=s.gripper[i];
+    auto geometry=s.gripper;
+    if(s.check_fingers) {
+        const auto point=[&](int i) {return Eigen::Vector3f(s.gripper[i][0],s.gripper[i][1],s.gripper[i][2]);};
+        const Eigen::Vector3f base=point(0),u=point(3)-base,v=point(8)-base;
+        for(const auto& f:s.finger_model) {
+            const Eigen::Vector3f center=base+f[0]*u+f[1]*v+f[2]*u.cross(v);
+            geometry.push_back({center.x(),center.y(),center.z(),f[3],0.F});
+        }
+    }
+    for(size_t i=0;i<geometry.size();++i) {
+        const auto& g=geometry[i];
         const Eigen::Vector3f center=rotation*Eigen::Vector3f(g[0],g[1],g[2])+translation;
         for(int surface=0;surface<3;++surface) {
-            if(!trees[surface] || (surface==2 && s.allow_palm_contact)) continue;
+            if(!trees[surface] || (surface==2 && i<s.gripper.size() && s.allow_palm_contact)) continue;
             if(trees[surface]->collides(Point{center.x(),center.y(),center.z()},g[3])) {
                 s.last_part=first_palm_sphere+int(i);s.last_surface=surface;
                 if(surface==0) ++s.static_rejects;else ++s.moving_rejects;
@@ -115,11 +126,20 @@ struct ObservedPanda : Panda {
         }
         std::array<V,12> transform;
         if(s.articulated) for(int i=0;i<12;++i) transform[i]=V(transforms[i]);
-        for(int i=first_arm_sphere;i<first_finger_sphere;++i) {
+        for(int i=first_arm_sphere;i<(s.check_fingers?59:first_finger_sphere);++i) {
             std::array<V,3> centers={V(spheres.x[i]),V(spheres.y[i]),V(spheres.z[i])};
-            const V radius(spheres.r[i]);
+            V radius(spheres.r[i]);
+            if(i>=first_finger_sphere) {
+                const std::array<V,3> base={V(spheres.x[37]),V(spheres.y[37]),V(spheres.z[37])};
+                const std::array<V,3> u={V(spheres.x[40])-base[0],V(spheres.y[40])-base[1],V(spheres.z[40])-base[2]};
+                const std::array<V,3> v={V(spheres.x[45])-base[0],V(spheres.y[45])-base[1],V(spheres.z[45])-base[2]};
+                const auto& f=s.finger_model[i-first_finger_sphere];
+                for(int j=0;j<3;++j) centers[j]=base[j]+V(f[0])*u[j]+V(f[1])*v[j]
+                    +V(f[2])*(u[(j+1)%3]*v[(j+2)%3]-u[(j+2)%3]*v[(j+1)%3]);
+                radius=V(f[3]);
+            }
             auto blocked=[&](int surface,const std::shared_ptr<CAPT>& cloud,const std::array<V,3>& points) {
-                if(!cloud || (surface==2 && i>=first_palm_sphere && s.allow_palm_contact)) return false;
+                if(!cloud || (surface==2 && i>=first_palm_sphere && i<first_finger_sphere && s.allow_palm_contact)) return false;
                 if(!cloud->collides_simd(points,radius)) return false;
                 s.last_part=i;s.last_surface=surface;
                 if(surface==0) ++s.static_rejects;else ++s.moving_rejects;
@@ -258,6 +278,7 @@ void mcvamp_configure(Scene* s,const float* config,const float* gripper,int ng) 
     s->pad_local=Eigen::Map<const Eigen::Vector3f>(config+25);
     std::copy_n(config+28,7,s->lower.begin()); std::copy_n(config+35,7,s->upper.begin());
     s->articulated=config[42]>.5; s->allow_contact=config[43]>.5;
+    s->check_fingers=false;
     std::array<float,7> reference;
     std::copy_n(config+44,7,reference.begin());
     s->reference_rotation=(Panda::eefk(reference)[0].matrix()*s->eef_to_tcp).block<3,3>(0,0);
@@ -308,6 +329,10 @@ int mcvamp_set_grasp_constraint(void* p,int mode) {
 }
 void mcvamp_set_palm_contact(void* p,int enabled) {
     static_cast<Scene*>(p)->allow_palm_contact=bool(enabled);
+}
+void mcvamp_set_finger_model(void* p,const float* model) {
+    auto& s=*static_cast<Scene*>(p);s.check_fingers=true;
+    for(int i=0;i<4;++i) std::copy_n(model+4*i,4,s.finger_model[i].begin());
 }
 int mcvamp_set_position_tolerance(void* p,float tolerance) {
     if(!std::isfinite(tolerance) || tolerance<=0.F) return 0;

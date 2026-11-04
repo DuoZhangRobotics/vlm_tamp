@@ -26,6 +26,7 @@ def main() -> None:
     """Keep diagnostic early finish distinct from a full-task evaluation."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--study", type=Path, required=True)
+    parser.add_argument("--full-episode", action="store_true", help="Run normal 600-control episodes with recovery.")
     args = parser.parse_args()
     study = args.study.resolve()
     study.mkdir(exist_ok=True)
@@ -35,15 +36,16 @@ def main() -> None:
     wait_for_capacity(study, "live-push-model-load")
     frozen = source_hashes()
     manifest = {
-        "scope": "One live push diagnostic per previously used state; not a full-task success-rate comparison",
+        "scope": ("Fresh 600-control task evaluations on two previously used states" if args.full_episode else
+                  "One live push diagnostic per previously used state; not a full-task success-rate comparison"),
         "states": [17, 49],
         "model": "gpt-6-luna",
         "reasoning": "high",
         "molmo2": "allenai/Molmo2-8B",
         "control_steps": 600,
         "agent_seconds": 1800,
-        "one_push_requested_per_actor": True,
-        "voluntary_finish_after_diagnostic": True,
+        "one_push_requested_per_actor": not args.full_episode,
+        "voluntary_finish_after_diagnostic": not args.full_episode,
         "prior_memory_supplied": False,
         "closing_direction_supplied": False,
         "native_geometry_supplied": False,
@@ -80,12 +82,12 @@ def main() -> None:
                     "--pointing-socket",
                     str(endpoint),
                     "--prompt-file",
-                    str(ROOT / "prompts/push_contact_probe.txt"),
+                    str(ROOT / ("prompts/push_approach_evaluation.txt" if args.full_episode else "prompts/push_contact_probe.txt")),
                 ],
                 control_steps=600,
                 episode_seconds=1800,
             )
-            command.remove("--persistent-episode")
+            if not args.full_episode:command.remove("--persistent-episode")
             manifest["active_run"] = name
             write(study / "probe-manifest.json", manifest)
             render(study)

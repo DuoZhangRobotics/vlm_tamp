@@ -83,7 +83,8 @@ def calibrated_frames(record):
 class NativeScene:
     """A process-local CAPT context. It is never passed to the executor."""
     def __init__(self,scene,record,metadata,reference_q,goal_angle,*,articulated=True,aligned=True,
-                 allow_contact=True,point_radius=0.,gripper_padding=0.,output=None,grasp_constraint='point',collision_policy=None):
+                 allow_contact=True,point_radius=0.,gripper_padding=0.,output=None,grasp_constraint='point',collision_policy=None,
+                 check_fingers=False):
         if grasp_constraint not in {'point','rigid','jaw_axis'}:
             raise ValueError('Unknown grasp constraint')
         self.grasp_constraint=grasp_constraint
@@ -112,6 +113,7 @@ class NativeScene:
         self.lib.mcvamp_create_reusing_static.restype=ctypes.c_void_p
         self.lib.mcvamp_create_reusing_static.argtypes=[ctypes.c_void_p,FLOAT,ctypes.c_int,FLOAT,ctypes.c_int,FLOAT,FLOAT,ctypes.c_int]
         self.lib.mcvamp_set_palm_contact.argtypes=[ctypes.c_void_p,ctypes.c_int]
+        self.lib.mcvamp_set_finger_model.argtypes=[ctypes.c_void_p,FLOAT]
         self.lib.mcvamp_set_position_tolerance.argtypes=[ctypes.c_void_p,ctypes.c_float]
         self.lib.mcvamp_set_orientation_tolerance.argtypes=[ctypes.c_void_p,ctypes.c_float]
         self.lib.mcvamp_constraint_error.argtypes=[ctypes.c_void_p,FLOAT,FLOAT,DOUBLE]
@@ -190,6 +192,11 @@ class NativeScene:
         if not self.lib.mcvamp_set_grasp_constraint(self.handle,{'point':0,'rigid':1,'jaw_axis':2}[grasp_constraint]):
             self.close();raise RuntimeError('Could not configure grasp constraint')
         self.lib.mcvamp_set_palm_contact(self.handle,int(allow_contact and contact_surface=='palm'))
+        self.finger_model=None
+        if check_fingers:
+            from .vamp_sphere_model import finger_environment_model
+            self.finger_model=finger_environment_model(metadata,self.world_robot)
+            self.lib.mcvamp_set_finger_model(self.handle,_pointer(_f(self.finger_model['coefficients'])))
         self.record={'planner':'MC-VAMP CRRTC','upstream_revision':build['upstream_revision'],
             'stationary_index_reused':bool(reused or pinned),'maximum_cached_scene_templates':2,
             'environment_collision_policy':self.collision_policy,'observed_point_counts':observed_counts,
@@ -246,6 +253,11 @@ class NativeScene:
             finger_environment_collision_checked=False,palm_contact_allowed=allow_contact and contact_surface=='palm',
             contact_association_m=.0035,bar_contact_distance_m=None,local_mount_distance_m=None,
             local_mount_plane_association_extra_m=None)
+        if check_fingers:
+            self.record.update(contact_exemption='none during free-space approach',
+                finger_environment_collision_checked=True, finger_body_target_contact_allowed=False,
+                proximal_fingers_checked=True, proximal_fingers_checked_against_other_surfaces=True,
+                finger_environment_spheres=list(range(55,59)), finger_model=self.finger_model)
         update=getattr(scene,'pose_update',None)
         if update is not None:
             self.record.update(contact_geometry_source='observed endpoints transported to the current query frame',
@@ -279,7 +291,12 @@ class NativeScene:
         index=report.get('blocking_sphere_index')
         if index is not None:
             from .vamp_sphere_model import native_spheres
-            sphere=native_spheres(q)[index].copy()
+            spheres=native_spheres(q)
+            if index>=55 and self.finger_model is not None:
+                base,first,second=spheres[[37,40,45],:3];u,v=first-base,second-base
+                a,b,c,r=self.finger_model['coefficients'][index-55]
+                sphere=np.r_[base+a*u+b*v+c*np.cross(u,v),r]
+            else:sphere=spheres[index].copy()
             sphere[:3]=self.world_robot[:3,:3]@sphere[:3]+self.world_robot[:3,3]
             report['blocking_sphere_world_m']=sphere.tolist()
             if report['last_rejected_surface'] in (1,2):

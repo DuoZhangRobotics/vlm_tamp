@@ -149,6 +149,34 @@ def feedback_camera_names(tracker,requested,available,previous=()):
     return list(previous) if set(names)==set(previous) else names
 
 
+def approach_overlay(service: Any, engagement: dict[str, Any], folder: Path) -> list[str]:
+    """Project the two planned pad paths on each current view; never label them execution."""
+    images=[]
+    for name,view in service.cameras.items():
+        if name not in {'agentview','wrist'}:continue
+        img=Image.fromarray(view['rgb']).copy();draw=ImageDraw.Draw(img)
+        camera_world=np.linalg.inv(np.asarray(view['camera_to_world']));intrinsic=np.asarray(view['intrinsic'])
+        for field,color in [('free_path','#258bff'),('insertion_path','#00bb77')]:
+            path=np.asarray(engagement[field])
+            if len(path)<2:continue
+            path=path[np.unique(np.linspace(0,len(path)-1,min(128,len(path))).astype(int))]
+            transforms=[pose_matrix(service.ik.chain.forward(q)) for q in path]
+            points=np.asarray([t[:3,3]+t[:3,:3]@engagement['contact_local'] for t in transforms])
+            points=transform_points(points,camera_world)
+            for first,second in zip(points[:-1],points[1:]):
+                if min(first[2],second[2])<=0:continue
+                pixels=np.vstack([first,second])@intrinsic.T;pixels=pixels[:,:2]/pixels[:,2,None]
+                draw.line([tuple(p) for p in pixels],fill=color,width=3)
+            if points[-1,2]>0:
+                p=intrinsic@points[-1];x,y=p[:2]/p[2]
+                draw.ellipse((x-5,y-5,x+5,y+5),outline=color,width=3)
+        draw.text((8,8),'PLANNED pad path: blue = free | green = contact approach',
+                  fill='white',stroke_width=1,stroke_fill='black')
+        target=folder/f'approach-{name}.png';img.save(target)
+        images.append(str(target.relative_to(service.workspace)))
+    return images
+
+
 def run_skill(
     service: Any,
     kind: str,
@@ -276,7 +304,7 @@ def run_skill(
     result['collision_policy']=collision_policy
     result['contact_motion_policy']='ik_push_with_physical_execution_feedback' if kind=='push' else 'collision_aware_contact_ik'
     result['stroke_scene_collision_veto']=kind!='push'
-    result['collision_check_scope']=('Environment collision checked for initial contact acquisition; push strokes use IK and simulator contact'
+    result['collision_check_scope']=('Free approach: arm, palm and measured-aperture fingers; contact approach: arm/palm, fingers allowed; push: IK and simulator contact'
         if kind=='push' else 'cuRobo IK endpoints; no extra returned-path collision pass')
     result['object_progress_is_execution_gate']=not hand_distance_request
     result['joint_progress_requires_object_tracking']=physical_push and joint_degrees is not None
@@ -390,7 +418,7 @@ def run_skill(
             except Exception as error:
                 result['environment_collision_predictions'].setdefault('diagnostic_errors',[]).append(str(error))
             timing['advisory_collision_prediction_seconds']+=time.perf_counter()-phase
-        result['search']={k:v for k,v in engagement.items() if k not in {'path','references','free_references','insertion_references','rotation','contact_local','contact_world','insertion_direction'}}
+        result['search']={k:v for k,v in engagement.items() if k not in {'path','free_path','insertion_path','references','free_references','insertion_references','rotation','contact_local','contact_world','insertion_direction'}}
         result['search']['ik_seconds_nested']=engagement['timing_seconds'].get('ik_seconds',0.)
         if engagement.get('selection_geometry'):
             result['selection_geometry']=engagement['selection_geometry']
@@ -404,6 +432,9 @@ def run_skill(
         _overlay(service,camera,region_xyxy,target_region_xyxy,engagement['contact_world'],direction,root/'contact.png',
             surface_normal_world=surface_normal)
         result['estimated_approach_control_steps']=len(engagement['references'])
+        if engagement.get('approach'):
+            result['approach_plan']=engagement['approach']
+            result['approach_images']=approach_overlay(service,engagement,root)
         result['robot_valid_plan_available']=True
         result['estimated_approach_simulation_seconds']=len(engagement['references'])/20
         np.save(root/'approach-path.npy',engagement['path'])
@@ -501,11 +532,13 @@ def run_skill(
             if feedback is not None:
                 feedback_history=reply['execution'].get('push_feedback',{}).pop('_continuation_history',[])
             if reply['execution']['issued_commands']:geometry_current=False
-            executed=True;timing['execution_and_capture_seconds']+=time.perf_counter()-phase
+            execution_seconds=time.perf_counter()-phase
+            executed=True;timing['execution_and_capture_seconds']+=execution_seconds
             events=service.events[before:]
             phase=time.perf_counter()
             stage={'stage':label,'artifact_id':service.calls,'control_steps':service.state['control_steps'],
-                'execution':reply['execution'],'measured_contact_speed':measured_contact_speed(events,service.ik.chain if service.ik else chain,contact_local,q)}
+                'execution':reply['execution'],'measured_contact_speed':measured_contact_speed(events,service.ik.chain if service.ik else chain,contact_local,q),
+                'execution_and_capture_seconds':execution_seconds}
             if 'visual_comparison' in reply:stage['visual_comparison']=reply['visual_comparison']
             if 'arrival' in reply['execution']:
                 stage['arrival']=reply['execution']['arrival']
@@ -607,6 +640,7 @@ def run_skill(
                 planned_point=point.copy()
                 planned_normal=surface_normal.copy() if surface_normal is not None else None
                 stage=issue(engagement['free_references'],label,
+                    finger_environment_collision_checked=bool(engagement.get('approach')),
                     arrival={'maximum_wait_steps':approach_wait_steps,'contact_local_m':contact_local.tolist(),
                         **({'contact_normal_local':contact_normal_local.tolist()} if contact_constraint=='surface_normal' else {})})
                 result['approach_arrival']=stage['execution']['arrival']
@@ -615,6 +649,17 @@ def run_skill(
                     raise SkillStop('approach_not_reached',arrival=result['approach_arrival'],
                         push_stroke_issued=False,physical_infeasibility_proved=False,
                         explanation='The measured arm did not reach the selected approach goal. Remaining references and the push were not issued. Inspect the current pose/contact or select a different explicit pose.')
+                if len(engagement['insertion_references']):
+                    label='contact-approach' if not handoff['approaches'] else f'contact-reacquisition-touch-{handoff["reacquisitions"]}'
+                    stage=issue(engagement['insertion_references'],label,
+                        finger_environment_collision_checked=False,
+                        arrival={'maximum_wait_steps':approach_wait_steps,'contact_local_m':contact_local.tolist(),
+                            **({'contact_normal_local':contact_normal_local.tolist()} if contact_constraint=='surface_normal' else {})})
+                    result['approach_arrival']=stage['execution']['arrival']
+                    if not result['approach_arrival']['goal_reached']:
+                        handoff['status']='contact_approach_not_reached'
+                        raise SkillStop('contact_approach_not_reached',arrival=result['approach_arrival'],
+                            push_stroke_issued=False,physical_infeasibility_proved=False)
                 measured=observe_motion(tracker);stage['object_motion']=measured
                 old_point=point.copy()
                 if measured['accepted']:update_motion(measured)

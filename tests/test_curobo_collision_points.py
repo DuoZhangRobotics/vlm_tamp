@@ -87,3 +87,28 @@ def test_native_distance_gradient_matches_point_geometry(native_query):
     assert result.max().item() == pytest.approx(.024-np.sqrt(.0002), abs=1e-7)
     np.testing.assert_allclose(spheres.grad[0, 0, 14, :3].cpu().numpy(),
                                [-np.sqrt(.5), -np.sqrt(.5), 0.], atol=1e-6)
+
+
+@pytest.mark.parametrize('role',['stationary','moving','contact'])
+def test_finger_phase_and_measured_geometry_updates_survive_warm_cuda_graph(native_query,role):
+    """A warm optimizer sees changed finger permissions and aperture, without recreation."""
+    scene,spheres,query=native_query
+    spheres[0,0,37,:3]=torch.tensor([.02,0,0],device=spheres.device)
+    spheres[0,0,40,:3]=torch.tensor([.02,1,0],device=spheres.device)
+    spheres[0,0,45,:3]=torch.tensor([.02,0,1],device=spheres.device)
+    spheres[0,0,[37,40,45],3]=.001
+    model={'coefficients':[[0,0,0,.024],[0,0,0,.024],[1,1,0,.024],[1,1,0,.024]]}
+    points=clouds(role,[[0.,0.,0.]])
+    scene.update(points,palm_contact=False,finger_model=model)
+    for _ in range(3):query()
+    torch.cuda.synchronize();graph=torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):result=query()
+    graph.replay()
+    assert result.max().item()==pytest.approx(.004,abs=1e-7)
+    scene.update(points,palm_contact=False)
+    graph.replay();assert result.max().item()==0.
+    scene.update(points,palm_contact=False,finger_model=model)
+    graph.replay();assert result.max().item()==pytest.approx(.004,abs=1e-7)
+    model['coefficients'][0][0]=1.;model['coefficients'][1][0]=1.
+    scene.update(points,palm_contact=False,finger_model=model)
+    graph.replay();assert result.max().item()==0.

@@ -89,6 +89,7 @@ def case_report(study: Path, entry: dict) -> dict:
                 ),
                 {},
             )
+            stage_record=next((s for s in value.get('stages',[]) if s['stage']==phase['stage']),{})
             phases.append(
                 {
                     **phase,
@@ -101,6 +102,8 @@ def case_report(study: Path, entry: dict) -> dict:
                     if change is not None
                     else "unavailable",
                     "execution": brief_evidence(execution),
+                    "finger_environment_collision_checked":stage_record.get('finger_environment_collision_checked'),
+                    "execution_and_capture_seconds":stage_record.get('execution_and_capture_seconds'),
                 }
             )
         whole = value.get("visual_comparison", {})
@@ -128,6 +131,8 @@ def case_report(study: Path, entry: dict) -> dict:
                 "approach_arrival": value.get("approach_arrival"),
                 "motion_arrival": value.get("motion_arrival"),
                 "images": value.get("images", []),
+                "approach_images":value.get('approach_images',[]),
+                "approach_plan":value.get('approach_plan'),
                 "timing_seconds": value.get("timing_seconds", {}),
                 "search": brief_evidence(value.get("search")),
                 "diagnostic": brief_evidence(value.get("diagnostic")),
@@ -191,7 +196,7 @@ def render(study: Path, *, with_resources: bool = False) -> None:
         },
         "resources": audit,
         "operator_diagnosis":optional(study/'diagnosis.json',{}),
-        "summary": "One live push per case: Luna chooses rotation and contact; Molmo2 proposes the point; measured face geometry informs the preview. Approach and stroke effects are scored separately after the actor finishes.",
+        "summary": manifest['scope']+". Luna selects contact and motion. Free approach, contact approach and strokes are scored separately after the actor finishes.",
     }
     (study / "summary.json").write_text(
         json.dumps(data, separators=(",", ":"), allow_nan=False) + "\n"

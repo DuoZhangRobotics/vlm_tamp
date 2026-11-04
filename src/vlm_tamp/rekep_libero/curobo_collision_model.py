@@ -34,7 +34,7 @@ def calibrated_spheres(chain, robot, world_robot=None, *, include_self=False):
         spheres['tcp'].extend({'center': c.tolist(), 'radius': float(r)} for c, r in zip(local, values[55:59, 3]))
         groups[-1]['native_indices'].extend(range(55, 59))
     return spheres, {'groups': groups, 'sphere_count': sum(map(len, spheres.values())),
-        'scope': 'Upstream VAMP arm and palm spheres; fingers exempt from all environment surfaces',
+        'scope': 'Upstream VAMP spheres; measured finger placement and environment permissions supplied per phase',
         'robot_geometry_shared_with_native_planner': True, 'simulator_object_geometry_used': False}
 
 

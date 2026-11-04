@@ -99,6 +99,11 @@ free. It does not carry the whole hand rigidly with the door. Choose rigid to
 request that attachment relation, or jaw_axis to retain only the closing axis.
 The planner's returned path is used without an extra dense validation pass.
 Free approaches use measured progress and report execution.arrival.goal_reached.
+Targeted push first plans to the selected face's outward side with finger
+collisions checked, then makes a straight contact approach allowing finger contact.
+Approach travel uses the measured hand extent, with zero added collision padding.
+Point-only pushes use the opposite of the requested push direction as approach side.
+Preview approach_plan/approach_images show this route; they do not verify task intent.
 Sending all nominal commands does not establish arrival. A targeted push or
 sequence closure starts only after its approach has physically reached its goal.
 If RGB-D tracks the selected target moving during approach, targeted contact
@@ -385,6 +390,8 @@ def compact_response(response):
                 'desired_robot_contact_normal_world','robot_contact_normal_world','normal_error_degrees',
                 'requested_motion_dot_outward_normal','current_contact_signed_plane_offset_m','pose_source',
                 'pose_control_step','surface_pose_current','surface_reference_control_step','wrist_twist','joint_prediction'))
+        for field in ('approach_plan','approach_images'):
+            if field in value:result[field]=value[field]
         if value.get('selection_geometry'):
             result['selection_geometry']=pick(value['selection_geometry'],('surface_normal_world','contact_effect',
                 'initial_robot_contact_signed_plane_offset_m','requested_motion_dot_outward_normal',

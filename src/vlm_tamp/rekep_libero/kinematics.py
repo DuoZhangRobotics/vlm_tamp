@@ -176,6 +176,8 @@ class PandaIK:
             position = data.geom_xpos[geom_id]
             common = {"type": local["type"], "fixed": local["fixed"], "robot_geom_name": local["robot_geom_name"],
                       "source": "configured robot collision geometry",
+                      "body_pose_world_xyzw": [*data.xpos[self.model.geom_bodyid[geom_id]].tolist(),
+                          *Rotation.from_matrix(data.xmat[self.model.geom_bodyid[geom_id]].reshape(3,3)).as_quat().tolist()],
                       "physical_collision_masks": {
                           "contype": int(self.model.geom_contype[geom_id]),
                           "conaffinity": int(self.model.geom_conaffinity[geom_id])}}
