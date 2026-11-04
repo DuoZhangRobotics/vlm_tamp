@@ -6,11 +6,11 @@ successful coordinate, object mesh or scripted task sequence enters the tool.
 
 1. The requested surface normal defines the outward side. Point-only requests use the
    opposite of their explicitly requested push direction for approach, without inventing a normal.
-2. One hand extent defines the travel from a precontact point to the selected point. The
-   surface-normal mode uses the hand's projected extent; point-only mode uses its bounding-box
-   diagonal because wrist orientation remains free. This is approach travel, not inflated
-   obstacles or an added clearance margin. Both the extent and the chosen side are returned.
-3. cuRobo solves the precontact goal with arm, palm and finger scene collisions enabled.
+2. cuRobo first solves the selected contact point with contact permitted. For each solved
+   hand pose, the minimum translation along the outward normal places every hand sphere
+   outside the reference plane. No full-hand-length stand-off, minimum distance or margin
+   is added. A hand already outside the plane needs zero translation.
+3. cuRobo solves that precontact goal with arm, palm and finger scene collisions enabled.
    VAMP plans the free-space route using the same observed points and sphere model.
 4. A straight cuRobo continuation approaches the original selected point at 3 cm/s. Finger
    contact is allowed; arm/palm permissions follow the existing contact policy. The observed
@@ -34,7 +34,12 @@ geometry can still produce a physically incorrect plan. A correct approach also 
 establish whether Luna chose the correct face or task direction.
 
 Validation and fresh state-17/state-49 results are recorded in
-`results/luna-approach-collision-20261104/watch.html`. The full-episode protocol holds the
+`results/luna-approach-minimal-20261104/watch.html`. The full-episode protocol holds the
 600-control limit, Luna/high, two native cameras and fresh memory condition. The existing
 32 GiB cgroup, zero swap and RAM/I/O/SSH monitoring remain active. This is a two-state
 engineering evaluation, not evidence of transfer to new task families.
+
+The initial whole-hand-extent version is preserved at
+`results/luna-approach-collision-20261104/watch.html`. It consumed 332 controls in two
+24.8 cm contact approaches in state 49. That unnecessary travel motivated the geometric-minimum
+translation above; no successful coordinates or direction from that evaluation enter new actors.

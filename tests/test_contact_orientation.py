@@ -20,17 +20,28 @@ from test_retained_push_contact import contact_service as service_fixture, call
 
 
 @pytest.mark.parametrize('normal',[[1.,0,0],[-1.,0,0],[0,0,1.],[0,1.,0]])
-def test_approach_uses_the_selected_side_and_robot_extent(normal: list[float]) -> None:
-    """Flipping a face reverses approach without changing task or object identity."""
+def test_approach_uses_the_minimum_hand_plane_translation(normal: list[float]) -> None:
+    """Every sphere is outside, and any shorter translation intersects the plane."""
     from vlm_tamp.contact_orientation import approach_geometry
     hand=np.array([[0,0,-.08,.02],[0,0,-.01,.012]])
     point=np.array([.3,-.5,1.1])
-    result=approach_geometry(point,normal,hand,[0,0,1])
-    assert result['approach_distance_m']==pytest.approx(.102)
-    np.testing.assert_allclose(result['precontact_point_world_m'],point+.102*np.asarray(normal))
+    rotation=frame_with_z(-np.asarray(normal))
+    result=approach_geometry(point,normal,hand,[0,0,0],rotation)
+    assert result['approach_distance_m']==pytest.approx(.002)
+    np.testing.assert_allclose(result['precontact_point_world_m'],point+.002*np.asarray(normal))
+    gaps=hand[:,:3]@rotation.T@np.asarray(normal)-hand[:,3]+result['approach_distance_m']
+    assert min(gaps)==pytest.approx(0.,abs=1e-12)
+    assert min(gaps-.00001)<0
     np.testing.assert_allclose(result['approach_direction_world'],-np.asarray(normal))
     assert result['collision_padding_m']==0
     assert not result['task_direction_verified']
+
+
+def test_approach_adds_no_standoff_when_the_hand_already_clears_the_plane() -> None:
+    """There is no minimum travel, tolerance reserve or full-hand-length buffer."""
+    from vlm_tamp.contact_orientation import approach_geometry
+    result=approach_geometry([0,0,0],[0,0,1],[[0,0,.02,.01]],[0,0,0],np.eye(3))
+    assert result['approach_distance_m']==0.
 
 worker_scene = worker_fixture
 contact_service = service_fixture

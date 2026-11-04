@@ -47,24 +47,23 @@ def frame_with_z(normal: Sequence[float]) -> np.ndarray:
 
 def approach_geometry(point: Sequence[float], normal: Sequence[float],
                       hand_spheres_tcp: Sequence[Sequence[float]],
-                      contact_normal_local: Sequence[float] | None) -> dict[str, Any]:
-    """Use one hand extent as approach travel, with no obstacle inflation.
+                      contact_local: Sequence[float], rotation_world: np.ndarray) -> dict[str, Any]:
+    """Translate the solved hand just outside the contact plane, without a margin.
 
-    A signed face normal selects the outside. A point-only request instead uses
-    its explicit motion direction and an orientation-independent hand extent.
+    The sphere support along the selected outward normal determines the minimum
+    translation. Zero is valid when the complete hand already lies outside.
     """
     outward = normal_vector(normal)
     hand = np.asarray(hand_spheres_tcp, float)
-    if contact_normal_local is not None:
-        projection = hand[:,:3]@normal_vector(contact_normal_local)
-        distance = float(np.max(projection+hand[:,3])-np.min(projection-hand[:,3]))
-    else:
-        distance = float(np.linalg.norm(np.max(hand[:,:3]+hand[:,3:4],axis=0)
-                                        -np.min(hand[:,:3]-hand[:,3:4],axis=0)))
+    offsets=(hand[:,:3]-np.asarray(contact_local))@np.asarray(rotation_world).T
+    gaps=offsets@outward-hand[:,3]
+    distance=max(0.,-float(np.min(gaps)))
     return {'contact_point_world_m': np.asarray(point).tolist(),
             'precontact_point_world_m': (np.asarray(point)+distance*outward).tolist(),
             'outward_direction_world': outward.tolist(), 'approach_direction_world': (-outward).tolist(),
-            'approach_distance_m': distance, 'distance_source': 'measured-aperture hand sphere extent',
+            'approach_distance_m': distance,
+            'distance_source': 'minimum translation of solved hand spheres to the outward plane half-space',
+            'minimum_sphere_plane_gap_at_contact_m':float(np.min(gaps)),
             'collision_padding_m': 0., 'free_space_finger_collision_checked': True,
             'contact_motion_finger_collision_checked': False,
             'task_direction_verified': False}

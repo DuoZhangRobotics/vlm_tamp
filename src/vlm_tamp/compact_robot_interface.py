@@ -101,7 +101,8 @@ The planner's returned path is used without an extra dense validation pass.
 Free approaches use measured progress and report execution.arrival.goal_reached.
 Targeted push first plans to the selected face's outward side with finger
 collisions checked, then makes a straight contact approach allowing finger contact.
-Approach travel uses the measured hand extent, with zero added collision padding.
+Contact IK is solved first; approach travel is the minimum outward translation
+of that solved hand to clear the face plane, with zero added distance/padding.
 Point-only pushes use the opposite of the requested push direction as approach side.
 Preview approach_plan/approach_images show this route; they do not verify task intent.
 Sending all nominal commands does not establish arrival. A targeted push or

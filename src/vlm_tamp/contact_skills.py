@@ -415,24 +415,17 @@ def plan_engagement(
             raise SkillStop('no_hookable_feature',reason_detail='Selected depth samples contain no retaining thickness')
         if name is None or not name.endswith('_pad_collision'):
             raise ValueError('Choose an inward-facing pad contact_name for a non-pinching hook')
-    approach={};approach_point=point.copy()
+    approach={};precontact_queries=path_queries=0
     with skill_native_scene(scene,record,metadata,q,allow_contact=kind!='push',check_fingers=kind=='push') as context:
-        ik.configure_scene(context)
+        phase=time.perf_counter()
+        if kind=='push':ik.configure_observed_scene(scene)
+        else:ik.configure_scene(context)
+        timing['ik_scene_setup_seconds']+=time.perf_counter()-phase
         phase=time.perf_counter()
         constraint=evidence.get('contact_constraint','point')
         normal_arguments=({'contact_constraint':constraint,'surface_normal_world':evidence['surface_normal_world']}
             if constraint=='surface_normal' else {})
-        if kind=='push':
-            from .surface_contact_tools import contact_pose_candidates
-            from .contact_orientation import approach_geometry
-            selected_contact=contact_pose_candidates(metadata,point,contact_name=name,**normal_arguments)[0]
-            approach=approach_geometry(point,
-                evidence['surface_normal_world'] if constraint=='surface_normal' else -unit(evidence['direction_world']),
-                context.finger_model['hand_spheres_tcp'],
-                selected_contact['contact_normal_local'] if constraint=='surface_normal' else None)
-            approach['side_source']='selected_surface_normal' if constraint=='surface_normal' else 'opposite_requested_push_direction'
-            approach_point=np.asarray(approach['precontact_point_world_m'])
-        candidate,solutions=contact_solutions(ik,metadata,approach_point,name,**normal_arguments)
+        candidate,solutions=contact_solutions(ik,metadata,point,name,**normal_arguments)
         timing['ik_seconds']+=time.perf_counter()-phase
         selection={}
         reference_normal=evidence.get('surface_normal_world') if constraint=='surface_normal' else evidence.get('normal_toward_camera_world')
@@ -447,9 +440,34 @@ def plan_engagement(
         budget.check()
         for solution in solutions:
             budget.check();phase=time.perf_counter()
-            path,report=context.plan(q,solution['joints'],constrained=False,seconds=min(8.,budget.remaining))
+            free_goal=solution['joints']
+            if kind=='push':
+                from .contact_orientation import approach_geometry
+                contact_pose=pose_matrix(ik.chain.forward(solution['joints']))
+                approach=approach_geometry(point,
+                    evidence['surface_normal_world'] if constraint=='surface_normal' else -unit(evidence['direction_world']),
+                    context.finger_model['hand_spheres_tcp'],candidate['contact_local_m'],contact_pose[:3,:3])
+                approach['side_source']='selected_surface_normal' if constraint=='surface_normal' else 'opposite_requested_push_direction'
+                phase=time.perf_counter()
+                ik.configure_scene(context)
+                timing['ik_scene_setup_seconds']+=time.perf_counter()-phase;phase=time.perf_counter()
+                free_solution=ik.solve_contact(approach['precontact_point_world_m'],candidate['contact_local_m'],
+                    solution['joints'],contact_pose[:3,:3],environment_collision=True,
+                    **({'contact_normal_local':candidate['contact_normal_local'],
+                        'surface_normal_world':evidence['surface_normal_world']} if constraint=='surface_normal' else {}))
+                precontact_queries+=1
+                elapsed=time.perf_counter()-phase
+                timing['precontact_ik_seconds']+=elapsed;timing['ik_seconds']+=elapsed
+                if free_solution is None:
+                    attempts.append({'contact_joints':solution['joints'],'approach':approach,
+                        'planning':{'exact_solution':False,'status':'precontact_ik_failed'},
+                        'ik_diagnostic':ik.events[-1] if getattr(ik,'events',[]) else {}})
+                    continue
+                free_goal=free_solution['joints']
+            budget.check();phase=time.perf_counter();path_queries+=1
+            path,report=context.plan(q,free_goal,constrained=False,seconds=min(8.,budget.remaining))
             timing['approach_planning_seconds']+=time.perf_counter()-phase
-            attempts.append({'joints':solution['joints'],'planning':report})
+            attempts.append({'joints':free_goal,'contact_joints':solution['joints'],'planning':report,'approach':approach})
             if not report['exact_solution']:continue
             refs=schedule(path,maximum_joint_speed=scene.skill_approach_speed_rad_s,endpoint_hold_steps=0)
             free_path=path.copy();free_refs=refs
@@ -492,16 +510,17 @@ def plan_engagement(
                 'contact_model':{key:candidate[key] for key in ('robot_collision_geom',
                     'physical_collision_masks','initiates_simulator_contacts')},
                 'attempts':attempts,'candidate_index':0,'timing_seconds':dict(timing),
-                'search_work':{'contact_points':1,'ik_queries':1,'ik_solutions':len(solutions),'path_queries':len(attempts)},
+                'search_work':{'contact_points':1,'ik_queries':1+precontact_queries,'ik_solutions':len(solutions),'path_queries':path_queries},
                 'total_seconds':time.perf_counter()-began,'predicted_contact_only':True,
                 'native_contact_policy':context.record,'automatic_pose_adjustment':False}
-    raise SkillStop('contact_ik_failed' if not solutions else 'contact_path_not_found',
+    raise SkillStop('contact_ik_failed' if not solutions else 'precontact_ik_failed' if not path_queries else 'contact_path_not_found',
         ik_diagnostic=candidate.get('ik_diagnostic',{}),
         selection_geometry=selection,
         attempts=attempts,search_complete=True,global_infeasibility_proved=False,
         selected_pixel=evidence.get('contact_pixel_xy'),selected_contact=name,
         approach=approach,
-        timing_seconds=dict(timing),search_work={'contact_points':1,'ik_queries':1,'ik_solutions':len(solutions)})
+        timing_seconds=dict(timing),search_work={'contact_points':1,'ik_queries':1+precontact_queries,
+            'ik_solutions':len(solutions),'path_queries':path_queries})
 
 
 def fit_object_motion(first,second):

@@ -23,8 +23,9 @@ comparison is more informative than assuming a long hand stroke is task progress
   that face while leaving twist free. This does not set direction_world or the goal.
   plan_contact_pose also accepts a full quaternion_xyzw when you choose one.
   For push, VAMP plans free travel to the outward side with arm, palm and finger
-  collisions enabled. The approach distance is one measured-aperture hand extent;
-  it adds no collision padding. A separate straight contact approach follows at
+  collisions enabled. Contact IK is solved first. Approach travel is only the minimum outward
+  translation of that solved hand needed to clear the reference plane, with no
+  added distance or collision padding. A separate straight contact approach follows at
   3 cm/s, with finger contact allowed and arm/palm checked. The selected face normal
   chooses the approach side; point-only pushes approach opposite the explicitly
   requested push direction without inventing a surface normal. The observed scene
