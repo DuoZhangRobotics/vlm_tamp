@@ -90,6 +90,10 @@ def case_report(study: Path, entry: dict) -> dict:
                 {},
             )
             stage_record=next((s for s in value.get('stages',[]) if s['stage']==phase['stage']),{})
+            artifact=stage_record.get('artifact_id')
+            measured_timing=(optional(run/f'attempt01/{artifact:03d}-issue-timing.json',{})
+                             if artifact is not None else {})
+            measured_phases=measured_timing.get('phases',{})
             phases.append(
                 {
                     **phase,
@@ -104,6 +108,11 @@ def case_report(study: Path, entry: dict) -> dict:
                     "execution": brief_evidence(execution),
                     "finger_environment_collision_checked":stage_record.get('finger_environment_collision_checked'),
                     "execution_and_capture_seconds":stage_record.get('execution_and_capture_seconds'),
+                    "phase_timing_seconds":{
+                        "trajectory_worker":measured_timing.get('trajectory_worker_seconds_nested'),
+                        "capture":measured_phases.get('capture_seconds'),
+                        "visual_comparison":measured_phases.get('visual_comparison_seconds'),
+                        "total":measured_timing.get('total_seconds')},
                 }
             )
         whole = value.get("visual_comparison", {})
