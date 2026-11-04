@@ -12,6 +12,16 @@ from vlm_tamp.compact_robot_interface import compact_response, install, main, pr
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_contact_feedback_discloses_joint_tracking_dependency_and_backend() -> None:
+    display=compact_response({'ok':True,'result':{
+        'skill':'push','object_progress_is_execution_gate':True,
+        'joint_progress_requires_object_tracking':True,
+        'object_motion_tracker_class':'RGBDHingeTracker'}})
+    assert display['feedback']['object_progress_is_execution_gate'] is True
+    assert display['feedback']['joint_progress_requires_object_tracking'] is True
+    assert display['feedback']['object_motion_tracker_class']=='RGBDHingeTracker'
+
+
 def module_at(name, path):
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)

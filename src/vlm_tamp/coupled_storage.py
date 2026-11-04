@@ -7,7 +7,6 @@ import os
 from pathlib import Path
 import re
 import shutil
-import subprocess
 import weakref
 
 import numpy as np
@@ -44,6 +43,9 @@ def public_observation_dependencies(workspace, run=None):
                 except ValueError:continue
                 request=event.get('request',{});result=event.get('response',{}).get('result',{})
                 observation_numbers(request.get('arguments',{}))
+                if isinstance(result,dict):
+                    observation_numbers(result.get('visual_comparison',{}))
+                    observation_numbers(result.get('phase_visual_comparisons',[]))
                 observation=result.get('observation',result) if isinstance(result,dict) else {}
                 latest=observation.get('observation_id',latest)
                 if request.get('operation','').startswith('dino_') and type(latest) is int:numbers.add(latest)
@@ -102,7 +104,7 @@ def compact_public_observations(workspace, *, finished=False, run=None):
             if path in preserve:kept.append(row)
             else:
                 path.unlink();removed.append(row)
-    record={'policy':'First/latest exports and explicit measurement/reference/custom-analysis inputs; all RGB and text retained; keep all depth when dependencies are uncertain',
+    record={'policy':'First/latest exports, action-comparison boundaries and explicit measurement/reference/custom-analysis inputs; all RGB and text retained; keep all depth when dependencies are uncertain',
             'actor_finished_or_shutdown_verified':True,'kept':kept,'removed':removed,
             'raw_input_dependencies_uncertain':uncertain,'explicit_observation_ids':sorted(numbers),
             'bytes_reclaimed_this_pass':sum(row['bytes'] for row in removed),

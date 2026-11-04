@@ -137,3 +137,7 @@ Use the existing configured robotics environment and monitored launchers, saved 
 the live actor's tool contract. The next live test should use only past/current frames, retain
 both RGB streams and the required action-boundary depth, and keep task success separate from
 motion-judgment accuracy.
+
+Follow-up: [live push/contact diagnostics](live_push_contact_20261104.md). The physical probes
+did not close the doors and exposed action-grounding and live-tracker integration limitations;
+the offline 5/6 judgment result must not be treated as live manipulation success.

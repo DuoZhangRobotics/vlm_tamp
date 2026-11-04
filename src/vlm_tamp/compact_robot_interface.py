@@ -144,10 +144,13 @@ the task. Measured motion along a request can still move away from the goal.
 No new region, hinge model or preview is needed. Distance is the commanded hand
 stroke, executed as one stroke by default; measured object motion is separate.
 Other arm/gripper motion clears target association; push_stroke remains available.
-push modes: controlled; push_and_release. Controlled push insertion and strokes
-use physical execution feedback: observed scene collisions and uncertain object
-tracking do not veto them. World distance requests command hand travel as one
-stroke by default. Measured tracking lag holds the same reference; an unreached reference returns
+push modes: controlled; push_and_release. Controlled world-direction/distance
+strokes use physical execution feedback without a predicted-scene or object-tracking
+veto. Joint-progress requests use 1 cm increments by default and stop continuation
+when object motion is unresolved. Internal contact feedback uses RGBDHingeTracker
+optical flow; CoTracker3 is a separate explicit part-motion tool.
+World distance requests command hand travel as one stroke by default.
+Measured tracking lag holds the same reference; an unreached reference returns
 physical feedback without issuing the rest blindly. The final point goal must
 be reached for completion. No extra collision check is added. Free approaches, hooks and grasped planning retain their scene
 collision policy. Wrist RGB-D is included in push feedback. No extra dense validation.
@@ -299,6 +302,9 @@ def skill_feedback(value: dict) -> dict:
         'hand_reference_reached':arrival.get('goal_reached'),
         'measured_hand_travel_along_request_m':value.get('measured_contact_progress_m'),
         'object_motion_status':value.get('object_motion_status','unmeasured'),
+        'object_motion_tracker_class':value.get('object_motion_tracker_class'),
+        'joint_progress_requires_object_tracking':value.get('joint_progress_requires_object_tracking'),
+        'object_progress_is_execution_gate':value.get('object_progress_is_execution_gate'),
         'object_measurement_reason':latest.get('reason'),
         'object_measurement_control_step':latest.get('control_step'),
         'current_control_step':current,
@@ -358,6 +364,7 @@ def compact_response(response):
             'observation_cloud_reused','full_scene_builds','contact_searches','continuation',
             'tracking_reference_reused','tracking_reference_camera_count',
             'contact_motion_policy','stroke_scene_collision_veto','collision_check_scope','object_progress_is_execution_gate',
+            'joint_progress_requires_object_tracking','object_motion_tracker_class',
             'object_motion_status','object_progress_reference_control_step','planning_limit',
             'part_motion_evidence',
             'continue_push_available','next_operation','grasp_scene_refresh_required','scene_refresh_scope',

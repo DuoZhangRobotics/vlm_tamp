@@ -278,7 +278,8 @@ def run_skill(
     result['stroke_scene_collision_veto']=kind!='push'
     result['collision_check_scope']=('Environment collision checked for initial contact acquisition; push strokes use IK and simulator contact'
         if kind=='push' else 'cuRobo IK endpoints; no extra returned-path collision pass')
-    result['object_progress_is_execution_gate']=not physical_push
+    result['object_progress_is_execution_gate']=not hand_distance_request
+    result['joint_progress_requires_object_tracking']=physical_push and joint_degrees is not None
     result['environment_collision_predictions']={'count':0,'examples':[],
         'all_environment_states_checked':False,'collision_free_certificate':False}
     result['simulator_physical_contacts_enabled']=True
@@ -440,6 +441,7 @@ def run_skill(
         tracker=context.get('tracker') if context else None
         result['tracking_reference_reused']=tracker is not None and associated
         if tracker is None:tracker=ContactTracker(service.cameras,tracked_target,service.state['control_steps'])
+        result['object_motion_tracker_class']=type(tracker.tracker).__name__
         result['tracking_reference_camera_count']=len(tracker.tracker.references)
         timing['tracker_initialization_seconds']+=time.perf_counter()-phase
         view_names=[]

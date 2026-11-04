@@ -38,20 +38,23 @@ def test_history_is_bounded_ordered_and_has_no_sensor_numbers(tmp_path):
     assert hashes(tmp_path) == raw
 
 
-def test_motion_comparison_uses_only_fixed_existing_camera_images(tmp_path):
+def test_motion_comparison_includes_wrist_and_labels_its_camera_motion(tmp_path):
     for obs,step in [(1,60),(2,90)]:
         fixture(tmp_path,obs,step)
         folder=tmp_path/f'robot_data/attempt01/obs{obs:03d}'
         fixed={'camera_to_world':np.eye(4).tolist(),'intrinsic':np.eye(3).tolist()}
         wrist=json.loads(json.dumps(fixed))
         wrist['camera_to_world'][0][3]=obs*.1
-        (folder/'calibration.json').write_text(json.dumps({'frontview':fixed,'wrist':wrist}))
+        (folder/'calibration.json').write_text(json.dumps({'agentview':fixed,'wrist':wrist}))
+        (folder/'agentview.png').write_bytes((folder/'frontview.png').read_bytes())
         (folder/'wrist.png').write_bytes((folder/'frontview.png').read_bytes())
     original=hashes(tmp_path)
     result=motion_comparison(tmp_path,1,1,2)
-    assert result['available'] and result['cameras']==['frontview']
+    assert result['available'] and result['cameras']==['agentview','wrist']
+    assert not result['fixed_camera_poses'] and result['moving_cameras']==['wrist']
     meta=json.loads((tmp_path/result['metadata_file']).read_text())
-    assert [(v['observation_id'],v['control_steps']) for v in meta['views']]==[(1,60),(2,90)]
+    assert [(v['observation_id'],v['control_steps']) for v in meta['views']]==[(1,60),(2,90),(1,60),(2,90)]
+    assert all('camera moved' in v['label'] for v in meta['views'] if v['camera']=='wrist')
     assert not meta['semantic_interpretation_supplied'] and not result['new_sensor_capture']
     assert hashes(tmp_path)==original
     assert not (tmp_path/'requests').exists()
@@ -60,7 +63,7 @@ def test_motion_comparison_uses_only_fixed_existing_camera_images(tmp_path):
 def test_motion_comparison_does_not_treat_missing_calibration_as_a_fixed_view(tmp_path):
     fixture(tmp_path,1);fixture(tmp_path,2)
     result=motion_comparison(tmp_path,1,1,2)
-    assert not result['available'] and result['reason']=='no_common_fixed_camera'
+    assert not result['available'] and result['reason']=='no_common_camera'
 
 
 def test_complete_action_keeps_approach_motion_and_separate_stroke(tmp_path: Path) -> None:

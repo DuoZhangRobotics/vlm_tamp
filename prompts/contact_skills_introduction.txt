@@ -78,6 +78,17 @@ joint, including for previews. A surface normal does not determine task intent.
 Positive joint motion follows the exported axis; it does not inherently mean
 opening or closing. Geometry and motion measurements remain hypotheses/evidence.
 
+The two request types have different completion meanings. direction_world plus
+distance_m requests a physical hand stroke; object tracking does not determine
+when that commanded distance is complete. joint_degrees requests measured part
+progress and uses 1 cm increments by default. If the selected part's motion is
+unresolved after an increment, joint-progress continuation stops with
+motion_feedback_unresolved. This is an existing tracking dependency, not a
+collision rejection. Choose direction/distance when you want a straight physical
+stroke and assess its task effect afterward.
+Internal contact feedback currently uses RGBDHingeTracker optical flow. CoTracker3
+is available through explicit part-motion tools; push does not invoke it automatically.
+
 Controlled direction pushes attempt the full requested hand distance (including
 10 cm). stroke_length_m can explicitly divide it. Timing respects requested
 contact speed and the existing 1 rad/s joint reference limit. Tracking failures
@@ -100,7 +111,8 @@ uncertainty separately from this tool description.
 
 Motion replies separate hand travel, object-motion evidence and native task
 success. Open feedback.visual_comparison.comparison_image: it pairs existing
-before/after images from the same fixed cameras. Inspect the moving part relative
+before/after images from both available cameras. Moving camera poses are labelled;
+the wrist image moves with the arm. Inspect the moving part relative
 to the fixed task reference. A smaller projected silhouette alone is ambiguous,
 and unknown object tracking does not validate a direction. These are evidence
 tools, not required action sequences or motion gates.

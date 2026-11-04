@@ -96,6 +96,23 @@ def test_supplied_image_viewer_does_not_pin_every_depth_export(tmp_path):
     assert result['raw_input_dependencies_uncertain']
 
 
+def test_public_retention_preserves_approach_and_stroke_comparison_depth(tmp_path: Path) -> None:
+    work=tmp_path/'workspace';work.mkdir()
+    for number in [1,2,3,4,5]:
+        folder=work/f'robot_data/attempt01/obs{number:03d}'
+        folder.mkdir(parents=True);(folder/'sensors.npz').write_bytes(b'depth')
+    event={'request':{'operation':'push','arguments':{}},'response':{'result':{
+        'visual_comparison':{'before_observation_id':1,'after_observation_id':4},
+        'phase_visual_comparisons':[{'before_observation_id':1,'after_observation_id':2},
+                                    {'before_observation_id':2,'after_observation_id':4}]}}}
+    (tmp_path/'tool-events.jsonl').write_text(json.dumps(event)+'\n')
+    result=compact_public_observations(work,finished=True,run=tmp_path)
+    assert result['explicit_observation_ids']==[1,2,4]
+    assert (work/'robot_data/attempt01/obs002/sensors.npz').exists()
+    assert (work/'robot_data/attempt01/obs004/sensors.npz').exists()
+    assert not (work/'robot_data/attempt01/obs003/sensors.npz').exists()
+
+
 def test_stopped_study_cannot_launch_an_actor(tmp_path,monkeypatch):
     import run_luna_pipeline_validation as runner
     study=tmp_path/'results/stopped';study.mkdir(parents=True)

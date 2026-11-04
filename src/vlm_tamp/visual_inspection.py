@@ -214,30 +214,32 @@ def inspect(root, arguments):
 
 
 def motion_comparison(root: Path | str, attempt: int, before: int, after: int) -> dict:
-    """Pair existing fixed-camera observations; never infer a task direction."""
+    """Pair both existing views and explicitly distinguish moving cameras from fixed views."""
     root=Path(root)
     first=observation_dir(root,attempt,before);last=observation_dir(root,attempt,after)
     a=json.loads((first/'calibration.json').read_text());b=json.loads((last/'calibration.json').read_text())
     common=[name for name in a if name in b and 'camera_to_world' in a[name] and 'camera_to_world' in b[name]
-        and a[name].get('intrinsic')==b[name].get('intrinsic') and
-        all(abs(x-y)<1e-8 for ra,rb in zip(a[name]['camera_to_world'],b[name]['camera_to_world'])
-            for x,y in zip(ra,rb))]
-    names=[name for name in ('agentview','frontview') if name in common]
+        and a[name].get('intrinsic')==b[name].get('intrinsic')]
+    fixed=[name for name in common if all(abs(x-y)<1e-8
+        for ra,rb in zip(a[name]['camera_to_world'],b[name]['camera_to_world']) for x,y in zip(ra,rb))]
+    names=[name for name in ('agentview','wrist') if name in common]
     names+=(sorted(name for name in common if name not in names))
     names=names[:2]
     if not names:
-        return {'available':False,'reason':'no_common_fixed_camera','before_observation_id':before,
+        return {'available':False,'reason':'no_common_camera','before_observation_id':before,
             'after_observation_id':after,'new_sensor_capture':False}
-    views=[{'attempt':attempt,'observation_id':obs,'camera':name,'label':label}
+    views=[{'attempt':attempt,'observation_id':obs,'camera':name,
+            'label':label+(' | camera moved' if name not in fixed else ' | fixed camera')}
         for name in names for obs,label in ((before,'BEFORE'),(after,'AFTER'))]
     result=inspect(root,{'views':views})
     first_step=result['views'][0]['control_steps'];last_step=result['views'][1]['control_steps']
     return {'available':True,'comparison_image':result['comparison_image'],
         'metadata_file':result['metadata_file'],'before_observation_id':before,'after_observation_id':after,
-        'cameras':names,'fixed_camera_poses':True,'new_sensor_capture':False,
+        'cameras':names,'fixed_camera_poses':all(name in fixed for name in names),
+        'moving_cameras':[name for name in names if name not in fixed],'new_sensor_capture':False,
         'video_lookup':{'operation':'inspect_video','arguments':{
             'start_control_step':first_step,'end_control_step':last_step,'max_frames':8}},
-        'interpretation':'Inspect the moving part relative to fixed surroundings. Images are evidence; no opening/closing label is inferred.'}
+        'interpretation':'Compare the moving part with fixed surroundings. The wrist camera moves with the arm: image displacement alone is not object motion. No opening/closing label is inferred.'}
 
 
 def action_comparisons(root: Path | str, attempt: int, stages: list[dict]) -> dict:
@@ -259,6 +261,7 @@ def action_comparisons(root: Path | str, attempt: int, stages: list[dict]) -> di
             'start_control_step': interval.get('start_control_step'),
             'end_control_step': interval.get('end_control_step'),
             'comparison_image': comparison.get('comparison_image'),
+            'cameras':comparison.get('cameras',[]),'moving_cameras':comparison.get('moving_cameras',[]),
             'available': comparison.get('available', False)})
     return {'visual_comparison': whole, 'phase_visual_comparisons': phases}
 
