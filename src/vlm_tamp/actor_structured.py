@@ -18,7 +18,7 @@ from .coupled_storage import write_json
 from .interaction_memory import InteractionMemory
 from .robot_contracts import operation_schemas
 from .subscription_agent import codex_arguments
-from .visual_scene import observation_pair
+from .visual_scene import CAMERAS
 
 VISUAL_TOOLS = {'scene_views','mark_scene_point','preview_hand'}
 OPERATIONS = (
@@ -45,9 +45,10 @@ No examples, successful coordinates, task-specific strategy or closing sign are 
 The episode ends at native success, 600 controls or its wall deadline. Do not reset or issue
 meaningless actions to use the budget. A failed plan does not end the episode.
 
-The camera pair preserves original images without resizing. Use the labelled CAMERA'S own
-pixel coordinates for robot tools, not coordinates in the combined sheet. Camera pixels have
-x right and y down. Scene projections instead use the full labelled 640-by-640 image coordinates.
+Each native camera image is attached separately, unmodified and without a header or montage.
+Use that image's own pixel coordinates for robot tools: x right and y down, origin at its
+top-left corner. The image manifest names the camera. Scene projections instead use the
+full labelled 640-by-640 image coordinates.
 You may inspect earlier recorded frames with inspect_video. Every attached image is indexed below.
 Geometry and perception tools are read-only unless their contract says they install a model.
 For free pose motion, first select observed scene geometry with select_surface_contact or ground.
@@ -82,6 +83,15 @@ def latest_observation(work: Path) -> dict[str, Any]:
     folder=max(folders,key=lambda p:int(p.name[3:]))
     state=json.loads((folder/'robot.json').read_text())
     return {'observation_id':int(folder.name[3:]),'attempt':1,**state}
+
+
+def observation_images(work: Path, observation: dict) -> dict[str, str]:
+    """Attach each original camera image without introducing a pixel-coordinate transform."""
+    folder=work/'robot_data'/f"attempt{observation.get('attempt',1):02d}"/f"obs{observation['observation_id']:03d}"
+    paths={camera:str((folder/f'{camera}.png').relative_to(work)) for camera in CAMERAS}
+    for relative in paths.values():
+        if not (work/relative).is_file():raise FileNotFoundError(work/relative)
+    return paths
 
 
 def image_paths(value: Any, work: Path) -> list[str]:
@@ -200,14 +210,15 @@ def run_structured_actor(work: Path, out: Path, environment: dict, initial_promp
     while time.monotonic()<deadline:
         status=episode_status(work);terminal=bool(status.get('episode_done'))
         current=latest_observation(work)
-        pair=observation_pair(work,current)
+        current_images=observation_images(work,current)
         context=memory.context()
         paths=[]
         for record in memory.selected():
-            for key in ('before_image','after_image'):
-                if record[key] not in paths:paths.append(record[key])
-        current_image=str(pair.relative_to(work))
-        if current_image not in paths:paths.append(current_image)
+            for key in ('before_images','after_images'):
+                for relative in record[key].values():
+                    if relative not in paths:paths.append(relative)
+        for relative in current_images.values():
+            if relative not in paths:paths.append(relative)
         extra_images=image_paths(feedback,work)
         for pending in reversed(memory.pending):
             extra_images.extend(p for p in image_paths(pending['receipt'],work) if p not in extra_images)
@@ -218,10 +229,11 @@ def run_structured_actor(work: Path, out: Path, environment: dict, initial_promp
                 else:omitted.append(relative)
         turn+=1;folder=out/'decisions'/f'{turn:03d}'
         attachments=[{'image_number':i,'path':relative,
+            'native_camera':Path(relative).stem if Path(relative).stem in CAMERAS else None,
             'sha256':hashlib.sha256((work/relative).read_bytes()).hexdigest()} for i,relative in enumerate(paths,1)]
         payload={'task':instruction,'tools':catalog,'visual_tools_available':visual_interface,
             'robot_contact_landmarks_at_reset':landmarks,
-            'memory':context,'current_observation':current,'current_image':current_image,
+            'memory':context,'current_observation':current,'current_images':current_images,
             'episode_status':status,'latest_feedback':feedback_record(feedback,last_operation),
             'learner_note_unverified':note,'images':attachments,
             'help_arguments':{'operation':'tool_name'},
@@ -250,19 +262,19 @@ def run_structured_actor(work: Path, out: Path, environment: dict, initial_promp
                       'robot_motion_issued':False}
         else:
             feedback=tool_call(work,operation,decision['arguments_json'],environment)
-        after=latest_observation(work);after_image=str(observation_pair(work,after).relative_to(work))
+        after=latest_observation(work);after_images=observation_images(work,after)
         record={'decision':turn,'operation':operation,'arguments_json':decision['arguments_json'],
             'expected_effect':decision['expected_effect'],'learner_note_unverified':note,
             'before_control':before['control_steps'],'after_control':after['control_steps'],
             'before_observation':before['observation_id'],'after_observation':after['observation_id'],
-            'before_image':current_image,'after_image':after_image,
+            'before_images':current_images,'after_images':after_images,
             'receipt':feedback_record(feedback,operation),'tool_wall_seconds':time.perf_counter()-begin}
         memory.add(record);write_json(folder/'result.json',record)
         rows.append({'decision':turn,'operation':operation,'before_control':record['before_control'],
             'after_control':record['after_control'],'ok':feedback.get('ok'),
             'tool_wall_seconds':record['tool_wall_seconds'],'note':note,
             'memory_record_ids':[r['decision'] for r in memory.selected()]})
-        publish_images(work,out,[after_image,*image_paths(feedback,work)])
+        publish_images(work,out,[*after_images.values(),*image_paths(feedback,work)])
         write_json(out/'decision-progress.json',{'decisions':rows,'current_observation':after,
             'condition':{'visual_interface':visual_interface,'memory_mode':memory_mode},'complete':terminal})
         last_operation=operation

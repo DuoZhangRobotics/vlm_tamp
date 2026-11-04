@@ -45,17 +45,21 @@ def test_episode_uses_one_structured_action_and_complete_before_after_memory(tmp
         if operation=='reset':return {'ok':True,'result':{'instruction':'fixture task'}}
         if operation=='push_stroke':state.update(control_steps=70,observation_id=2)
         return {'ok':True,'result':{'observation':dict(state),'task_success':state['control_steps']==70}}
-    def pair(_work: Path,observation: dict) -> Path:
-        path=work/f"obs{observation['observation_id']}.png"
-        if not path.exists():Image.new('RGB',(10,10)).save(path)
-        return path
+    def images(_work: Path,observation: dict) -> dict[str,str]:
+        result={}
+        for camera in ('agentview','wrist'):
+            relative=f"obs{observation['observation_id']}-{camera}.png"
+            path=work/relative
+            if not path.exists():Image.new('RGB',(10,10)).save(path)
+            result[camera]=relative
+        return result
     def decision(prompt: str,images: list,folder: Path,*args) -> dict:
         inputs.append(json.loads(prompt.rsplit('\n',1)[1]));folder.mkdir()
         (folder/'events.jsonl').write_text('')
         return next(choices)
     monkeypatch.setattr(actor,'tool_call',tool)
     monkeypatch.setattr(actor,'latest_observation',lambda _:dict(state))
-    monkeypatch.setattr(actor,'observation_pair',pair)
+    monkeypatch.setattr(actor,'observation_images',images)
     monkeypatch.setattr(actor,'run_decision',decision)
     monkeypatch.setattr(actor,'episode_status',lambda _:{'episode_done':state['control_steps']==70,
         'task_success':state['control_steps']==70,'termination_reason':'simulator_success'})
@@ -65,9 +69,27 @@ def test_episode_uses_one_structured_action_and_complete_before_after_memory(tmp
     assert inputs[1]['memory']['retained_executed_transitions']==0
     transition=inputs[2]['memory']['events'][0]
     assert transition['before_control']==60 and transition['after_control']==70
-    assert transition['before_image']=='obs1.png' and transition['after_image']=='obs2.png'
-    assert transition['preceding_nonmotion'][0]['operation']=='help'
+    assert transition['before_images']=={'agentview':'obs1-agentview.png','wrist':'obs1-wrist.png'}
+    assert transition['after_images']=={'agentview':'obs2-agentview.png','wrist':'obs2-wrist.png'}
+    assert inputs[1]['memory']['recent_nonmotion_feedback'][0]['operation']=='help'
+    assert 'preceding_nonmotion' not in transition
     assert inputs[2]['terminal_summary_requested']
-    assert len(inputs[2]['images'])==2
+    assert len(inputs[2]['images'])==4
     assert 'scene_views' not in inputs[0]['tools']
     assert json.loads((out/'agent-exit.json').read_text())['generated_policy_execution'] is False
+
+
+def test_native_camera_attachments_preserve_tool_pixel_coordinates(tmp_path: Path) -> None:
+    """A marked pixel is identical in model input and depth-source coordinates, in both cameras."""
+    folder=tmp_path/'robot_data/attempt01/obs003';folder.mkdir(parents=True)
+    for camera,color in [('agentview',(255,0,0)),('wrist',(0,255,0))]:
+        image=Image.new('RGB',(512,512));image.putpixel((276,270),color)
+        image.save(folder/f'{camera}.png')
+    paths=actor.observation_images(tmp_path,{'observation_id':3,'attempt':1})
+    for camera,color in [('agentview',(255,0,0)),('wrist',(0,255,0))]:
+        source=folder/f'{camera}.png';supplied=tmp_path/paths[camera]
+        assert supplied.read_bytes()==source.read_bytes()
+        with Image.open(supplied) as image:
+            assert image.size==(512,512)
+            assert image.getpixel((276,270))==color
+            assert image.getpixel((276,306))==(0,0,0)

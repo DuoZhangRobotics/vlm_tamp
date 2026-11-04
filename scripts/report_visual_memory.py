@@ -20,7 +20,9 @@ def case_summary(study: Path, entry: dict) -> dict:
     run=study/'trials'/entry['run'];completed='attempt' in entry
     result={**entry,'folder':str(run.relative_to(study)),
         'progress_file':str((run/'decision-progress.json').relative_to(study)),
-        'completed':completed,'video':str((run/'attempt01/initial/rollout.mp4').relative_to(study))}
+        'completed':completed,'video':str((run/'attempt01/initial/rollout.mp4').relative_to(study)),
+        'has_video':(run/'attempt01/initial/rollout.mp4').is_file(),
+        'interruption':read_json(run/'operator-interruption.json') if (run/'operator-interruption.json').exists() else None}
     if not completed:return result
     progress=read_json(run/'decision-progress.json')
     events=[json.loads(line) for line in (run/'tool-events.jsonl').read_text().splitlines()]
@@ -41,6 +43,13 @@ def case_summary(study: Path, entry: dict) -> dict:
                 'executed':memory['total_executed_transitions'],'limit':memory['slot_limit']},
         learner_findings=(run/'agent-workspace/findings.txt').read_text(),
         numerical_backend_unchanged=read_json(run/'source-integrity.json')['numerical_backend_unchanged'])
+    result['timing_details']=read_json(run/'timing-breakdown.json')
+    usages=[event['usage'] for file in sorted((run/'decisions').glob('*/events.jsonl'))
+            for event in map(json.loads,file.read_text().splitlines()) if event.get('type')=='turn.completed']
+    result['model_usage']={'calls_with_usage':len(usages),
+        'input_tokens':sum(row['input_tokens'] for row in usages),
+        'maximum_input_tokens':max((row['input_tokens'] for row in usages),default=0),
+        'output_tokens':sum(row['output_tokens'] for row in usages)}
     write_json(run/'case-summary.json',result)
     return result
 
@@ -53,6 +62,7 @@ def render(study: Path, *, with_resources: bool = False) -> None:
     audit=resources(study,[('visual_memory',study)]) if with_resources else []
     write_json(study/'summary.json',{'cases':cases,'complete':manifest['complete'],
         'active_run':manifest['active_run'],'config':manifest['config'],'resources':audit,
+        'interruption':manifest.get('interruption'),'replacement_study':manifest.get('replacement_study'),
         'scope':manifest['scope'],'operator_diagnosis':read_json(study/'diagnosis.json') if (study/'diagnosis.json').exists() else {}})
     if audit:write_json(study/'resource-audit.json',audit)
     for source,name in [(ROOT/'templates/visual_memory.html','watch.html'),

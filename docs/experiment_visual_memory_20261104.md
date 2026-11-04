@@ -41,16 +41,23 @@ and a latest-interaction slot. Repeated anchors referencing one transition are d
 Omitted control intervals are explicit `TRAJECTORY_GAP` records. Non-motion results remain
 in a bounded immediate tail and do not consume execution anchors.
 
+Native RGB images are supplied separately and byte-for-byte unchanged, with camera identity in
+the image manifest. The original per-camera pixel coordinates therefore match the tools directly;
+there is no montage offset or header displacement for the agent to subtract.
+
 Memory contains only the current episode. No demonstrations or inherited task lessons are
 supplied. A short learner-authored note remains a labelled hypothesis. Input attachments,
 hashes, exact prompts, selected memory records and outputs are recorded per decision. The
 48-image input ceiling reserves complete selected transitions and current observation before
 adding tool illustrations; any omitted illustrations are listed and can be requested explicitly.
+Non-motion replies are kept only in the immediate tail, not copied into every executed anchor.
 
 This evaluates within-episode context use. It does not establish cross-episode self-improvement
 or transfer of a practiced skill library. No claim of policy-code learning is made.
 
 ## Preregistered pilot
+
+The corrected study is `results/luna-visual-memory-native-images-20261104/watch.html`.
 
 `configs/study_visual_memory.json` declares one initial state for each of four tasks:
 microwave closure (state 17), drawer closure (state 0), plate sliding (state 0), and bowl placement
@@ -71,3 +78,20 @@ rewritten for the dashboard.
 References: [OpenETA interface](https://github.com/OpenMOSS/OpenETA/blob/openeta-for-codex/docs/openeta-light.md),
 [RoboICL method](https://arxiv.org/html/2609.34261v1), and
 [Codex structured outputs](https://learn.chatgpt.com/docs/non-interactive-mode).
+
+## Interrupted initial pilot
+
+The initial study in `results/luna-visual-memory-20261104` was stopped after one completed
+microwave baseline and during its enhanced counterpart. The combined camera sheet added a
+36-pixel header while tools expected unshifted per-camera pixels. In the enhanced episode,
+Luna described pixel `(276,270)` as a door border, but the original pixel selected the mug
+below it. This is consistent with reading coordinates from the sheet. That interpretation is
+not a controlled attribution of every failed mark, but the avoidable coordinate transform was
+removed before repeating the paired study. The original episode remains recorded and the
+interrupted enhanced episode is excluded from completed outcomes.
+
+The initial memory implementation also copied each immediate non-motion tail into the next
+executed anchor. This retained old help responses and failed previews indefinitely with those
+anchors; the baseline's final model input reached 99,651 tokens. The corrected memory keeps
+non-motion replies only in the immediate tail. Complete executed transitions remain unchanged.
+These are interface corrections shared by both replacement conditions, not planner changes.

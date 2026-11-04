@@ -36,7 +36,6 @@ class InteractionMemory:
             self.pending.append(record)
             self.pending = self.pending[-self.slots:]
             return False
-        record = {**record, 'preceding_nonmotion': self.pending}
         self.pending = []
         index = len(self.records)
         self.records.append(record)

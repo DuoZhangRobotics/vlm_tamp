@@ -6,7 +6,8 @@ from vlm_tamp.interaction_memory import InteractionMemory
 def record(index: int, before: int, after: int) -> dict:
     """A measured transition independent of any task or object."""
     return {'decision':index,'before_control':before,'after_control':after,
-            'before_image':f'before-{index}.png','after_image':f'after-{index}.png',
+            'before_images':{'agentview':f'before-{index}.png'},
+            'after_images':{'agentview':f'after-{index}.png'},
             'operation':'move','receipt':{'ok':True}}
 
 
@@ -33,7 +34,7 @@ def test_failed_preview_does_not_become_an_executed_memory_anchor() -> None:
     assert not memory.records and len(memory.pending)==1
     memory.add(record(1,0,70))
     assert len(memory.selected())==1
-    assert memory.selected()[0]['preceding_nonmotion'][0]['decision']==0
+    assert 'preceding_nonmotion' not in memory.selected()[0]
     assert not memory.pending
 
 

@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import json
 import time
-from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -269,21 +267,3 @@ def preview_hand(service: Any, pose_world_xyzw: list[float] | None = None,
     result['render_seconds']=time.perf_counter()-began
     write_json(folder/'preview.json',result)
     return result
-
-
-def observation_pair(workspace: Path, observation: dict) -> Path:
-    """Pack the two original-resolution RGB views with explicit camera labels."""
-    folder=workspace/'robot_data'/f"attempt{observation.get('attempt',1):02d}"/f"obs{observation['observation_id']:03d}"
-    output=folder/'camera-pair.png'
-    if output.exists():return output
-    pictures=[(name,Image.open(folder/f'{name}.png').convert('RGB')) for name in CAMERAS if (folder/f'{name}.png').exists()]
-    if not pictures:raise ValueError('Observation has no native RGB views')
-    canvas=Image.new('RGB',(sum(p.width for _,p in pictures),max(p.height for _,p in pictures)+36),'#172635')
-    draw=ImageDraw.Draw(canvas);x=0
-    state=json.loads((folder/'robot.json').read_text())
-    for name,picture in pictures:
-        draw.text((x+5,4),f"{name} | obs {observation['observation_id']} | control {state['control_steps']}",fill='white')
-        draw.text((x+5,19),f'Original image coordinates: 0..{picture.width-1}, 0..{picture.height-1}',fill='white')
-        canvas.paste(picture,(x,36));x+=picture.width
-    canvas.save(output)
-    return output
