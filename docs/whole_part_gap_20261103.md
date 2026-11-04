@@ -85,15 +85,19 @@ the accepted poses contain only 0.18–0.20° estimated rotation. The resulting 
 does not establish an accurate articulation axis. State 17 has 6.2–16.2° measured rotations and
 0.53° axis error, but still lacks a confirmed matching fixed feature.
 
-The orbit experiment is isolated in `scripts/refine_part_goal_references.py`; it is not a live
-tool or fallback. Its `supported` field means the numerical equations produced an orbit, not
-that an axis was independently verified. Do not promote that field into an action decision.
+The orbit prompt generator was removed during the subsequent two-camera region experiment,
+as explicitly requested. Its original source remains in commit `d0be4a1`; historical results
+and exact prompts are preserved. Its `supported` field meant the numerical equations produced
+an orbit, not that an axis was independently verified. Do not promote that field into an action decision.
 The core module `part_goal_reference.py` contains only rigid-part reference carrying and gap
 measurement, with semantic verification explicitly false.
 
 The next useful diagnostic is visibility and identity of the fixed opening reference, plus
 recovering moving-part correspondences through occlusion. More frames alone did not solve
 either issue. A new live closing trial is not justified by these offline results alone.
+
+Follow-up: [two-camera region perception](two_view_regions_20261103.md) removes the orbit hint,
+compares both cameras with matched single-camera conditions, and tests fresh Luna motion judgments.
 
 ## Resource use and validation
 
@@ -114,7 +118,6 @@ Reproduction entry points:
 ```bash
 python scripts/select_part_goal_references.py --study <new-output-directory>
 python scripts/measure_part_goal_gap.py --study <new-output-directory>
-python scripts/refine_part_goal_references.py --study <new-output-directory>
 python scripts/report_part_goal_gap.py --study <new-output-directory>
 ```
 

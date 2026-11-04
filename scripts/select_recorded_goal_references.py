@@ -46,7 +46,7 @@ def write(path: Path, value: object) -> None:
 class RecordedService:
     """Use the established mailbox transport, exposing only observation/point/depth reads."""
 
-    def __init__(self, source: Path, work: Path, output: Path, endpoint: Path) -> None:
+    def __init__(self, source: Path, work: Path, output: Path, endpoint: Path | None) -> None:
         self.workspace, self.output = work, output
         self.public = work / 'robot_data'
         self.public.mkdir()
@@ -71,7 +71,7 @@ class RecordedService:
                 'cameras': ['agentview', 'wrist'], 'attempt': 1, 'control_steps': step}
             self.catalog.append({'observation_id': identifier, 'control_step': step})
         self.perception = PerceptionTools(self.records, self.public / 'pointing', work,
-                                          pointer=PointingClient(endpoint))
+                                          pointer=PointingClient(endpoint) if endpoint is not None else None)
         write(output / 'input-provenance.json', provenance)
         write(work / 'captures.json', self.catalog)
         write(self.public / 'episode-status.json', self.episode_status())
@@ -147,8 +147,10 @@ def model_worker(study: Path) -> Iterator[Path]:
             local.rmdir()
 
 
-def select_references(study: Path, state: int, endpoint: Path, *, prompt: str = PROMPT,
-                      service_factory: Callable = RecordedService, seconds: int = 600) -> None:
+def select_references(study: Path, state: int, endpoint: Path | None, *, prompt: str = PROMPT,
+                      service_factory: Callable = RecordedService, seconds: int = 600,
+                      tools_description: str | None = None, output_name: str = 'references.json',
+                      freeze_metadata: dict | None = None) -> None:
     """Give one fresh Luna agent the recordings and freeze its own final references."""
     source_run = ROOT / (f'results/luna-molmo2-integration-v3-20261103/trials/'
                          f'baseline-r1-close_microwave-state{state:03d}-600')
@@ -158,13 +160,14 @@ def select_references(study: Path, state: int, endpoint: Path, *, prompt: str = 
     service = service_factory(source_run / 'agent-workspace/robot_data/attempt01', work, output, endpoint)
     for name in ['requests', 'replies']:(work/name).mkdir()
     (work / 'robot.py').write_text(CLIENT)
-    (work / 'tools.txt').write_text('''Recorded observations only; no robot motion is available.
+    default_tools='''Recorded observations only; no robot motion is available.
 Read captures.json for observation IDs and control timestamps. Both cameras are 512x512 original pixels.
 python3 robot.py observe '{"observation_id":1}' returns saved image paths.
 python3 robot.py point '{"observation_id":1,"camera":"agentview","query":"your description"}' calls local Molmo2. Inspect the returned annotated image. Proposals are not semantic guarantees.
 python3 robot.py sample_points '{"observation_id":1,"camera":"agentview","points_xy":[[x,y]]}' reads literal recorded XYZ/depth support. It does not snap a point or identify a closed configuration.
 Use the point tool for each reference role. You decide which proposal or explicitly chosen pixel to retain. Different cameras/captures are allowed for the two roles; camera calibration places samples in a common world frame.
-'''+service.additional_help)
+'''
+    (work / 'tools.txt').write_text((default_tools if tools_description is None else tools_description)+service.additional_help)
     isolation = verify_isolation(work, [source_run/'evaluation-private.json', source_run/'agent-workspace/findings.txt',
         source_run/'attempt01/initial/evaluation_contact_diagnostics.json', ROOT/'src/vlm_tamp/contact_skills.py',
         Path.home()/'.codex/sessions'], readonly_paths=[work/'captures'])
@@ -191,11 +194,11 @@ Use the point tool for each reference role. You decide which proposal or explici
                 time.sleep(.1)
             if process.returncode:
                 raise subprocess.CalledProcessError(process.returncode, command)
-            references = json.loads((work/'references.json').read_text())
-            write(output/'references.json', references)
-            write(output/'reference-freeze.json', {'sha256': hashlib.sha256((work/'references.json').read_bytes()).hexdigest(),
+            references = json.loads((work/output_name).read_text())
+            write(output/output_name, references)
+            write(output/'reference-freeze.json', {'sha256': hashlib.sha256((work/output_name).read_bytes()).hexdigest(),
                 'frozen_before_gap_measurement': True, 'native_state_supplied': False,
-                'gap_trends_supplied': False, 'robot_motion_executed': False})
+                'gap_trends_supplied': False, 'robot_motion_executed': False, **(freeze_metadata or {})})
         finally:
             if process.poll() is None:
                 process.terminate()

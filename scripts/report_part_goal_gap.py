@@ -277,10 +277,10 @@ def condition(study: Path, folder: Path, state: int, native: dict[int, dict], la
     }
 
 
-def resources(study: Path) -> list[dict]:
+def resources(study: Path, phases: list[tuple[str, Path]] | None = None) -> list[dict]:
     """Publish compact resource samples, including the explicitly failed first reader pass."""
     result = []
-    for name, folder in [
+    for name, folder in phases if phases is not None else [
         ("selection", study),
         ("first_tracker_reader", study / "tracking-resources"),
         ("distributed_tracking", study / "distributed-tracking-resources"),

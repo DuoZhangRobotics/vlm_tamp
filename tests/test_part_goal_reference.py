@@ -6,8 +6,6 @@ import numpy as np
 import pytest
 from scipy.spatial.transform import Rotation
 
-from refine_part_goal_references import observed_reference_orbit, orbit_distance
-
 from vlm_tamp.part_goal_reference import (
     carry_reference,
     part_reference_gap,
@@ -75,24 +73,3 @@ def test_textureless_part_queries_cover_the_mask_instead_of_its_top_rows() -> No
     for left, top in [(False, False), (False, True), (True, False), (True, True)]:
         assert np.sum(((points[:, 0] < 150) == left) & ((points[:, 1] < 100) == top)) >= 10
     assert np.all(mask[points[:, 1].astype(int), points[:, 0].astype(int)])
-
-
-def test_observed_orbit_uses_arbitrary_measured_axis_and_never_selects_a_goal() -> None:
-    axis = np.array([1.0, 2.0, 0.0])
-    axis /= np.linalg.norm(axis)
-    center = np.array([0.1, 0.3, 0.5])
-    anchor = np.array([0.3, 0.4, 0.7])
-    poses = []
-    for angle in [-0.2, 0.1, 0.3]:
-        pose = np.eye(4)
-        pose[:3, :3] = Rotation.from_rotvec(axis * angle).as_matrix()
-        pose[:3, 3] = center - pose[:3, :3] @ center
-        poses.append(pose)
-    orbit = observed_reference_orbit(poses, anchor)
-    target = Rotation.from_rotvec(axis * 1.4).apply(anchor - center) + center
-    assert orbit_distance(orbit, target)["minimum_distance_to_orbit_m"] < 1e-9
-    assert orbit_distance(orbit, target + 0.04 * axis)[
-        "minimum_distance_to_orbit_m"
-    ] == pytest.approx(0.04)
-    assert not orbit["goal_angle_selected"]
-    assert not observed_reference_orbit([np.eye(4)], anchor)["supported"]
