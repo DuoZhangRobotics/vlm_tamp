@@ -27,31 +27,36 @@ class InteractionMemory:
 
     def __post_init__(self) -> None:
         """Validate a declared memory condition without substituting another."""
-        if self.mode not in {'recent', 'anchored'} or self.slots < 2:
-            raise ValueError('Use recent or anchored memory with at least two slots')
+        if self.mode not in {"recent", "anchored"} or self.slots < 2:
+            raise ValueError("Use recent or anchored memory with at least two slots")
 
     def add(self, record: dict[str, Any]) -> bool:
         """Commit positive-length execution; keep non-motion feedback in the tail."""
-        if record['after_control'] <= record['before_control']:
+        if record["after_control"] <= record["before_control"]:
             self.pending.append(record)
-            self.pending = self.pending[-self.slots:]
+            self.pending = self.pending[-self.slots :]
             return False
         self.pending = []
         index = len(self.records)
         self.records.append(record)
-        duration = self.last_control-self.first_control
-        for anchor in range(self.slots-1):
-            target = self.first_control+anchor*duration/self.slots
-            if anchor not in self.anchors and record['after_control'] > target:
+        duration = self.last_control - self.first_control
+        for anchor in range(self.slots - 1):
+            target = self.first_control + anchor * duration // self.slots
+            if anchor not in self.anchors and (
+                anchor == 0 or record["before_control"] < target <= record["after_control"]
+            ):
                 self.anchors[anchor] = index
         return True
 
     def selected(self) -> list[dict[str, Any]]:
         """Return chronological, deduplicated records under the chosen condition."""
-        if self.mode == 'recent':
-            return (self.records if len(self.records)<=self.slots else
-                    [self.records[0],*self.records[-(self.slots-1):]])
-        indices = sorted(set(self.anchors.values()) | ({len(self.records)-1} if self.records else set()))
+        if self.mode == "recent":
+            return (
+                self.records
+                if len(self.records) <= self.slots
+                else [self.records[0], *self.records[-(self.slots - 1) :]]
+            )
+        indices = sorted(set(self.anchors.values()) | ({len(self.records) - 1} if self.records else set()))
         return [self.records[index] for index in indices]
 
     def context(self) -> dict[str, Any]:
@@ -59,13 +64,22 @@ class InteractionMemory:
         events: list[dict[str, Any]] = []
         previous = self.first_control
         for record in self.selected():
-            if record['before_control'] > previous:
-                events.append({'type': 'TRAJECTORY_GAP', 'after_control': previous,
-                               'before_control': record['before_control']})
-            events.append({'type': 'executed_transition', **record})
-            previous = record['after_control']
-        return {'mode': self.mode, 'slot_limit': self.slots, 'events': events,
-                'recent_nonmotion_feedback': self.pending,
-                'total_executed_transitions': len(self.records),
-                'retained_executed_transitions': len(self.selected()),
-                'source': 'this episode only; no demonstrations or inherited task memories'}
+            if record["before_control"] > previous:
+                events.append(
+                    {
+                        "type": "TRAJECTORY_GAP",
+                        "after_control": previous,
+                        "before_control": record["before_control"],
+                    }
+                )
+            events.append({"type": "executed_transition", **record})
+            previous = record["after_control"]
+        return {
+            "mode": self.mode,
+            "slot_limit": self.slots,
+            "events": events,
+            "recent_nonmotion_feedback": self.pending,
+            "total_executed_transitions": len(self.records),
+            "retained_executed_transitions": len(self.selected()),
+            "source": "this episode only; no demonstrations or inherited task memories",
+        }
