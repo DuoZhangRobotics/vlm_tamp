@@ -1,0 +1,40 @@
+{
+  "title": "Luna: native collision repair validation",
+  "description": "Fresh Luna/high, two cameras, unchanged 600-control and 1800-second limits. Corrected native collision-tree neighbors, open-hand grasp finger checking, and repaired public tool contracts. Persistent documentation remains disabled. No task hints or inherited memory.",
+  "model": "gpt-6-luna",
+  "reasoning": "high",
+  "control_steps": 600,
+  "episode_seconds": 1800,
+  "memory_slots": 8,
+  "cases": [
+    {
+      "task": "close_microwave",
+      "state_index": 17,
+      "family": "revolute closure"
+    },
+    {
+      "task": "close_microwave",
+      "state_index": 49,
+      "family": "revolute closure"
+    }
+  ],
+  "conditions": [
+    {
+      "name": "transient_docs",
+      "visual_interface": true,
+      "memory_mode": "anchored",
+      "retain_tool_documentation": false
+    }
+  ],
+  "order": "alternate condition order between cases",
+  "scope": "One fresh trial each on microwave closing states 17 and 49 after confirmed implementation repairs. This is a functional check, not a reliability claim or isolated comparison of each repair.",
+  "source_cameras": [
+    "agentview",
+    "wrist"
+  ],
+  "inherited_memory": false,
+  "demonstrations": false,
+  "native_contact_feedback": false,
+  "policy_code_execution": false,
+  "planner_reference_commit": "dab77687e805226e653838bd78e15bfe846ff115"
+}

@@ -1,5 +1,6 @@
 // Planning-only adapter around the pinned MC-VAMP implementation. No execution hooks.
-// Upstream CRRTC, projection, FK, self collision and CAPT are used without edits.
+// Upstream CRRTC, projection, FK and self collision are unchanged. CAPT uses
+// the recorded cross-cell neighbor repair in patches/mcvamp-capt-neighbors.patch.
 #include <chrono>
 #include <memory>
 #include <limits>
