@@ -20,6 +20,7 @@ from vlm_tamp.coupled_storage import read_json, write_json
 ROOT = Path(__file__).resolve().parents[1]
 PLANNER_REFERENCE_COMMIT = "e2c9860"
 NUMERICAL_FILES = (
+    "scripts/serve_subscription_robot.py",
     "src/vlm_tamp/contact_skills.py",
     "src/vlm_tamp/contact_skill_service.py",
     "src/vlm_tamp/graspgen_selection.py",

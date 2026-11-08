@@ -9,7 +9,7 @@ import math
 from numbers import Real
 from typing import Any
 
-VERSION = 'robot-request-contract-v23'
+VERSION = 'robot-request-contract-v24'
 POINTING_HELP = '''- point(observation_id, camera, query): ask the local Molmo2 model to mark a
   visible location in agentview or wrist. It sees both original RGB images from
   that observation, and your exact query. Describe the object/part and intended
@@ -345,7 +345,7 @@ def operation_schemas(image_sizes: dict[str, dict[str, int]] | None = None) -> d
             'contact_constraint':contact_arguments['contact_constraint'],
             'surface_normal_world':contact_arguments['surface_normal_world'],
             'collision_policy':policy,'budget_seconds':number(exclusiveMinimum=0,maximum=1800)},['point_world_m','contact_name'])),
-        'execute': ('Execute a fresh complete plan. gripper=-1 opens, 0 holds, +1 closes; default +1. Choose explicitly for a grasp approach.', parameters({'plan_id': text, 'gripper': {'type': 'integer', 'enum': [-1, 0, 1]}, 'speed': speed, 'hold': {'type':'integer','minimum':0}}, ['plan_id'])),
+        'execute': ('Execute a fresh complete plan. Omitted speed/hold inherit stored grasp-plan timing; plans without timing use 0.35 rad/s and six hold steps. gripper=-1 opens, 0 holds, +1 closes. Omitted gripper follows the plan aperture setting; grasp approaches open, and plans without an aperture setting retain default +1. Explicit overrides remain available subject to the existing contact-plan aperture contract.', parameters({'plan_id': text, 'gripper': {'type': 'integer', 'enum': [-1, 0, 1]}, 'speed': speed, 'hold': {'type':'integer','minimum':0}}, ['plan_id'])),
         'gripper': ('Physically open/close while holding the arm. Retain the existing controller arm reference; no automatic inward arm correction.', parameters({'close': {'type': 'boolean'}, 'steps': {'type':'integer','minimum':1}})),
         'plan_sequence': ('Plan a small GraspGen-only approach; retain the signed manipulation request for fresh planning after measured closure.', parameters({'degrees': angle, 'max_candidates': candidates, 'seed': seed, 'grasp_constraint': grasp,
             'speed':speed,'approach_speed':speed,'hold':{'type':'integer','minimum':0},'close_steps':{'type':'integer','minimum':1},'budget_seconds':number(exclusiveMinimum=0,maximum=1800),'collision_policy':policy}, ['degrees','grasp_constraint'])),

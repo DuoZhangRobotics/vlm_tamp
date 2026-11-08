@@ -936,7 +936,9 @@ class RobotService:
             'environment_collision_policy':collision_policy or self.config.get('environment_collision_policy','veto')})
         result=self.keep_plan(selected['approach'], {'status':'solved',
             'grasp_pose_world_xyzw':selected['pose_world_xyzw'], 'proposal_source':selected['source'],
-            'initial_contact_probe_degrees':probe_degrees if self.contact_scene_kind=='articulated' else None}, 'approach', {'grasp_joints':selected['joints'],'approach_speed':speed,'contact_depth_offset_m':selected.get('contact_depth_offset_m',0.)})
+            'initial_contact_probe_degrees':probe_degrees if self.contact_scene_kind=='articulated' else None}, 'approach', {'grasp_joints':selected['joints'],'approach_speed':speed,
+                'approach_hold_steps':int(hold),'default_gripper_command':-1,
+                'contact_depth_offset_m':selected.get('contact_depth_offset_m',0.)})
         result['budget_timing_assumptions']=selected['budget_timing_assumptions']
         result['approach_selection']=selected.get('approach_selection')
         result['search_summary']=selected.get('search_summary')
@@ -1241,8 +1243,8 @@ class RobotService:
         self,
         plan_id: str,
         gripper: int | None = None,
-        speed: float = 0.35,
-        hold: int = 6,
+        speed: float | None = None,
+        hold: int | None = None,
     ) -> dict[str, Any]:
         """Execute the stored plan with completion matching its declared pose constraint."""
         plan = self.plans[plan_id]
@@ -1250,8 +1252,11 @@ class RobotService:
             raise ValueError('Use execute_sequence for a prepared multi-stage plan')
         if plan['control_steps']!=self.state['control_steps'] or plan['epoch']!=self.epoch:
             raise ValueError('Plan belongs to an earlier state/model; request a fresh plan')
-        required=(plan.get('extra') or {}).get('required_gripper_command')
-        if gripper is None:gripper=required if required is not None else 1
+        settings=plan.get('extra') or {}
+        required=settings.get('required_gripper_command')
+        if gripper is None:gripper=required if required is not None else settings.get('default_gripper_command',1)
+        if speed is None:speed=settings.get('approach_speed',.35)
+        if hold is None:hold=settings.get('approach_hold_steps',6)
         if required is not None and gripper!=required:
             raise ValueError('This contact plan uses the current aperture. Execute with gripper=0; change aperture before planning a different contact.')
         if gripper not in [-1,0,1] or not 0<float(speed)<=1.0 or int(hold)<0:
@@ -1282,7 +1287,8 @@ class RobotService:
 
     def issue(self, refs, gripper, label, *, articulated=False,camera_names=None,track_scene=True,push_feedback=None,arrival=None):
         if len(refs)>control_limit(self.state)-self.state['control_steps']:
-            raise ValueError('Complete requested trajectory exceeds remaining physical-step budget')
+            raise ValueError('Complete requested trajectory exceeds remaining physical-step budget: '
+                f'{len(refs)} references requested, {control_limit(self.state)-self.state["control_steps"]} controls remain')
         if len(refs):
             from vlm_tamp.push_contact_state import clear_motion_context
             clear_motion_context(self)
