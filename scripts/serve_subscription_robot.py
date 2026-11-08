@@ -1081,7 +1081,7 @@ class RobotService:
         retain_observed_articulation(self)
         self.scene=scene;self.contact_scene_kind='surface'
         self.choices={'camera':camera}
-        self.spec=None;self.cloud=scene.contact_reference;self.mask=None;self.anchors=[]
+        self.spec=None;self.cloud=scene.grasp_target_reference;self.mask=None;self.anchors=[]
         self.surface_reference_step=self.state['control_steps']
         self.epoch+=1;self.tracker=None
         folder=self.folder('surface-contact');folder.mkdir()
@@ -1092,7 +1092,8 @@ class RobotService:
         # hinge/handle fit. Public geometry contains no dummy articulation.
         dest=self.public/f'attempt{self.attempt:02d}'/f'contact{self.calls:03d}'
         dest.mkdir()
-        np.savez_compressed(dest/'points.npz',contact=scene.contact_reference,other=scene.static_points)
+        np.savez_compressed(dest/'points.npz',contact=scene.contact_reference,other=scene.static_points,
+            grasp_target=scene.grasp_target_reference)
         write_json(dest/'contact.json',evidence)
         return {**evidence,'geometry_epoch':self.epoch,
             'point_clouds':str((dest/'points.npz').relative_to(self.workspace)),

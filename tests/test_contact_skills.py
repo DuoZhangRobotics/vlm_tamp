@@ -1,3 +1,4 @@
+from itertools import product
 from pathlib import Path
 from types import SimpleNamespace
 import numpy as np
@@ -287,14 +288,9 @@ def test_simulation_availability_is_distinct_from_stale_or_missing_validation(tm
 def calibrated_robot():
     from vlm_tamp.coupled_storage import read_json
     root=Path(__file__).resolve().parents[1]
-    folder=root/'results/perception-contract-repair-20261028/trials/close_microwave-state017-perception-repaired/attempt01'
+    folder=root/'results/luna-compact-transition-20261108/trials/03-place_bowl-s001-existing/attempt01'
     if not folder.exists():pytest.skip('Recorded calibrated robot fixture unavailable')
-    from vlm_tamp.coupled_scene import RobotVolumes
-    from vlm_tamp.rekep_libero.robot_chain_v4 import RobotChain
-    meta=read_json(folder/'051-arc/planning-input.json')['metadata'];record=read_json(folder/'robot-chain.json')
-    opened=read_json(folder/'opened/metadata.json')
-    arm=RobotVolumes(RobotChain(record),opened['robot_collision_volumes_world'],opened['joint_positions']).forward(meta['joint_positions'])
-    meta['robot_collision_volumes_world']=[v for v in arm if 'gripper' not in v['robot_geom_name']]+meta['robot_collision_volumes_world']
+    meta=read_json(folder/'010-observation/metadata.json.gz');record=read_json(folder/'robot-chain.json')
     return meta,record
 
 
@@ -350,6 +346,36 @@ def test_known_current_robot_overlap_is_cleared_for_all_planning_modes(calibrate
     with NativeScene(scene,record,meta,meta['joint_positions'],.05,articulated=articulated) as context:
         assert context.validate(meta['joint_positions'])['accepted']
         assert context.record['current_robot_point_filter']['padding_m']==0.
+    clear_native_cache()
+
+
+def test_planner_sphere_overlap_outside_physical_mesh_passes_current_state(calibrated_robot):
+    """Native finger admission must agree with measured-state point-cloud cleanup."""
+    from vlm_tamp.coupled_scene import Scene
+    from vlm_tamp.current_robot_scene import clear_current_robot_scene, points_outside_current_robot
+    from vlm_tamp.mcvamp_contact_numerical import NativeScene, clear_native_cache
+    from vlm_tamp.vamp_sphere_model import current_environment_spheres
+
+    meta,record=calibrated_robot
+    spheres=current_environment_spheres(meta)
+    offsets=np.asarray(list(product(range(-2,3),repeat=3)),float)
+    offsets=offsets[np.linalg.norm(offsets,axis=1)>0]
+    offsets=.999*offsets/np.linalg.norm(offsets,axis=1)[:,None]
+    samples=np.vstack([sphere[:3]+offsets*sphere[3] for sphere in spheres[-4:]])
+    outside,_=points_outside_current_robot(samples,meta)
+    assert len(outside)>0
+    point=outside[:1];far=point+3
+    spec={'joint_origin_world_m':far[0].tolist(),'joint_axis_world':[0,0,1],
+          'front_plane':{'point_world_m':far[0].tolist()},'panel_normal_world':[1,0,0]}
+    raw=Scene.from_points(point,far,far,spec)
+    with NativeScene(raw,record,meta,meta['joint_positions'],0.,articulated=False,
+                     allow_contact=False,check_fingers=True) as context:
+        assert not context.validate(meta['joint_positions'])['accepted']
+    clean=clear_current_robot_scene(raw,meta,10)
+    with NativeScene(clean,record,meta,meta['joint_positions'],0.,articulated=False,
+                     allow_contact=False,check_fingers=True) as context:
+        assert context.validate(meta['joint_positions'])['accepted']
+    assert len(raw.static_points)==1 and len(clean.static_points)==0
     clear_native_cache()
 
 

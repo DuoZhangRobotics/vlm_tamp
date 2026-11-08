@@ -92,6 +92,9 @@ def contact_snapshot(cameras,metadata,camera,region_xyxy,chain,*,radius_m=.02,ob
         reference_volumes=metadata['robot_collision_volumes_world'])
     scene.self_filter=filter_record
     scene.contact_policy_kind='observed_finger_patch'
+    # GraspGen needs the selected target's visible shape, not the smaller
+    # neighborhood used to measure the contact normal. Keep collision roles intact.
+    scene.grasp_target_reference=candidate.copy()
     inverse=np.linalg.inv(pose_matrix(metadata['eef_pose_world_xyzw']))
     pads={v['robot_geom_name']:transform_points(v['vertices_world'],inverse).mean(0).tolist()
           for v in metadata['robot_collision_volumes_world'] if v['robot_geom_name'].endswith('_pad_collision')}
@@ -103,6 +106,9 @@ def contact_snapshot(cameras,metadata,camera,region_xyxy,chain,*,radius_m=.02,ob
         'normal_fit_rank':int(np.linalg.matrix_rank(patch-patch.mean(0))),
         'normal_fit_is_execution_gate':False,
         'selected_observed_points':len(contact),'other_observed_points':len(static),
+        'grasp_target_points':len(candidate),
+        'grasp_target_source':'complete caller-selected image region/mask; not radius-cropped',
+        'radius_scope':'contact patch and surface-normal fit only',
         'surface_fit_residual_m':float(np.median(np.abs((patch-center)@normal))),
         'configured_pad_centers_in_tcp':pads,'grasp_or_attachment_required':False,
         'contact_permission':'fingers may contact any environment surface; the patch selects the requested target',

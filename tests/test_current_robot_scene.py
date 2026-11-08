@@ -1,12 +1,31 @@
 from itertools import product
 from types import SimpleNamespace
 import numpy as np
+import pytest
 
 from vlm_tamp.coupled_scene import Scene
 from vlm_tamp.current_robot_scene import clear_current_robot_scene,points_outside_current_robot
 from vlm_tamp.contact_skills import predicted_scene
 from vlm_tamp.scene_pose_sync import transport_scene
 from vlm_tamp.coupled_storage import preserve_scene,read_json
+
+
+@pytest.fixture(autouse=True)
+def synthetic_robot_has_no_panda_spheres(monkeypatch):
+    """The mesh-filter tests use a synthetic cube, not a calibrated Panda robot."""
+    monkeypatch.setattr('vlm_tamp.current_robot_scene.current_environment_spheres',
+                        lambda metadata: np.empty((0, 4)))
+
+
+def test_current_planner_sphere_overlap_is_removed_without_expanding_it(monkeypatch):
+    """A point outside the mesh but inside the current planner model must be removed."""
+    monkeypatch.setattr('vlm_tamp.current_robot_scene.current_environment_spheres',
+                        lambda metadata: np.array([[0., 0., 0., .02]]))
+    raw=scene(static=[[.015, 0, 0], [.020001, 0, 0]])
+    query=clear_current_robot_scene(raw,metadata(),406)
+    np.testing.assert_array_equal(query.static_points, [[.020001, 0, 0]])
+    assert query.current_robot_filter['clouds']['static_points']['additional_points_inside_planner_spheres']==1
+    assert len(raw.static_points)==2
 
 
 def metadata(center=0.):

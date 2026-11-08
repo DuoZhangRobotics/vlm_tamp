@@ -65,6 +65,18 @@ def native_spheres(joints):
     return np.asarray([[s.x, s.y, s.z, s.r] for s in vamp.panda.fk(np.asarray(joints).tolist())])
 
 
+def current_environment_spheres(metadata: dict) -> np.ndarray:
+    """Return the planner's arm, palm and measured-aperture finger spheres in world space."""
+    from .rekep_libero.geometry import pose_matrix, transform_points
+
+    world_robot = np.linalg.inv(np.asarray(metadata['robot_calibration']['world_to_robot']))
+    spheres = native_spheres(metadata['joint_positions'])[1:55].copy()
+    spheres[:, :3] = transform_points(spheres[:, :3], world_robot)
+    fingers = np.asarray(finger_environment_model(metadata, world_robot)['hand_spheres_tcp'])[-4:]
+    fingers[:, :3] = transform_points(fingers[:, :3], pose_matrix(metadata['eef_pose_world_xyzw']))
+    return np.vstack([spheres, fingers])
+
+
 def palm_spheres_in_eef(joints):
     import vamp
     values = native_spheres(joints)[slice(*PALM_SPHERE_RANGE)]

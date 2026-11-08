@@ -12,7 +12,7 @@ ROOT=Path(__file__).resolve().parents[1]
 
 @pytest.fixture
 def surface_scene():
-    folder=ROOT/'results/prepared-final-all-tasks-20261020/open_microwave-state001'
+    folder=ROOT/'results/luna-compact-transition-20261108/trials/03-place_bowl-s001-existing/attempt01'
     if not (folder/'opened/metadata.json').exists():pytest.skip('Calibrated robot fixture unavailable')
     metadata=read_json(folder/'opened/metadata.json');chain=RobotChain(read_json(folder/'robot-chain.json'))
     yy,xx=np.indices((40,40))
@@ -38,12 +38,24 @@ def test_surface_contact_preserves_every_other_observed_point_and_needs_no_handl
     assert np.allclose(np.abs(record['normal_toward_camera_world']),[0,1,0])
 
 
+def test_grasp_target_keeps_the_selected_shape_beyond_the_contact_radius(surface_scene):
+    """Local normal fitting must not truncate the target sent to GraspGen."""
+    scene,record,_,_=surface_scene
+    target=scene.grasp_target_reference
+    assert len(target)>len(scene.contact_reference)
+    assert np.linalg.norm(target-np.asarray(record['point_world_m']),axis=1).max()>.015
+    assert record['grasp_target_points']==len(target)
+    assert target[:,0].min()>=.60+12*.003 and target[:,0].max()<=.60+28*.003
+    assert target[:,2].min()>=1.6+12*.003 and target[:,2].max()<=1.6+28*.003
+
+
 def test_generic_surface_scene_can_use_native_free_motion_planning(surface_scene,tmp_path):
     from types import SimpleNamespace
     from vlm_tamp.surface_contact_tools import plan_pose
     from vlm_tamp.hinged_contact_tools import clear_native_cache
     scene,_,metadata,chain_record=surface_scene
-    ik=SimpleNamespace(solve_many=lambda *a,**k:[{'joints':metadata['joint_positions']}])
+    ik=SimpleNamespace(configure_scene=lambda context: None,
+        solve_many=lambda *a,**k:[{'joints':metadata['joint_positions']}])
     path,result=plan_pose(ik,scene,chain_record,metadata,
         metadata['eef_pose_world_xyzw'],tmp_path/'plan')
     assert result['exact_solution'] and len(path)>=2

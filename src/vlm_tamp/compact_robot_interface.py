@@ -90,7 +90,8 @@ Settings: motion_settings (effective limits, speeds and collision policy)
 Combined planning: plan_sequence, execute_sequence
 Grasp planning: eight native GraspGen proposals, ranked by learned score; one
 closest valid IK and one approach query per pose. No angle/height/depth sweeps.
-The network receives the selected target cloud. Check the proposed open hand
+The network receives the complete selected image region/mask. The contact radius
+only limits the local patch/normal fit; it does not crop the grasp target. Check the proposed open hand
 against the whole observed workspace before IK; then check the arm and path.
 execute of plan_grasp automatically closes after measured approach arrival, for the
 planned close_steps. Use close_gripper=false for approach only. No automatic lift;
@@ -440,6 +441,7 @@ def compact_response(response):
         'joint_model_from_registered_part','handle_model_required',
         'grounding_status','handle_fit','handle_model_available','selected_parts',
         'point_world_m', 'normal_toward_camera_world', 'radius_m', 'surface_fit_residual_m',
+        'grasp_target_points', 'grasp_target_source', 'radius_scope',
         'configured_pad_centers_in_tcp', 'contact_landmarks_in_tcp','contact_pose','contact_permission', 'object_motion_predicted',
         'grasp_or_attachment_required', 'palm_arm_and_other_surface_checks_retained',
         'hinge_update_applied', 'scene_motion_applied', 'reference_control_step',
