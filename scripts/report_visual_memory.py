@@ -73,6 +73,7 @@ def case_summary(study: Path, entry: dict) -> dict:
         read_json(p)["model_and_client_seconds"] for p in (run / "decisions").glob("*/timing.json")
     )
     memory = read_json(run / "memory-final.json")
+    presentations = [read_json(path) for path in (run / 'decisions').glob('*/presentation.json')]
     result.update(
         decisions=progress["decisions"],
         issues=issues,
@@ -91,6 +92,13 @@ def case_summary(study: Path, entry: dict) -> dict:
         },
         learner_findings=(run / "agent-workspace/findings.txt").read_text(),
         numerical_backend_unchanged=read_json(run / "source-integrity.json")["numerical_backend_unchanged"],
+        feedback_presentation={
+            'compact_transitions': entry.get('compact_transitions', False),
+            'recorded_contexts': len(presentations),
+            'original_payload_bytes': sum(row['original_payload_bytes'] for row in presentations),
+            'presented_payload_bytes': sum(row['presented_payload_bytes'] for row in presentations),
+            'all_image_manifests_unchanged': all(row['image_manifest_unchanged'] for row in presentations),
+        },
     )
     result["timing_details"] = cached_profile_run(run, events, entry["actor_wall_seconds"])
     usages = [

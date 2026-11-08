@@ -1,0 +1,53 @@
+{
+  "title": "Luna: compact transition feedback",
+  "description": "Existing versus compact motion receipts. Same Luna/high, tools, planner, two native cameras, eight anchored episode memories, 600 controls and 1800 seconds. No inherited task memory. Recorded probes preserve identical image manifests.",
+  "model": "gpt-6-luna",
+  "reasoning": "high",
+  "control_steps": 600,
+  "episode_seconds": 1800,
+  "memory_slots": 8,
+  "cases": [
+    {
+      "task": "close_microwave",
+      "state_index": 12,
+      "family": "revolute closure"
+    },
+    {
+      "task": "close_top_drawer",
+      "state_index": 1,
+      "family": "prismatic closure"
+    },
+    {
+      "task": "place_bowl",
+      "state_index": 1,
+      "family": "pick and place"
+    }
+  ],
+  "conditions": [
+    {
+      "name": "existing",
+      "visual_interface": true,
+      "memory_mode": "anchored",
+      "retain_tool_documentation": false,
+      "compact_transitions": false
+    },
+    {
+      "name": "compact",
+      "visual_interface": true,
+      "memory_mode": "anchored",
+      "retain_tool_documentation": false,
+      "compact_transitions": true
+    }
+  ],
+  "order": "alternate condition order between cases",
+  "scope": "Predeclared paired development pilot: three new state IDs across three task families, one episode per format and state. These IDs were absent from 106 indexed study manifests/configurations; this is not a claim of unseen objects or statistically established generalization. Only executed-receipt presentation differs. Offline judgments measure direction/contact interpretation; live trials measure task success, tool calls and total time.",
+  "source_cameras": [
+    "agentview",
+    "wrist"
+  ],
+  "inherited_memory": false,
+  "demonstrations": false,
+  "native_contact_feedback": false,
+  "policy_code_execution": false,
+  "planner_reference_commit": "b4f8db0a7b05fe264fca147d72185d2daac3f9c2"
+}

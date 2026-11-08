@@ -89,6 +89,7 @@ def main():
     p.add_argument('--memory-mode',choices=['recent','anchored'],default='recent')
     p.add_argument('--memory-slots',type=int,default=8)
     p.add_argument('--retain-tool-documentation',action='store_true',help='Retain consulted tool schemas independently of episodic memory')
+    p.add_argument('--compact-transitions',action='store_true',help='Present executed motion evidence once in a compact transition record')
     p.add_argument('--numerical-backend',choices=['legacy','curobo_v2'],default='curobo_v2')
     p.add_argument('--successful-method-file')
     p.add_argument('--memory-store',help='Read-only public episodic library; no implementation or evaluation files')
@@ -246,7 +247,8 @@ def main():
                 code=run_structured_actor(work,out,env,prompt,a.agent_seconds,
                     model=a.model,reasoning=a.reasoning,memory_mode=a.memory_mode,
                     memory_slots=a.memory_slots,visual_interface=a.visual_interface,
-                    retain_tool_documentation=a.retain_tool_documentation)
+                    retain_tool_documentation=a.retain_tool_documentation,
+                    compact_transitions=a.compact_transitions)
             elif a.persistent_episode:
                 from vlm_tamp.episode_persistence import run_persistent_agent
                 code=run_persistent_agent(work,out,env,readonly,prompt,a.agent_seconds,

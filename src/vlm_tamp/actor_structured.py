@@ -298,6 +298,7 @@ def run_structured_actor(
     memory_slots: int,
     visual_interface: bool,
     retain_tool_documentation: bool = False,
+    compact_transitions: bool = False,
 ) -> int:
     """Select and execute direct tool calls, with bounded within-episode evidence."""
     work, out = Path(work), Path(out)
@@ -397,6 +398,10 @@ def run_structured_actor(
         }
         if retain_tool_documentation:
             payload["previously_consulted_tool_contracts"] = consulted_tool_contracts
+        original_payload = json.dumps(payload, separators=(",", ":"))
+        if compact_transitions:
+            from .feedback_transition import compact_transition_context
+            payload = compact_transition_context(payload)
         prompt = INSTRUCTIONS + "\n" + initial_prompt + "\n" + json.dumps(payload, separators=(",", ":"))
         decision = run_decision(
             prompt,
@@ -411,6 +416,13 @@ def run_structured_actor(
         with (out / "agent-events.jsonl").open("a") as stream:
             stream.write((folder / "events.jsonl").read_text())
         write_json(folder / "input.json", payload)
+        write_json(folder / "presentation.json", {
+            "compact_transitions": compact_transitions,
+            "original_payload_bytes": len(original_payload.encode()),
+            "presented_payload_bytes": len(json.dumps(payload, separators=(",", ":")).encode()),
+            "original_payload_sha256": hashlib.sha256(original_payload.encode()).hexdigest(),
+            "image_manifest_unchanged": payload["images"] == attachments,
+        })
         publish_images(work, out, paths)
         if decision is None:
             reason = "wall_budget_exhausted"
@@ -486,6 +498,7 @@ def run_structured_actor(
                     "visual_interface": visual_interface,
                     "memory_mode": memory_mode,
                     "retain_tool_documentation": retain_tool_documentation,
+                    "compact_transitions": compact_transitions,
                 },
                 "complete": terminal,
             },
@@ -514,6 +527,7 @@ def run_structured_actor(
             "structured_tool_calls": True,
             "generated_policy_execution": False,
             "retain_tool_documentation": retain_tool_documentation,
+            "compact_transitions": compact_transitions,
             "consulted_tool_contracts": sorted(consulted_tool_contracts),
         },
     )

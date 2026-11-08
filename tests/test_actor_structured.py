@@ -40,9 +40,11 @@ def test_image_selection_excludes_private_paths_and_duplicate_source_crops(tmp_p
 
 
 @pytest.mark.parametrize("retain_tool_documentation", [False, True])
+@pytest.mark.parametrize("compact_transitions", [False, True])
 @pytest.mark.parametrize("help_tool", ["push_stroke", "refresh_contact"])
 def test_episode_uses_one_structured_action_and_complete_before_after_memory(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, retain_tool_documentation: bool, help_tool: str
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, retain_tool_documentation: bool, help_tool: str,
+    compact_transitions: bool,
 ) -> None:
     work = tmp_path / "public"
     out = tmp_path / "run"
@@ -134,6 +136,7 @@ def test_episode_uses_one_structured_action_and_complete_before_after_memory(
             memory_slots=8,
             visual_interface=False,
             retain_tool_documentation=retain_tool_documentation,
+            compact_transitions=compact_transitions,
         )
         == 0
     )
@@ -152,6 +155,11 @@ def test_episode_uses_one_structured_action_and_complete_before_after_memory(
     assert len(inputs[2]["images"]) == 4
     assert "scene_views" not in inputs[0]["tools"]
     assert inputs[2]["memory"]["recent_nonmotion_feedback"] == []
+    if compact_transitions:
+        assert inputs[2]['latest_feedback']['executed_transition_decision'] == 2
+        assert transition['receipt']['task_success'] is True
+    else:
+        assert 'feedback_format' not in inputs[2]
     if retain_tool_documentation:
         assert inputs[0]["previously_consulted_tool_contracts"] == {}
         expected = {help_tool: actor.operation_schemas()[help_tool]["function"]}

@@ -150,6 +150,7 @@ def main() -> None:
                     str(config["memory_slots"]),
                     *(["--visual-interface"] if entry["visual_interface"] else []),
                     *(["--retain-tool-documentation"] if entry.get("retain_tool_documentation") else []),
+                    *(["--compact-transitions"] if entry.get("compact_transitions") else []),
                     "--prompt-file",
                     str(ROOT / "prompts/visual_memory_episode.txt"),
                 ],
