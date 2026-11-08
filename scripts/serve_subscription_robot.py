@@ -938,6 +938,7 @@ class RobotService:
             'grasp_pose_world_xyzw':selected['pose_world_xyzw'], 'proposal_source':selected['source'],
             'initial_contact_probe_degrees':probe_degrees if self.contact_scene_kind=='articulated' else None}, 'approach', {'grasp_joints':selected['joints'],'approach_speed':speed,
                 'approach_hold_steps':int(hold),'default_gripper_command':-1,
+                'grasp_close_steps':int(close_steps),
                 'contact_depth_offset_m':selected.get('contact_depth_offset_m',0.)})
         result['budget_timing_assumptions']=selected['budget_timing_assumptions']
         result['approach_selection']=selected.get('approach_selection')
@@ -946,9 +947,9 @@ class RobotService:
         result['approach_aperture_qpos']=selected.get('approach_aperture_qpos')
         result['opening_required']=selected.get('opening_required',False)
         result['environment_collision_policy']=collision_policy or self.config.get('environment_collision_policy','veto')
-        result['grasp_stage_contract']={'plan_contains':'approach only; grasp is not yet acquired',
-            'approach_gripper_command':-1,'close_after_arrival':True,
-            'note':'For a pinch grasp, open before planning, execute the approach with gripper=-1, then close at arrival and inspect grasp evidence. plan_sequence/execute_sequence stage approach/closure/manipulation automatically.'}
+        result['grasp_stage_contract']={'plan_contains':'approach followed by automatic physical closure on execution',
+            'approach_gripper_command':-1,'close_after_arrival':True,'close_steps':int(close_steps),
+            'note':'execute approaches with an open hand by default, then closes after measured arrival. close_gripper=false executes only the approach. Inspect retention before transport; closure alone does not prove a grasp.'}
         return result
 
     def plan_sequence(self,degrees,max_candidates=8,seed=0,grasp_constraint=None,
@@ -1245,6 +1246,7 @@ class RobotService:
         gripper: int | None = None,
         speed: float | None = None,
         hold: int | None = None,
+        close_gripper: bool | None = None,
     ) -> dict[str, Any]:
         """Execute the stored plan with completion matching its declared pose constraint."""
         plan = self.plans[plan_id]
@@ -1253,6 +1255,9 @@ class RobotService:
         if plan['control_steps']!=self.state['control_steps'] or plan['epoch']!=self.epoch:
             raise ValueError('Plan belongs to an earlier state/model; request a fresh plan')
         settings=plan.get('extra') or {}
+        automatic_close = ('grasp_close_steps' in settings if close_gripper is None else close_gripper)
+        if automatic_close and 'grasp_close_steps' not in settings:
+            raise ValueError('Automatic closure requires a plan_grasp plan; use gripper for manual closure')
         required=settings.get('required_gripper_command')
         if gripper is None:gripper=required if required is not None else settings.get('default_gripper_command',1)
         if speed is None:speed=settings.get('approach_speed',.35)
@@ -1263,9 +1268,13 @@ class RobotService:
             raise ValueError('Invalid gripper, speed, or hold')
         if plan['kind']=='approach':self.active_grasp_contact_offset_m=float((plan.get('extra') or {}).get('contact_depth_offset_m',0.))
         refs = schedule(plan['path'],maximum_joint_speed=float(speed),endpoint_hold_steps=int(hold))
-        return self.issue(refs,gripper,plan_id,
+        response = self.issue(refs,gripper,plan_id,
             **({'arrival':(plan.get('extra') or {}).get('arrival',{'maximum_wait_steps':20})}
                 if plan['kind'] in {'free','approach'} else {}))
+        if automatic_close:
+            from vlm_tamp.execution_grasp import finish_grasp
+            return finish_grasp(self, response, settings['grasp_close_steps'])
+        return response
 
     def execute_sequence(self,plan_id,close_steps=40,speed=.35,hold=6,manipulation_gripper=1,
                          approach_speed=None,feedback_degrees=15.,calibrate_joint=False,open_steps=20):

@@ -24,7 +24,7 @@ def measured_robot_scene(service):
 def execute_sequence(service,plan_id,*,close_steps=40,speed=.35,approach_speed=None,hold=6,
                      manipulation_gripper=1,feedback_degrees=15.,calibrate_joint=False,open_steps=20):
     plan=service.plans[plan_id];extra=plan['extra']
-    if plan['kind']!='sequence':raise ValueError(f"Plan {plan_id} is {plan['kind']}, not a sequence. Use execute for this plan; an approach requires gripper=-1, followed by closure at arrival. Use plan_sequence to request automatic staging.")
+    if plan['kind']!='sequence':raise ValueError(f"Plan {plan_id} is {plan['kind']}, not a sequence. Use execute for this plan; plan_grasp execution includes closure after arrival. Use plan_sequence to request grasp-and-arc staging.")
     if plan['control_steps']!=service.state['control_steps'] or plan['epoch']!=service.epoch:
         raise ValueError('Sequence approach belongs to an earlier state/model; request a fresh approach')
     approach_speed=float(extra.get('approach_speed',.6) if approach_speed is None else approach_speed)

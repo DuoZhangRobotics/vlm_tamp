@@ -40,3 +40,20 @@ def test_gripper_motor_commands_are_counted_even_without_a_named_close_tool() ->
     assert result['direct_hand_stroke_stages'] == 1
     assert result['push_requests_that_reached_a_stroke'] == 0
     assert result['jaw_gap_samples'] == [{'control': 62, 'gap_mm': 3.6}]
+
+
+def test_automatic_grasp_closure_is_visible_separately_from_manual_requests() -> None:
+    """One execute request contains two stages without counting either twice."""
+    events = [event(5, 'execute', {'grasp_execution': {'automatic_closure': True},
+        'execution': {'issued_commands': 5}, 'observation': {'control_steps': 65},
+        'stages': [{'stage': 'grasp-approach', 'control_steps': 63,
+                    'execution': {'issued_commands': 3}},
+                   {'stage': 'gripper-close', 'control_steps': 65,
+                    'execution': {'issued_commands': 2}}]})]
+    actions = [{'step': step, 'control': [0] * 7 + [-1 if step <= 63 else 1]}
+               for step in range(61, 66)]
+    result = executed_behavior(events, actions, 60)
+    assert result['automatic_grasp_closures_executed'] == 1
+    assert result['explicit_close_requests_executed'] == 0
+    assert result['controls_commanding_close'] == 2
+    assert sum(stage['issued_controls'] for stage in result['motion_stages']) == 5

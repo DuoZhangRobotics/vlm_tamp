@@ -117,3 +117,26 @@ def test_omitted_phases_and_unavailable_measurements_remain_explicit() -> None:
     assert result['earlier_phases_omitted_by_original_reply'] == 4
     assert 'start_control' not in result['phases'][0]
     assert result['task_success'] is None
+
+
+def test_automatic_grasp_closure_survives_both_feedback_formats() -> None:
+    """Luna sees closure completion without an unsupported retention claim."""
+    from vlm_tamp.compact_robot_interface import compact_response
+
+    record = motion_record()
+    summary = {'automatic_closure': True, 'closure_completed': True,
+               'executed_close_controls': 20, 'object_retention': 'unverified'}
+    record['receipt']['result'] = {'grasp_execution': summary, 'task_success': False,
+        'stages': [{'stage': 'grasp-approach', 'control_steps': 100,
+                    'execution': {'issued_commands': 40, 'arrival': {'goal': {'reached': True}}}},
+                   {'stage': 'gripper-close', 'control_steps': 120,
+                    'execution': {'issued_commands': 20}, 'grasp_evidence': {'pad_gap_mm': 3.8}}]}
+    compact = compact_response(record['receipt'])
+    assert compact['result']['grasp_execution'] == summary
+    assert compact['result']['stages'][1]['execution']['issued_commands'] == 20
+    record['receipt'] = compact
+    receipt = transition_record(record)['receipt']
+    assert receipt['grasp_execution'] == summary
+    assert receipt['phases'][0]['arrival']['goal']['reached'] is True
+    assert receipt['phases'][1]['grasp_evidence']['pad_gap_mm'] == 3.8
+    assert receipt['task_success'] is False

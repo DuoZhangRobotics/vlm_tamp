@@ -80,6 +80,8 @@ full labelled 640-by-640 image coordinates.
 You may inspect earlier recorded frames with inspect_video. Every attached image is indexed below.
 Geometry and perception tools are read-only unless their contract says they install a model.
 For free pose motion, first select observed scene geometry with select_surface_contact or ground.
+execute of a plan_grasp plan automatically closes after measured approach arrival, using
+the planned close_steps. close_gripper=false opts out. No automatic lift; inspect retention.
 Motion planning and control use the existing numerical tools. Do not infer task completion from
 an accepted plan or hand arrival. For a terminal finish request, set arguments_json to "{}"
 and put supported findings and limits in the note field.

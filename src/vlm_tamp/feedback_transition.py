@@ -40,13 +40,13 @@ def transition_record(record: dict[str, Any]) -> dict[str, Any]:
         phase = {
             'phase': stage['stage'],
             'end_control': stage.get('control_steps'),
-            'arrival': arrival_record(stage.get('arrival', {})),
+            'arrival': arrival_record(stage.get('arrival', stage.get('execution', {}).get('arrival', {}))),
             'hand_motion': selected(stage, (
                 'requested_motion_m', 'requested_contact_speed_m_s', 'measured_contact_speed',
                 'physical_motion', 'robot_reference_tracking', 'observed_contact_progress_m')),
             'object_motion': copy.deepcopy(stage.get('object_motion')),
             'engagement_evidence': copy.deepcopy(stage.get('engagement')),
-            **selected(stage, ('scene_update', 'material_point_offset_m', 'control_budget_truncated')),
+            **selected(stage, ('scene_update', 'material_point_offset_m', 'control_budget_truncated', 'grasp_evidence')),
         }
         if matching:
             phase['start_control'] = matching[0]['start_control_step']
@@ -65,7 +65,7 @@ def transition_record(record: dict[str, Any]) -> dict[str, Any]:
                 'scope': 'whole_tool_call; requested stroke and incidental approach effects differ',
                 'issued_controls': record['after_control'] - record['before_control'],
                 **selected(execution, ('termination_reason', 'all_commands_issued',
-                                       'planned_commands', 'issued_commands', 'nominal_path_commands')),
+                                       'planned_commands', 'issued_commands', 'nominal_path_commands', 'arrival_scope')),
                 **selected(value, ('stop_reason', 'status', 'robot_motion_executed')),
                 'arrival': arrival_record(execution.get('arrival', {})),
             },
@@ -98,7 +98,7 @@ def transition_record(record: dict[str, Any]) -> dict[str, Any]:
             'phases': phases,
             'earlier_phases_omitted_by_original_reply': max(0, value.get('stage_count', len(phases)) - len(phases)),
             'continuation': copy.deepcopy(value.get('continuation')),
-            **selected(value, ('diagnostic', 'planning_diagnostic', 'remaining_skill_seconds',
+            **selected(value, ('grasp_execution', 'diagnostic', 'planning_diagnostic', 'remaining_skill_seconds',
                                'next_geometry_interfaces', 'scene_refresh_required', 'contact_handoff')),
             **selected(receipt, ('error', 'error_type', 'execution_status')),
         },

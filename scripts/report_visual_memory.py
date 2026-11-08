@@ -20,6 +20,7 @@ def executed_behavior(events: list[dict], actions: list[dict], initial_control: 
     """Separate requested tool names from issued controls, motor commands and observed arrival."""
     rows = []
     gaps = []
+    automatic_closures = 0
     close_requests = push_requests = push_without_motion = push_reached_stroke = previews = 0
     for event in events:
         operation = event['request']['operation']
@@ -38,6 +39,7 @@ def executed_behavior(events: list[dict], actions: list[dict], initial_control: 
                 continue
             issued = True
             name = stage['stage']
+            automatic_closures += name == 'gripper-close' and bool(value.get('grasp_execution', {}).get('automatic_closure'))
             reached_stroke |= name.startswith('push-stroke')
             end = stage.get('control_steps')
             start = end - count if end is not None else None
@@ -65,6 +67,7 @@ def executed_behavior(events: list[dict], actions: list[dict], initial_control: 
     return {
         'scope': 'Actual issued motion and gripper commands; none of these counts proves object manipulation.',
         'explicit_close_requests_executed': close_requests,
+        'automatic_grasp_closures_executed': automatic_closures,
         'controls_commanding_close': sum(row['step'] > initial_control and row['control'][-1] > 0
                                         for row in actions),
         'push_requests_for_motion': push_requests, 'push_previews': previews,
@@ -118,7 +121,7 @@ def case_summary(study: Path, entry: dict) -> dict:
         response = event["response"]
         value = response.get("result", {})
         reason = response.get("error") if not response.get("ok") else value.get("stop_reason")
-        if reason and reason not in {"preview_only", "stroke_executed", "native_task_success"}:
+        if reason and reason not in {"preview_only", "stroke_executed", "native_task_success", "closure_completed"}:
             issues.append(
                 {
                     "event": event["sequence"],

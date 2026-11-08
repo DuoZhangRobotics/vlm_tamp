@@ -92,7 +92,9 @@ Grasp planning: eight native GraspGen proposals, ranked by learned score; one
 closest valid IK and one approach query per pose. No angle/height/depth sweeps.
 The network receives the selected target cloud. Check the proposed open hand
 against the whole observed workspace before IK; then check the arm and path.
-Closure is measured physically.
+execute of plan_grasp automatically closes after measured approach arrival, for the
+planned close_steps. Use close_gripper=false for approach only. No automatic lift;
+closure alone does not prove retention. gripper remains available for manual control.
 Fingers may contact any environment surface; arm/palm stay checked.
 For arcs, point mode constrains only the grip point and leaves wrist orientation
 free. It does not carry the whole hand rigidly with the door. Choose rigid to
@@ -369,6 +371,7 @@ def compact_response(response):
     result = observation(value)
     if 'joint_limit_recovery' in value:result['joint_limit_recovery']=value['joint_limit_recovery']
     if 'grasp_stage_contract' in value:result['grasp_stage_contract']=value['grasp_stage_contract']
+    if 'grasp_execution' in value:result['grasp_execution']=value['grasp_execution']
     if 'skill' in value:
         result.update(pick(value,('skill','mode','preview','status','stop_reason','diagnostic',
             'task_instruction','contact_constraint','selected_surface_normal_world','planner_rejection_views','visual_comparison',
@@ -513,7 +516,7 @@ def compact_response(response):
         result['execution'] = pick(value['execution'], ('planned_commands', 'issued_commands',
             'all_commands_issued', 'terminated_on_simulator_success', 'termination_reason',
             'worker_seconds', 'wall_seconds', 'maximum_joint_reference_error_rad','endpoint_tracking',
-            'arrival','terminated_on_tracking_error','terminated_on_control_budget','nominal_path_commands'))
+            'arrival','arrival_scope','terminated_on_tracking_error','terminated_on_control_budget','nominal_path_commands'))
     if 'motion_effect' in value:result['motion_effect']=value['motion_effect']
     if 'selected_frame_count' in value:
         result.update(pick(value,('available','camera','requested_control_interval','available_control_interval',
@@ -566,7 +569,9 @@ def compact_response(response):
         result['stages'] = []
         for stage in value['stages']:
             item = pick(stage, ('stage', 'task_success', 'episode_done', 'termination_reason', 'control_steps'))
-            item.update(pick(stage,('grasp_evidence','motion_effect','scene_reference_control_step')))
+            item.update(pick(stage,('grasp_evidence','motion_effect','scene_reference_control_step','artifact_id')))
+            if 'execution' in stage:
+                item['execution']=pick(stage['execution'],('issued_commands','planned_commands','termination_reason','arrival'))
             if stage.get('execution',{}).get('endpoint_tracking'):
                 item['endpoint_tracking']=stage['execution']['endpoint_tracking']
             if isinstance(stage.get('observation'),dict):
