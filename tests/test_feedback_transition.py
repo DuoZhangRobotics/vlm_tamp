@@ -74,6 +74,16 @@ def test_measured_zero_and_measured_transform_remain_observations() -> None:
     assert result['object_motion_status'] == 'measured'
 
 
+def test_generic_execution_scene_motion_keeps_its_measurement_provenance() -> None:
+    """Non-push tools can report object motion through the shared scene-pose fields."""
+    record = motion_record()
+    observation = {'source': 'measured_rgbd_motion', 'fit': {'accepted': True, 'rotation_rad': .1},
+                   'reference_control_step': 130, 'assumes_contact_retention': False}
+    record['receipt']['result']['scene_pose_observation'] = observation
+    result = transition_record(record)['receipt']['object_motion']
+    assert result['scene_pose_observation'] == observation
+
+
 def test_context_keeps_images_memory_selection_and_nonmotion_feedback_unchanged() -> None:
     """Only executed receipts change presentation; no evidence is synthesized or reordered."""
     record = motion_record()

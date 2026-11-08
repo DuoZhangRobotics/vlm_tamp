@@ -85,7 +85,8 @@ def transition_record(record: dict[str, Any]) -> dict[str, Any]:
             'object_motion': {
                 **selected(value, ('object_motion_status', 'part_motion_evidence',
                                    'observed_progress', 'progress_units', 'motion_measurement_scope',
-                                   'object_motion_tracker_class', 'task_direction_verified')),
+                                   'object_motion_tracker_class', 'task_direction_verified',
+                                   'scene_pose_observation', 'scene_pose_update', 'motion_effect')),
                 'missing_measurement_meaning': 'unknown, not zero displacement or lost contact',
             },
             'task_success': value.get('task_success'),
