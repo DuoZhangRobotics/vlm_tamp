@@ -16,6 +16,66 @@ from vlm_tamp.coupled_storage import read_json, write_json
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def executed_behavior(events: list[dict], actions: list[dict], initial_control: int) -> dict:
+    """Separate requested tool names from issued controls, motor commands and observed arrival."""
+    rows = []
+    gaps = []
+    close_requests = push_requests = push_without_motion = push_reached_stroke = previews = 0
+    for event in events:
+        operation = event['request']['operation']
+        arguments = event['request']['arguments']
+        value = event['response'].get('result', {})
+        stages = value.get('stages', [])
+        if not stages and 'execution' in value:
+            stages = [{'stage': operation, 'execution': value['execution'],
+                       'control_steps': value.get('observation', {}).get('control_steps')}]
+        issued = False
+        reached_stroke = False
+        for stage in stages:
+            execution = stage.get('execution', {})
+            count = execution.get('issued_commands', 0)
+            if not count:
+                continue
+            issued = True
+            name = stage['stage']
+            reached_stroke |= name.startswith('push-stroke')
+            end = stage.get('control_steps')
+            start = end - count if end is not None else None
+            commands = sorted({row['control'][-1] for row in actions
+                               if start is not None and start < row['step'] <= end})
+            goal = execution.get('arrival', {}).get('goal', {})
+            rows.append({'event': event['sequence'], 'operation': operation, 'stage': name,
+                         'before_control': start, 'after_control': end, 'issued_controls': count,
+                         'gripper_commands': commands, 'goal_reached': goal.get('reached'),
+                         'goal_error_mm': 1000 * goal['position_error_m'] if 'position_error_m' in goal else None,
+                         'stop_reason': execution.get('termination_reason')})
+        if operation == 'gripper' and arguments.get('close', True) and issued:
+            close_requests += 1
+        if operation == 'push':
+            if arguments.get('preview', False):
+                previews += 1
+            else:
+                push_requests += 1
+                push_without_motion += not issued
+                push_reached_stroke += reached_stroke
+        gap = value.get('grasp_evidence', {}).get('pad_gap_mm')
+        step = value.get('observation', {}).get('control_steps')
+        if gap is not None and step is not None:
+            gaps.append({'control': step, 'gap_mm': gap})
+    return {
+        'scope': 'Actual issued motion and gripper commands; none of these counts proves object manipulation.',
+        'explicit_close_requests_executed': close_requests,
+        'controls_commanding_close': sum(row['step'] > initial_control and row['control'][-1] > 0
+                                        for row in actions),
+        'push_requests_for_motion': push_requests, 'push_previews': previews,
+        'push_requests_without_robot_motion': push_without_motion,
+        'push_requests_that_reached_a_stroke': push_reached_stroke,
+        'direct_hand_stroke_stages': sum(row['stage'].startswith('push-stroke')
+                                        and row['operation'] in {'push_stroke', 'continue_push'} for row in rows),
+        'jaw_gap_samples': gaps, 'motion_stages': rows,
+    }
+
+
 def case_summary(study: Path, entry: dict) -> dict:
     """Report native completion separately from tool successes and learner notes."""
     run = study / "trials" / entry["run"]
@@ -101,6 +161,9 @@ def case_summary(study: Path, entry: dict) -> dict:
         },
     )
     result["timing_details"] = cached_profile_run(run, events, entry["actor_wall_seconds"])
+    result['executed_behavior'] = executed_behavior(
+        events, read_json(run / 'attempt01/initial/actions.json'),
+        read_json(run / 'attempt01/opened/metadata.json')['control_steps'])
     usages = [
         event["usage"]
         for file in sorted((run / "decisions").glob("*/events.jsonl"))

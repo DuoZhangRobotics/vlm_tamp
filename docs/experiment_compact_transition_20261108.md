@@ -183,3 +183,38 @@ Compact feedback remains opt-in. This pilot supports a smaller, inspectable repr
 it does not establish improved task success, reliable wrong-direction detection or lower inference
 latency. More episode memory alone is not a demonstrated remedy for the measured contact and
 object-motion failures.
+
+
+## Execution audit following video review
+
+The existing-feedback bowl episode issued **zero finger-close controls**. Its reported pad gaps
+stayed near 79 mm. Its upward motions were explicitly requested as recovery retreats, so no
+pickup occurred. The compact episode issued 20 close controls, reducing the gap from 78.8 to
+3.6 mm at controls 142–162, and held the bowl through lift/carry before opening at 353–373.
+Luna initially misread the lift in decision 13, then corrected that interpretation before carrying.
+
+Neither drawer condition completed the contact-acquisition stage of a targeted `push` request.
+Existing feedback had 32 motion requests, 31 with no issued controls, plus four read-only previews.
+Compact feedback had 13 motion requests, 12 with no issued controls, plus one preview. There were
+also one and four separately requested direct hand-stroke stages, respectively; those were blocked
+or ineffective for closure. A `push` call count is not a count of completed pushes.
+
+The dashboard now reports actual issued stages and gripper commands before the video. The
+[gripper measurement plot](/common/users/dz323/vlm_tamp/results/luna-compact-transition-20261108/gripper-command-evidence.png)
+uses measured tool-observation boundaries, with actual close/open intervals marked. It does not
+infer object retention from gap alone. These are reporting changes only; no robot policy,
+controller, planner, contact threshold or experimental outcome was changed in this audit.
+
+Reporting validation: two focused execution-evidence tests and configured Ruff checks pass.
+The updated dashboard was checked in a browser with all six videos, the new execution summaries,
+and the gripper plot. No new robot trials were launched for this reporting audit.
+
+
+A separate current-code grasp qualification reused the compact bowl episode’s original public
+selection and seed-17 grasp request. Both initial camera images matched exactly. With the repaired
+plan defaults, the approach used the selected 0.25 rad/s and six holds and reached within 0.18 mm.
+An explicit 20-control close reduced the pad gap from 78.8 to 3.8 mm. The requested 12 cm lift
+retained bowl contact, whose median contact height rose approximately 11.6 cm. The test finished
+at control 272 in 55.73 wall seconds. It used no model calls, did not attempt placement and is not
+counted as a Luna success or a repeatability result. Its video and raw evidence are linked from
+the dashboard. The remaining drawer acquisition failure was not claimed fixed by this check.
