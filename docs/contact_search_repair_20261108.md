@@ -50,7 +50,7 @@ Neither change remains in the code. The original fast continuation method is ret
 full-optimizer experiment, one executed wrist-view request reached its free approach but stopped
 34.3 mm short during contact acquisition, at control 255. It did not reach a push stroke.
 The free approach occupies video 3.00–10.90 seconds and contact acquisition 10.90–12.75 seconds.
-The request allowed 60 skill seconds and retained 112.64 seconds at return;
+The request used the default 120 skill seconds and retained 112.64 seconds at return;
 345 of the 600 control steps remained. This stop was physical arrival failure, not budget expiry.
 [Recorded failed execution](/common/users/dz323/vlm_tamp/results/contact-acquisition-repair-20261108/batch/attempt01/initial/rollout.mp4)
 is an experimental variant, not the retained implementation. Other failed previews issued no
