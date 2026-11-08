@@ -1,0 +1,26 @@
+{
+  "title": "Luna: persistent tool documentation",
+  "description": "Both conditions use Luna/high, the same planner, two native cameras, observed-cloud views, whole-hand previews and eight anchored interaction memories. Only retention of previously consulted tool schemas differs. No demonstrations or inherited task experience.",
+  "model": "gpt-6-luna",
+  "reasoning": "high",
+  "control_steps": 600,
+  "episode_seconds": 1800,
+  "memory_slots": 8,
+  "cases": [
+    {"task": "close_microwave", "state_index": 17, "family": "revolute closure"},
+    {"task": "close_microwave", "state_index": 49, "family": "revolute closure"},
+    {"task": "close_top_drawer", "state_index": 0, "family": "prismatic closure"},
+    {"task": "place_bowl", "state_index": 0, "family": "pick and place"}
+  ],
+  "conditions": [
+    {"name": "transient_docs", "visual_interface": true, "memory_mode": "anchored", "retain_tool_documentation": false},
+    {"name": "persistent_docs", "visual_interface": true, "memory_mode": "anchored", "retain_tool_documentation": true}
+  ],
+  "order": "alternate condition order between cases",
+  "scope": "Paired development pilot: one fresh episode per case and documentation condition. Both use identical visual tools, anchored memory and numerical backend. This isolates documentation retention; eight episodes cannot establish reliability or generalization.",
+  "source_cameras": ["agentview", "wrist"],
+  "inherited_memory": false,
+  "demonstrations": false,
+  "native_contact_feedback": false,
+  "policy_code_execution": false
+}

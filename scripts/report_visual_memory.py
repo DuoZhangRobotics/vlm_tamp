@@ -34,6 +34,19 @@ def case_summary(study: Path, entry: dict) -> dict:
     if not completed:
         return result
     progress = read_json(run / "decision-progress.json")
+    help_requests = Counter(
+        row["help_operation"] for row in progress["decisions"] if row.get("help_operation")
+    )
+    help_targets_recorded = all(
+        row.get("help_operation") for row in progress["decisions"] if row["operation"] == "help"
+    )
+    result["documentation_usage"] = {
+        "retained_between_decisions": entry.get("retain_tool_documentation", False),
+        "help_requests_by_tool": dict(help_requests),
+        "repeated_help_requests": sum(max(0, count - 1) for count in help_requests.values())
+        if help_targets_recorded
+        else None,
+    }
     events = [json.loads(line) for line in (run / "tool-events.jsonl").read_text().splitlines()]
     tool_time = Counter()
     selections = Counter()
@@ -125,6 +138,9 @@ def render(study: Path, *, with_resources: bool = False) -> None:
             "replacement_study": manifest.get("replacement_study"),
             "input_audit": input_audit,
             "scope": manifest["scope"],
+            "recorded_decision_comparison": read_json(study / "recorded-decisions/summary.json")
+            if (study / "recorded-decisions/summary.json").exists()
+            else None,
             "operator_diagnosis": read_json(study / "diagnosis.json")
             if (study / "diagnosis.json").exists()
             else {},

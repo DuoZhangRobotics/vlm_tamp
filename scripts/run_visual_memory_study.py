@@ -114,7 +114,7 @@ def main() -> None:
             "planner_reference_commit": PLANNER_REFERENCE_COMMIT,
             "numerical_sha256": numerical,
             "config_sha256": hashlib.sha256(args.config.read_bytes()).hexdigest(),
-            "scope": "One-seed paired pilot of the combined visual and memory changes; not a statistical generalization claim",
+            "scope": config["scope"],
         }
     write_json(study / "visual-memory-manifest.json", manifest)
     render(study)
@@ -146,6 +146,7 @@ def main() -> None:
                     "--memory-slots",
                     str(config["memory_slots"]),
                     *(["--visual-interface"] if entry["visual_interface"] else []),
+                    *(["--retain-tool-documentation"] if entry.get("retain_tool_documentation") else []),
                     "--prompt-file",
                     str(ROOT / "prompts/visual_memory_episode.txt"),
                 ],

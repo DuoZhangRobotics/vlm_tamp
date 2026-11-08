@@ -294,6 +294,7 @@ def run_structured_actor(
     memory_mode: str,
     memory_slots: int,
     visual_interface: bool,
+    retain_tool_documentation: bool = False,
 ) -> int:
     """Select and execute direct tool calls, with bounded within-episode evidence."""
     work, out = Path(work), Path(out)
@@ -335,6 +336,7 @@ def run_structured_actor(
     catalog = {
         name: definitions[name]["function"]["description"] for name in operations if name in definitions
     }
+    consulted_tool_contracts: dict[str, dict[str, Any]] = {}
     (out / "decisions").mkdir()
     (out / "agent-events.jsonl").touch()
     while time.monotonic() < deadline:
@@ -390,6 +392,8 @@ def run_structured_actor(
             "images_omitted_by_declared_budget": omitted,
             "terminal_summary_requested": terminal,
         }
+        if retain_tool_documentation:
+            payload["previously_consulted_tool_contracts"] = consulted_tool_contracts
         prompt = INSTRUCTIONS + "\n" + initial_prompt + "\n" + json.dumps(payload, separators=(",", ":"))
         decision = run_decision(
             prompt,
@@ -422,6 +426,8 @@ def run_structured_actor(
                 "result": definitions[name]["function"] if name in catalog else {},
                 "robot_motion_issued": False,
             }
+            if retain_tool_documentation and feedback["ok"]:
+                consulted_tool_contracts[name] = feedback["result"]
         elif operation == "inspect_image":
             args = json.loads(decision["arguments_json"])
             paths_requested = image_paths(args["path"], work)
@@ -462,6 +468,9 @@ def run_structured_actor(
                 "tool_wall_seconds": record["tool_wall_seconds"],
                 "note": note,
                 "memory_record_ids": [r["decision"] for r in memory.selected()],
+                "help_operation": json.loads(decision["arguments_json"]).get("operation")
+                if operation == "help"
+                else None,
             }
         )
         publish_images(work, out, [*after_images.values(), *image_paths(feedback, work)])
@@ -470,7 +479,11 @@ def run_structured_actor(
             {
                 "decisions": rows,
                 "current_observation": after,
-                "condition": {"visual_interface": visual_interface, "memory_mode": memory_mode},
+                "condition": {
+                    "visual_interface": visual_interface,
+                    "memory_mode": memory_mode,
+                    "retain_tool_documentation": retain_tool_documentation,
+                },
                 "complete": terminal,
             },
         )
@@ -497,6 +510,8 @@ def run_structured_actor(
             "normal_terminal": True,
             "structured_tool_calls": True,
             "generated_policy_execution": False,
+            "retain_tool_documentation": retain_tool_documentation,
+            "consulted_tool_contracts": sorted(consulted_tool_contracts),
         },
     )
     return 0

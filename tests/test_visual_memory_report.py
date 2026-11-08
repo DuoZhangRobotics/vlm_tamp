@@ -17,7 +17,14 @@ def test_completed_case_generates_detailed_timing_before_linking_it(tmp_path: Pa
     (run / "agent-workspace").mkdir()
     (run / "agent-workspace/findings.txt").write_text("No task success.")
     values = {
-        "decision-progress.json": {"decisions": []},
+        "decision-progress.json": {
+            "decisions": [
+                {"operation": "help", "help_operation": "push"},
+                {"operation": "push", "help_operation": None},
+                {"operation": "help", "help_operation": "push"},
+                {"operation": "help", "help_operation": "gripper"},
+            ]
+        },
         "memory-final.json": {
             "mode": "recent",
             "retained_executed_transitions": 0,
@@ -41,3 +48,5 @@ def test_completed_case_generates_detailed_timing_before_linking_it(tmp_path: Pa
     assert result["timing_details"]["outside_service_seconds"] == 11.75
     assert (run / "timing-breakdown.json").is_file()
     assert not result["has_video"]
+    assert result["documentation_usage"]["help_requests_by_tool"] == {"push": 2, "gripper": 1}
+    assert result["documentation_usage"]["repeated_help_requests"] == 1

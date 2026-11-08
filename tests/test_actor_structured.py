@@ -39,8 +39,9 @@ def test_image_selection_excludes_private_paths_and_duplicate_source_crops(tmp_p
     assert actor.image_paths(value, tmp_path) == ["shown.png"]
 
 
+@pytest.mark.parametrize("retain_tool_documentation", [False, True])
 def test_episode_uses_one_structured_action_and_complete_before_after_memory(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, retain_tool_documentation: bool
 ) -> None:
     work = tmp_path / "public"
     out = tmp_path / "run"
@@ -129,6 +130,7 @@ def test_episode_uses_one_structured_action_and_complete_before_after_memory(
             memory_mode="anchored",
             memory_slots=8,
             visual_interface=False,
+            retain_tool_documentation=retain_tool_documentation,
         )
         == 0
     )
@@ -143,6 +145,14 @@ def test_episode_uses_one_structured_action_and_complete_before_after_memory(
     assert inputs[2]["terminal_summary_requested"]
     assert len(inputs[2]["images"]) == 4
     assert "scene_views" not in inputs[0]["tools"]
+    assert inputs[2]["memory"]["recent_nonmotion_feedback"] == []
+    if retain_tool_documentation:
+        assert inputs[0]["previously_consulted_tool_contracts"] == {}
+        expected = {"push_stroke": actor.operation_schemas()["push_stroke"]["function"]}
+        assert inputs[1]["previously_consulted_tool_contracts"] == expected
+        assert inputs[2]["previously_consulted_tool_contracts"] == expected
+    else:
+        assert all("previously_consulted_tool_contracts" not in value for value in inputs)
     assert json.loads((out / "agent-exit.json").read_text())["generated_policy_execution"] is False
 
 
