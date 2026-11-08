@@ -30,6 +30,7 @@ OPERATIONS = (
     "measure_surface",
     "select_surface_contact",
     "plan_contact_pose",
+    "plan_object_point",
     "plan_pose",
     "plan_grasp",
     "execute",
@@ -80,6 +81,9 @@ full labelled 640-by-640 image coordinates.
 You may inspect earlier recorded frames with inspect_video. Every attached image is indexed below.
 Geometry and perception tools are read-only unless their contract says they install a model.
 For free pose motion, first select observed scene geometry with select_surface_contact or ground.
+plan_object_point targets a chosen current point on a held object under your explicit rigid
+attachment assumption. plan_contact_pose targets a robot landmark; plan_pose targets the TCP.
+Neither point arrival nor the attachment assumption establishes object placement or retention.
 execute of a plan_grasp plan automatically closes after measured approach arrival, using
 the planned close_steps. close_gripper=false opts out. No automatic lift; inspect retention.
 Motion planning and control use the existing numerical tools. Do not infer task completion from

@@ -634,6 +634,13 @@ Additional generic contact interfaces:
   explicitly supply a quaternion. The tool computes calibrated TCP offsets and
   sends unchanged IK solutions to VAMP; there is no wrist-angle menu. Returns a plan_id; execute with gripper=0 to hold aperture. No motion
   or confirmed physical contact occurs during planning.
+- plan_object_point(source_point_world_m, target_point_world_m, attachment_model="rigid"):
+  move YOUR selected current object point to its destination under an explicit
+  rigid hand attachment assumption. The tool computes the offset from measured
+  TCP pose and uses cuRobo point IK and VAMP. Wrist orientation is free. Execute
+  holds the gripper. Point arrival is predicted from robot motion; object
+  retention, support and carried-object collision are not certified. No support
+  point is guessed, and no lift/lower sequence or release is automatic.
 - plan_pose(pose_world_xyzw): find IK and a collision-aware joint path to YOUR
   requested TCP pose in the current scene. It returns a plan_id for execute.
   No gripper closure or grasp sequence is imposed. plan_joint is also available.

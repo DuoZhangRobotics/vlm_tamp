@@ -1129,6 +1129,27 @@ class RobotService:
                 arrival['contact_normal_local']=result['contact_pose']['contact_normal_local']
         return self.keep_plan(path,result,'free',extra={'arrival':arrival,'required_gripper_command':0})
 
+    def plan_object_point(
+        self, source_point_world_m: ArrayLike, target_point_world_m: ArrayLike,
+        attachment_model: str, collision_policy: str | None = None,
+        budget_seconds: float = 30.,
+    ) -> dict[str, Any]:
+        """Plan a caller-selected object point under an explicit rigid attachment assumption."""
+        self._check_surface_freshness()
+        if self.scene is None:
+            raise ValueError('Select current observed scene geometry before planning')
+        from vlm_tamp.placement_point import plan_object_point
+        path, report = plan_object_point(
+            self.ik, self._query_scene(collision_policy), self.record, self.state['metadata'],
+            source_point_world_m, target_point_world_m, attachment_model,
+            self.folder('object-point-plan'), budget_seconds=budget_seconds)
+        binding = report['object_point_goal']
+        result = self.keep_plan(path, report, 'free', extra={
+            'arrival': {'maximum_wait_steps': 20, 'contact_local_m': binding['contact_local_m']},
+            'required_gripper_command': 0, 'object_point_goal': binding})
+        result['object_point_goal'] = binding
+        return result
+
     def plan_pose(self,pose_world_xyzw,collision_policy=None):
         self._check_surface_freshness()
         if self.scene is None:raise ValueError('Ground the scene or select a surface contact first')
@@ -1272,6 +1293,12 @@ class RobotService:
         response = self.issue(refs,gripper,plan_id,
             **({'arrival':(plan.get('extra') or {}).get('arrival',{'maximum_wait_steps':20})}
                 if plan['kind'] in {'free','approach'} else {}))
+        if 'object_point_goal' in settings:
+            response['object_point_goal'] = settings['object_point_goal']
+            for measured in ('goal', 'last_reference'):
+                arrival = response['execution'].get('arrival', {}).get(measured)
+                if arrival is not None:
+                    arrival['tracked_point'] = 'object_point_predicted_from_measured_TCP_and_assumed_attachment'
         if automatic_close:
             from vlm_tamp.execution_grasp import finish_grasp
             return finish_grasp(self, response, settings['grasp_close_steps'])
@@ -1580,6 +1607,7 @@ class RobotService:
             operations['apply_part_motion']=self.apply_part_motion
         if getattr(self,'surface_contact_tools',False):
             operations.update(select_surface_contact=self.select_surface_contact,plan_pose=self.plan_pose,plan_contact_pose=self.plan_contact_pose,
+                plan_object_point=self.plan_object_point,
                 push=self.push,continue_push=self.continue_push,push_stroke=self.push_stroke,hook_pull=self.hook_pull)
         if self.completion_checks:
             operations.update(declare_completion=self.declare_completion,measure_surface=self.measure_surface,
@@ -1606,7 +1634,7 @@ class RobotService:
         if getattr(self,'visual_interface',False) and self.ik is not None:
             from vlm_tamp.visual_scene import preview_hand
             pose=None;aperture='current'
-            if operation in {'plan_pose','plan_contact_pose','plan_grasp'} and result.get('plan_id'):
+            if operation in {'plan_pose','plan_contact_pose','plan_object_point','plan_grasp'} and result.get('plan_id'):
                 pose=self.ik.chain.forward(self.plans[result['plan_id']]['path'][-1]).tolist()
                 aperture='open' if operation=='plan_grasp' else 'current'
             elif operation=='push' and arguments.get('preview') and result.get('robot_valid_plan_available'):

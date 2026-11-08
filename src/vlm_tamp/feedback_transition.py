@@ -98,7 +98,7 @@ def transition_record(record: dict[str, Any]) -> dict[str, Any]:
             'phases': phases,
             'earlier_phases_omitted_by_original_reply': max(0, value.get('stage_count', len(phases)) - len(phases)),
             'continuation': copy.deepcopy(value.get('continuation')),
-            **selected(value, ('grasp_execution', 'diagnostic', 'planning_diagnostic', 'remaining_skill_seconds',
+            **selected(value, ('grasp_execution', 'object_point_goal', 'diagnostic', 'planning_diagnostic', 'remaining_skill_seconds',
                                'next_geometry_interfaces', 'scene_refresh_required', 'contact_handoff')),
             **selected(receipt, ('error', 'error_type', 'execution_status')),
         },

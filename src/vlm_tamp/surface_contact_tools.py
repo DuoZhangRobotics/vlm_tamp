@@ -2,7 +2,7 @@
 from pathlib import Path
 import time
 
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 from numpy.typing import ArrayLike
@@ -200,12 +200,25 @@ def plan_contact_pose(
     surface_normal_world: ArrayLike | None = None,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """cuRobo endpoint IK followed by native planning; no extra collision pass."""
+    def solve_candidate() -> tuple[dict, list]:
+        """Resolve the caller-selected robot landmark after configuring the collision scene."""
+        return contact_solutions(ik,metadata,point,contact_name,quaternion_xyzw,
+            contact_constraint=contact_constraint,surface_normal_world=surface_normal_world)
+    return plan_point_goal(ik,scene,record,metadata,point,folder,solve_candidate,
+                           budget_seconds=budget_seconds)
+
+
+def plan_point_goal(
+    ik: Any, scene: Any, record: dict, metadata: dict, point: ArrayLike,
+    folder: Path | str, solve_candidate: Callable[[], tuple[dict, list]], *,
+    budget_seconds: float = 30.0, goal_key: str = 'contact_pose',
+) -> tuple[np.ndarray, dict]:
+    """Plan one explicit tool-relative point using the existing IK and native path solver."""
     folder=Path(folder);folder.mkdir();start=np.asarray(metadata['joint_positions'])
     began=time.perf_counter();deadline=began+float(budget_seconds);attempts=[]
     with NativeScene(scene,record,metadata,start,.05,articulated=False) as context:
         ik.configure_scene(context)
-        candidate,solutions=contact_solutions(ik,metadata,point,contact_name,quaternion_xyzw,
-            contact_constraint=contact_constraint,surface_normal_world=surface_normal_world)
+        candidate,solutions=solve_candidate()
         timing={'ik_seconds':time.perf_counter()-began,'approach_planning_seconds':0.}
         for solution in solutions:
             remaining=deadline-time.perf_counter()
@@ -217,7 +230,7 @@ def plan_contact_pose(
             if result['exact_solution']:
                 candidate['tcp_pose_world_xyzw']=ik.chain.forward(path[-1]).tolist()
                 candidate['tcp_pose_role']='planned IK endpoint'
-                if contact_constraint=='surface_normal':
+                if candidate.get('contact_constraint')=='surface_normal':
                     from .contact_orientation import contact_orientation_report
                     current=pose_matrix(metadata['eef_pose_world_xyzw'])
                     current_contact=current[:3,3]+current[:3,:3]@candidate['contact_local_m']
@@ -226,17 +239,18 @@ def plan_contact_pose(
                         candidate['contact_normal_local'],candidate['surface_normal_world'],
                         current_contact_point=current_contact,target_point=point)
                 np.save(folder/'path.npy',path);write_json(folder/'attempts.json',attempts)
-                return path,{**result,'contact_pose':candidate,
+                return path,{**result,goal_key:candidate,
                     'requested_point_world_m':np.asarray(point).tolist(),
                     'grasp_required':False,'articulation_constraint_used':False,
                     'search_timing_seconds':timing,'physical_contact_verified':False}
-    diagnostic={'status':'contact_pose_search_incomplete' if time.perf_counter()>=deadline else
-        'contact_ik_failed' if not solutions else 'contact_path_not_found',
+    family='contact' if goal_key=='contact_pose' else 'object_point'
+    diagnostic={'status':goal_key+'_search_incomplete' if time.perf_counter()>=deadline else
+        family+'_ik_failed' if not solutions else family+'_path_not_found',
         'search_complete':len(attempts)==len(solutions),'physical_infeasibility_proved':False,
-        'attempts':attempts,'timing_seconds':timing,'contact_pose':candidate}
+        'attempts':attempts,'timing_seconds':timing,goal_key:candidate}
     diagnostic['ik_diagnostic']=candidate.get('ik_diagnostic',{})
     write_json(folder/'attempts.json',attempts)
-    error=ValueError('Contact-pose planning: '+diagnostic['status']);error.planning_diagnostic=diagnostic
+    error=ValueError(goal_key.replace('_','-').capitalize()+' planning: '+diagnostic['status']);error.planning_diagnostic=diagnostic
     raise error
 
 

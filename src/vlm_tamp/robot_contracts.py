@@ -9,7 +9,7 @@ import math
 from numbers import Real
 from typing import Any
 
-VERSION = 'robot-request-contract-v26'
+VERSION = 'robot-request-contract-v27'
 POINTING_HELP = '''- point(observation_id, camera, query): ask the local Molmo2 model to mark a
   visible location in agentview or wrist. It sees both original RGB images from
   that observation, and your exact query. Describe the object/part and intended
@@ -340,6 +340,11 @@ def operation_schemas(image_sizes: dict[str, dict[str, int]] | None = None) -> d
         'plan_joint': ('Plan simulation free motion under the declared environment prediction policy to seven joint angles in radians.', parameters({'joints': array(7),'collision_policy':policy}, ['joints'])),
         'ik': ('Compute IK proposals for your world TCP pose; no robot motion.', parameters({'pose_world_xyzw': pose}, ['pose_world_xyzw'])),
         'plan_pose': ('Plan simulation free motion under the declared environment prediction policy to your world TCP pose.', parameters({'pose_world_xyzw': pose,'collision_policy':policy}, ['pose_world_xyzw'])),
+        'plan_object_point': ('Plan a current object material point to its chosen world destination under your explicit rigid attachment model. source_point_world_m is the CURRENT object point, not an old pre-grasp coordinate; target_point_world_m is the intended destination of that same point. Numerical tools compute its offset from the measured TCP and use cuRobo point IK and VAMP. Wrist/object orientation is free. Robot scene collisions are checked; carried-object shape collisions and retention are not certified. No automatic support-point guess, clearance, lift/lower sequence or release. Execution holds the gripper; arrived means the rigid model predicts point arrival, not measured object placement.', parameters({
+            'source_point_world_m':array(3),'target_point_world_m':array(3),
+            'attachment_model':{'type':'string','enum':['rigid']},'collision_policy':policy,
+            'budget_seconds':number(exclusiveMinimum=0,maximum=1800)},
+            ['source_point_world_m','target_point_world_m','attachment_model'])),
         'plan_contact_pose': ('Plan your chosen contact_name to an observed world point. point leaves orientation free; surface_normal uses an explicit signed outward surface_normal_world and leaves twist free. Alternatively supply a full quaternion. No pose menus, substituted points or automatic model fallback. Execute with gripper=0. A plan does not establish contact or task direction.', parameters({
             'point_world_m':array(3),'quaternion_xyzw':nullable(array(4)),'contact_name':text,
             'contact_constraint':contact_arguments['contact_constraint'],

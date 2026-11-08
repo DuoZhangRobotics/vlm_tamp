@@ -17,6 +17,8 @@ class Chain:
 
 @pytest.fixture
 def contact_service(tmp_path,monkeypatch):
+    monkeypatch.setattr('vlm_tamp.current_robot_scene.current_environment_spheres',
+        lambda metadata:np.empty((0,4)))  # This fixture has no physical Panda geometry.
     spec={'joint_origin_world_m':[-.1,0,0],'joint_axis_world':[0,0,1],
         'front_plane':{'point_world_m':[0,0,0]},'panel_normal_world':[-1,0,0]}
     target=np.array([[0.,0,0],[0,.01,0],[0,0,.01]])

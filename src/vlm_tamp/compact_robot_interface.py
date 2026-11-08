@@ -78,6 +78,9 @@ Omit regions.contact_box_xyxy for door-only grounding. A failed handle fit can
 preserve a usable door/joint model; read grounding_status and handle_fit.
 Door-only geometry supports tracking and joint-linked push/hook, not a pinch.
 Contact positioning: select_surface_contact, plan_contact_pose
+Object-relative motion: plan_object_point (current object point, its destination, rigid attachment).
+This converts the object's point to a TCP offset; it does not choose the object's support point,
+certify retention/payload collision, constrain object orientation, or release the gripper.
 plan_contact_pose(point_world_m, contact_name) converts an observed surface point into a
 calibrated fingertip/pad pose. plan_pose instead takes the TCP origin; never
 copy a surface point directly into that TCP position.
@@ -373,6 +376,7 @@ def compact_response(response):
     if 'joint_limit_recovery' in value:result['joint_limit_recovery']=value['joint_limit_recovery']
     if 'grasp_stage_contract' in value:result['grasp_stage_contract']=value['grasp_stage_contract']
     if 'grasp_execution' in value:result['grasp_execution']=value['grasp_execution']
+    if 'object_point_goal' in value:result['object_point_goal']=value['object_point_goal']
     if 'skill' in value:
         result.update(pick(value,('skill','mode','preview','status','stop_reason','diagnostic',
             'task_instruction','contact_constraint','selected_surface_normal_world','planner_rejection_views','visual_comparison',
