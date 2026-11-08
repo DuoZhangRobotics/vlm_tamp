@@ -203,10 +203,16 @@ def pick(value, keys):
 
 def contact_search_summary(diagnostic: dict) -> dict:
     """Keep native endpoint blockers visible without printing every joint vector."""
-    attempts=diagnostic.get('attempts',[]);outcomes=Counter();rejections=Counter();examples=[];seen=set()
+    attempts=diagnostic.get('attempts',[]);outcomes=Counter();rejections=Counter();examples=[];seen=set();insertions=[]
     for attempt in attempts:
         planning=attempt.get('planning',attempt.get('path_result',{}))
-        status=attempt.get('reason',planning.get('status','unreported'))
+        status=('contact_approach_ik_failed' if attempt.get('contact_approach_failure')
+            else attempt.get('reason',planning.get('status','unreported')))
+        if attempt.get('contact_approach_failure') and len(insertions)<4:
+            failure=attempt['contact_approach_failure']
+            insertions.append({**pick(failure,('reason','completed_waypoints','requested_waypoints')),
+                'ik_diagnostic':pick(failure.get('ik_diagnostic',{}),('minimum_position_error_m',
+                    'constraint_feasible_seeds','local_solver_success','scene_collision_checked','self_collision_checked'))})
         outcomes[status]+=1
         rejected=False
         for endpoint,check in planning.get('endpoints',{}).items():
@@ -225,7 +231,7 @@ def contact_search_summary(diagnostic: dict) -> dict:
     return {**pick(diagnostic,('search_complete','global_infeasibility_proved','physical_infeasibility_proved',
         'timing_seconds','search_work','selected_pixel','selected_contact','planning_stage','push_stroke_issued','ik_diagnostic')),
         'attempted_candidates':len(attempts),'search_outcomes':dict(outcomes),
-        'rejection_counts':dict(rejections),'blocking_examples':examples}
+        'rejection_counts':dict(rejections),'blocking_examples':examples,'contact_approach_failures':insertions}
 
 
 STATE_KEYS = ('instruction', 'attempt', 'control_steps', 'remaining_control_steps',

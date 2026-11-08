@@ -244,3 +244,14 @@ def test_compact_plan_keeps_executor_stage_contract_and_search_timing():
         'search_timing_seconds':{'ik_generation_and_queue':1.,'approach_queries':2.}}
     result=compact_response({'ok':True,'result':value})['result']
     for key in value:assert result[key]==value[key]
+
+
+def test_failed_insertion_is_not_reported_as_a_solved_contact_candidate() -> None:
+    """A valid free route is not a complete contact approach."""
+    from vlm_tamp.compact_robot_interface import contact_search_summary
+    summary = contact_search_summary({'attempts': [{'planning': {'status': 'solved', 'exact_solution': True},
+        'contact_approach_failure': {'reason': 'contact_ik_failed', 'completed_waypoints': 1,
+            'requested_waypoints': 30, 'ik_diagnostic': {'minimum_position_error_m': 1e-8,
+                'constraint_feasible_seeds': 0, 'local_solver_success': [True]}}}]})
+    assert summary['search_outcomes'] == {'contact_approach_ik_failed': 1}
+    assert summary['contact_approach_failures'][0]['ik_diagnostic']['constraint_feasible_seeds'] == 0

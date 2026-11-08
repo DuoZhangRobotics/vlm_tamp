@@ -325,9 +325,15 @@ def cartesian_path(
     environment_collision: bool = True,
     move_target: bool = True,
     motion_stage: str = 'stroke',
+    candidate_search: bool = False,
 ) -> np.ndarray:
-    """Cartesian IK waypoints; no CPU pose adjustment or dense path recheck."""
+    """Solve Cartesian IK waypoints without pose repair or dense path rechecks.
+
+    Candidate search receives an empty path for a finite IK rejection so it can
+    evaluate its remaining native solutions. Budget and runtime failures still raise.
+    """
     timing=timing if timing is not None else Counter()
+    scene.skill_partial_plan=None
     begin=pose_matrix(ik.chain.forward(start));target=pose_matrix(target_pose)
     local=np.zeros(3) if contact_local is None else np.asarray(contact_local)
     first=begin[:3,3]+begin[:3,:3]@local;last=target[:3,3]+target[:3,:3]@local
@@ -341,7 +347,10 @@ def cartesian_path(
         timing['ik_scene_setup_seconds']+=time.perf_counter()-began
     def incomplete(reason):
         scene.skill_partial_plan={'reason':reason,'completed_waypoints':len(path)-1,'requested_waypoints':count,
+            'ik_diagnostic':ik.events[-1] if getattr(ik,'events',[]) else {},
             'global_infeasibility_proved':False}
+        if candidate_search and reason=='contact_ik_failed':
+            return np.empty((0,7))
         if allow_partial and len(path)>1:return np.asarray(path)
         raise SkillStop(reason,motion_stage=motion_stage,completed_waypoints=len(path)-1,
             requested_waypoints=count,remaining_seconds=budget.remaining,
@@ -415,7 +424,7 @@ def plan_engagement(
             raise SkillStop('no_hookable_feature',reason_detail='Selected depth samples contain no retaining thickness')
         if name is None or not name.endswith('_pad_collision'):
             raise ValueError('Choose an inward-facing pad contact_name for a non-pinching hook')
-    approach={};precontact_queries=path_queries=0
+    approach={};precontact_queries=path_queries=insertion_failures=insertion_queries=0
     with skill_native_scene(scene,record,metadata,q,allow_contact=kind!='push',check_fingers=kind=='push') as context:
         phase=time.perf_counter()
         if kind=='push':ik.configure_observed_scene(scene)
@@ -438,7 +447,7 @@ def plan_engagement(
             selection.update(normal_source='caller_selected_face' if constraint=='surface_normal' else 'observed_local_patch_toward_camera',
                 contact_role=candidate.get('contact_role'))
         budget.check()
-        for solution in solutions:
+        for solution_index,solution in enumerate(solutions):
             budget.check();phase=time.perf_counter()
             free_goal=solution['joints']
             if kind=='push':
@@ -480,9 +489,15 @@ def plan_engagement(
                 insertion_timing=Counter()
                 insertion_path=cartesian_path(ik,scene,record,metadata,path[-1],matrix_pose(target),budget,
                     contact_local=local,timing=insertion_timing,environment_collision=True,move_target=False,
-                    motion_stage='contact_approach')
+                    motion_stage='contact_approach',candidate_search=True)
                 timing.update(insertion_timing)
                 timing['contact_approach_ik_seconds']+=insertion_timing['ik_seconds']
+                if not len(insertion_path):
+                    insertion_failures+=1
+                    insertion_queries+=scene.skill_partial_plan['completed_waypoints']+1
+                    attempts[-1]['contact_approach_failure']=copy.deepcopy(scene.skill_partial_plan)
+                    continue
+                insertion_queries+=len(insertion_path)-1
                 from .timed_execution import schedule_contact
                 insertion=schedule_contact(insertion_path,ik.chain,local,contact_speed_m_s=.03)
                 path=np.vstack([path,insertion_path[1:]])
@@ -509,17 +524,21 @@ def plan_engagement(
                 'insertion_direction':unit(evidence['direction_world']),'contact_name':name,
                 'contact_model':{key:candidate[key] for key in ('robot_collision_geom',
                     'physical_collision_masks','initiates_simulator_contacts')},
-                'attempts':attempts,'candidate_index':0,'timing_seconds':dict(timing),
-                'search_work':{'contact_points':1,'ik_queries':1+precontact_queries,'ik_solutions':len(solutions),'path_queries':path_queries},
+                'attempts':attempts,'candidate_index':solution_index,'timing_seconds':dict(timing),
+                'search_work':{'contact_points':1,'ik_queries':1+precontact_queries+insertion_queries,
+                    'precontact_ik_queries':precontact_queries,'contact_approach_ik_queries':insertion_queries,
+                    'ik_solutions':len(solutions),'path_queries':path_queries},
                 'total_seconds':time.perf_counter()-began,'predicted_contact_only':True,
                 'native_contact_policy':context.record,'automatic_pose_adjustment':False}
-    raise SkillStop('contact_ik_failed' if not solutions else 'precontact_ik_failed' if not path_queries else 'contact_path_not_found',
+    raise SkillStop('contact_ik_failed' if not solutions else 'precontact_ik_failed' if not path_queries
+        else 'contact_approach_ik_failed' if insertion_failures else 'contact_path_not_found',
         ik_diagnostic=candidate.get('ik_diagnostic',{}),
         selection_geometry=selection,
         attempts=attempts,search_complete=True,global_infeasibility_proved=False,
         selected_pixel=evidence.get('contact_pixel_xy'),selected_contact=name,
         approach=approach,
-        timing_seconds=dict(timing),search_work={'contact_points':1,'ik_queries':1+precontact_queries,
+        timing_seconds=dict(timing),search_work={'contact_points':1,'ik_queries':1+precontact_queries+insertion_queries,
+            'precontact_ik_queries':precontact_queries,'contact_approach_ik_queries':insertion_queries,
             'ik_solutions':len(solutions),'path_queries':path_queries})
 
 

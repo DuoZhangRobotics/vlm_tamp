@@ -1,5 +1,6 @@
 """Caller geometry and native solver results must survive the wrappers."""
 from types import SimpleNamespace
+from typing import Any
 import numpy as np
 import pytest
 
@@ -142,3 +143,59 @@ def test_float32_boundary_is_preserved_without_clipping_or_extra_margin():
     np.testing.assert_array_equal(checked_joint_target(target,limits),target)
     with pytest.raises(ValueError,match='limits'):
         checked_joint_target(target+.0001,limits)
+
+
+def test_insertion_failure_keeps_searching_the_existing_contact_batch(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A finite rejection of one posture must not discard the remaining native postures."""
+    import vlm_tamp.contact_skills as skill
+    import vlm_tamp.surface_contact_tools as surface
+    q=np.zeros(7);point=np.array([.2,.1,1.]);offset=np.array([.02,0,.04])
+    solutions=[{'joints':(q+i*.01).tolist()} for i in range(2)]
+    candidate={'contact_local_m':offset.tolist(),'contact_normal_local':[0,0,1],
+        'robot_collision_geom':'selected_pad','physical_collision_masks':{'contype':1,'conaffinity':1},
+        'initiates_simulator_contacts':True}
+    monkeypatch.setattr(surface,'contact_solutions',lambda *a,**kw:(candidate,solutions))
+    class Context:
+        record={}
+        finger_model={'hand_spheres_tcp':[[0,0,0,.01]]}
+        def __enter__(self) -> "Context":return self
+        def __exit__(self,*args: Any) -> None:pass
+        def plan(self,start: Any,goal: Any,**kwargs: Any) -> tuple[np.ndarray, dict]:return np.vstack([start,goal]),{'exact_solution':True}
+    monkeypatch.setattr(skill,'skill_native_scene',lambda *a,**kw:Context())
+    attempted=[]
+    def insertion(ik: Any,scene: Any,record: dict,metadata: dict,start: np.ndarray,*args: Any,**kwargs: Any) -> np.ndarray:
+        assert kwargs['candidate_search']
+        attempted.append(start.copy())
+        if len(attempted)==1:
+            scene.skill_partial_plan={'reason':'contact_ik_failed','completed_waypoints':0}
+            return np.empty((0,7))
+        return np.vstack([start,start])
+    monkeypatch.setattr(skill,'cartesian_path',insertion)
+    ik=SimpleNamespace(configure_scene=lambda c:None,configure_observed_scene=lambda s:None,
+        solve_contact=lambda p,c,seed,r,**kw:{'joints':seed},
+        chain=SimpleNamespace(forward=lambda q:np.r_[point-offset,[0.,0.,0.,1.]]))
+    result=skill.plan_engagement(ik,SimpleNamespace(skill_approach_speed_rad_s=.6),{},
+        {'joint_positions':q},{'point_world_m':point,'contact_name':'selected_pad',
+            'contact_surface':'fingertips','direction_world':[1,0,0]},None,'push',skill.Budget(5))
+    assert len(attempted)==2 and result['candidate_index']==1
+    assert result['attempts'][0]['contact_approach_failure']['reason']=='contact_ik_failed'
+    np.testing.assert_array_equal(result['contact_world'],point)
+
+
+def test_candidate_search_preserves_budget_and_runtime_errors() -> None:
+    """Only finite IK rejection is a candidate outcome; other failures remain explicit."""
+    from vlm_tamp.contact_skills import Budget,SkillStop,cartesian_path
+    q=np.zeros(7);target=[.006,0,0,0,0,0,1]
+    ik=SimpleNamespace(chain=SimpleNamespace(forward=lambda q:[0,0,0,0,0,0,1]),
+                       solve_contact=lambda *a,**kw:None,events=[])
+    scene=SimpleNamespace()
+    result=cartesian_path(ik,scene,{}, {},q,target,Budget(5),environment_collision=False,candidate_search=True)
+    assert result.shape==(0,7) and scene.skill_partial_plan['reason']=='contact_ik_failed'
+    with pytest.raises(SkillStop,match='planning_budget_exhausted'):
+        cartesian_path(ik,scene,{}, {},q,target,Budget(0),environment_collision=False,
+                       candidate_search=True,motion_stage='contact_approach')
+    def broken(*args: Any,**kwargs: Any) -> None:
+        raise RuntimeError('numerical failure')
+    ik.solve_contact=broken
+    with pytest.raises(RuntimeError,match='numerical failure'):
+        cartesian_path(ik,scene,{}, {},q,target,Budget(5),environment_collision=False,candidate_search=True)
