@@ -16,7 +16,12 @@ from report_restriction_fixes import render
 
 def source_hashes():
     paths=[*ROOT.glob('src/vlm_tamp/**/*.py'),*ROOT.glob('src/vlm_tamp/native/*.cc'),
-        *ROOT.glob('scripts/*.py'),ROOT/'configs/articulated_libero.json',*ROOT.glob('prompts/*.txt')]
+        *ROOT.glob('scripts/*.py'),ROOT/'configs/articulated_libero.json',*ROOT.glob('prompts/*.txt'),
+        *ROOT.glob('src/vlm_tamp/native/CMakeLists.txt'), *ROOT.glob('patches/mcvamp-capt-neighbors.*'),
+        *ROOT.glob('third_party/mc-vamp/src/impl/vamp/collision/capt.hh'),
+        *ROOT.glob('.runtime/mcvamp-contact-numerical/build.json'),
+        *ROOT.glob('.runtime/mcvamp-contact-numerical/libmcvamp_contact_numerical.so'),
+        *ROOT.glob('.runtime/mc-vamp-deps/vamp/_core/_core_ext*.so')]
     return {str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}
 
 

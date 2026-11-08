@@ -88,14 +88,14 @@ def test_closest_scene_valid_ik_is_chosen_without_an_extra_route(monkeypatch,tmp
     result=select_direct_grasp(proposals(),state,IK(),{},scene,.2,tmp_path/'selection',{},budget)
     assert len(paths)==1 and np.allclose(paths[0],.2)
     assert result['ik_rank']==1
-    assert permissions[0]['allow_contact'] is True
-    assert len(permissions)==2  # Same open hand; separate free-travel contact policy.
-    assert permissions[1]['allow_contact'] is False
+    assert len(permissions)==1
+    assert permissions[0]['allow_contact'] is False
+    assert permissions[0]['check_fingers'] is True
     assert result['approach_selection']['target_contact_during_approach_allowed'] is False
     assert all(p['collision_policy']=='veto' for p in permissions)
 
 
-def test_intended_goal_contact_keeps_the_contact_enabled_approach(monkeypatch,tmp_path):
+def test_blocked_open_hand_has_no_contact_enabled_route_substitution(monkeypatch,tmp_path):
     import vlm_tamp.graspgen_selection as module
     modes=[]
     class Context:
@@ -111,10 +111,9 @@ def test_intended_goal_contact_keeps_the_contact_enabled_approach(monkeypatch,tm
     state={'metadata':{'joint_positions':np.zeros(7),'robot_calibration':calibration()}}
     budget={'maximum_joint_speed':.6,'endpoint_hold_steps':6,'available_approach_steps':500,
         'grasp_closure_steps_reserved':40,'remaining_control_steps':540}
-    result=select_direct_grasp(proposals(),state,ik,{},SimpleNamespace(),.2,tmp_path/'selection',{},budget)
-    assert modes==[True]
-    assert result['approach_selection']['target_contact_during_approach_allowed']
-    assert result['search_summary']['approach_queries']==1
+    with pytest.raises(ValueError,match='No executable approach'):
+        select_direct_grasp(proposals(),state,ik,{},SimpleNamespace(),.2,tmp_path/'selection',{},budget)
+    assert modes==[]
 
 
 def test_hand_collision_is_rejected_without_calling_ik(monkeypatch,tmp_path):

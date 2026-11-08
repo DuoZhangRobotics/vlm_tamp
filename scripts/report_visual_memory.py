@@ -121,10 +121,9 @@ def render(study: Path, *, with_resources: bool = False) -> None:
         for case in cases:
             case["input_audit"] = input_audit["cases"].get(case["run"])
     phases = [(folder.name, folder) for folder in sorted(study.glob("resource-session-*"))]
-    probe = study / "diagnostics/bowl-release-counterfactual"
     phases += [("current", study)]
-    if (probe / "resource-monitor.json").exists():
-        phases.append(("operator-release-diagnostic", probe))
+    phases.extend(("operator-" + path.parent.name, path.parent)
+                  for path in sorted((study / "diagnostics").glob("*/resource-monitor.json")))
     audit = resources(study, phases) if with_resources else []
     write_json(
         study / "summary.json",
@@ -138,6 +137,8 @@ def render(study: Path, *, with_resources: bool = False) -> None:
             "replacement_study": manifest.get("replacement_study"),
             "input_audit": input_audit,
             "scope": manifest["scope"],
+            "related_reports": read_json(study / "related-reports.json")
+            if (study / "related-reports.json").exists() else [],
             "recorded_decision_comparison": read_json(study / "recorded-decisions/summary.json")
             if (study / "recorded-decisions/summary.json").exists()
             else None,

@@ -1,0 +1,43 @@
+diff --git a/src/impl/vamp/collision/capt.hh b/src/impl/vamp/collision/capt.hh
+index 52af89a..5119bab 100644
+--- a/src/impl/vamp/collision/capt.hh
++++ b/src/impl/vamp/collision/capt.hh
+@@ -223,13 +223,17 @@ namespace vamp::collision
+                     }
+                 }
+ 
+-                uint32_t new_hi_afford = frame.points_begin;
++                // The lower half is sorted in ascending order. Its points near
++                // the split form a suffix, not a prefix. Scan that suffix back
++                // from the midpoint so a distant first point cannot hide a
++                // nearby obstacle from the upper child's affordance list.
++                uint32_t new_hi_afford = frame.points_begin + next_width;
+                 uint32_t new_lo_afford = frame.points_begin + next_width;
+-                while (new_hi_afford < frame.points_begin + next_width and
+-                       points[argsort[new_hi_afford]][frame.d] >= test - r_max and
+-                       std::isfinite(points[argsort[new_hi_afford]][frame.d]))
++                while (new_hi_afford > frame.points_begin and
++                       points[argsort[new_hi_afford - 1]][frame.d] >= test - r_max and
++                       std::isfinite(points[argsort[new_hi_afford - 1]][frame.d]))
+                 {
+-                    ++new_hi_afford;
++                    --new_hi_afford;
+                 }
+ 
+                 while (new_lo_afford < frame.points_begin + frame.how_many_points and
+@@ -239,13 +243,13 @@ namespace vamp::collision
+                     ++new_lo_afford;
+                 }
+ 
+-                uint32_t num_new_hi = new_hi_afford - frame.points_begin;
++                uint32_t num_new_hi = frame.points_begin + next_width - new_hi_afford;
+                 uint32_t num_new_lo = new_lo_afford - (frame.points_begin + next_width);
+ 
+                 hi_afford.resize(hi_len + num_new_hi);
+                 std::copy(
+-                    argsort.begin() + frame.points_begin,
+                     argsort.begin() + new_hi_afford,
++                    argsort.begin() + frame.points_begin + next_width,
+                     hi_afford.begin() + hi_len);
+                 lo_afford.resize(lo_len + num_new_lo);
+                 std::copy(

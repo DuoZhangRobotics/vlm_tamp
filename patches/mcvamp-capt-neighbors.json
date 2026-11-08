@@ -1,0 +1,9 @@
+{
+  "upstream_revision": "24e0f8adef0649a957fec77bf33f8c2f04515a18",
+  "file": "src/impl/vamp/collision/capt.hh",
+  "patch": "mcvamp-capt-neighbors.patch",
+  "before_sha256": "afcf0f2a7dbcc89366167a1d2ac1b2b7e1c57f83a46d8c03199d84e84da83e13",
+  "after_sha256": "5357ccbea99625a75157a482193d565ce62224be243f822d1b0867c8b1c87bfa",
+  "patch_sha256": "6269a71c57cfcc4bc48e1112515f54d4e34f992100926eea772641a6e82c71b7",
+  "reason": "Preserve the near-split suffix of the lower sorted partition in the upper child collision affordances. No point coordinates or radii change."
+}

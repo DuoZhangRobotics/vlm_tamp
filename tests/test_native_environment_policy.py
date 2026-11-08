@@ -13,8 +13,10 @@ def test_runtime_defaults_cannot_silently_clear_the_observed_world():
     root=Path(__file__).resolve().parents[1]
     config=tool_configuration(read_json(root/'configs/articulated_libero.json'))
     assert config['environment_collision_policy']=='veto'
-    for operation,args in [('plan_grasp',{}),('plan_arc',{'degrees':10}),
-                           ('push',{'observation_id':1,'camera':'frontview','region_xyxy':[1,1,20,20],'direction_world':[1,0,0]})]:
+    for operation,args in [('plan_grasp',{}),('plan_arc',{'degrees':10,'grasp_constraint':'point'}),
+                           ('push',{'observation_id':1,'camera':'agentview','region_xyxy':[1,1,20,20],
+                                    'contact_pixel_xy':[10,10],'contact_name':'finger1_pad',
+                                    'direction_world':[1,0,0],'distance_m':.01})]:
         validate_operation(operation,{**args,'collision_policy':'veto'})
         with pytest.raises(RequestValidationError):
             validate_operation(operation,{**args,'collision_policy':'advisory'})

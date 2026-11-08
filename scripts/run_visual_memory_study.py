@@ -72,10 +72,13 @@ def main() -> None:
     study = args.study.resolve()
     study.mkdir(exist_ok=True)
     config = json.loads(args.config.read_text())
+    planner_reference = subprocess.check_output(
+        ['git', 'rev-parse', config.get('planner_reference_commit', PLANNER_REFERENCE_COMMIT)],
+        cwd=ROOT, text=True).strip()
     frozen = source_hashes()
     numerical = {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in NUMERICAL_FILES}
     for name, digest in numerical.items():
-        committed = subprocess.check_output(["git", "show", PLANNER_REFERENCE_COMMIT + ":" + name], cwd=ROOT)
+        committed = subprocess.check_output(["git", "show", planner_reference + ":" + name], cwd=ROOT)
         if hashlib.sha256(committed).hexdigest() != digest:
             raise RuntimeError("Numerical backend changed outside this interface study: " + name)
     if args.resume:
@@ -111,7 +114,7 @@ def main() -> None:
             "complete": False,
             "started_at": time.time(),
             "source_sha256": frozen,
-            "planner_reference_commit": PLANNER_REFERENCE_COMMIT,
+            "planner_reference_commit": planner_reference,
             "numerical_sha256": numerical,
             "config_sha256": hashlib.sha256(args.config.read_bytes()).hexdigest(),
             "scope": config["scope"],

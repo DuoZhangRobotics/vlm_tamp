@@ -1,5 +1,6 @@
 """Planning-only MC-VAMP adapter for a perceived microwave and Panda gripper."""
 import ctypes
+from functools import lru_cache
 import hashlib
 import json
 import multiprocessing
@@ -27,6 +28,20 @@ INTEGER=ctypes.POINTER(ctypes.c_int)
 from .native_scene_cache import NativeSceneCache
 _TREE_CACHE=NativeSceneCache()
 JOINT_ADMISSION_RESERVE_RAD=0.  # Actual robot bounds; no added joint-limit reserve.
+
+
+@lru_cache(maxsize=1)
+def verified_native_build() -> dict:
+    """Verify source and binary identities once; rebuilding requires a new process."""
+    build = json.loads((LIBRARY.parent / 'build.json').read_text())
+    expected = {str(SOURCE.relative_to(ROOT)): build['source_sha256'],
+                str(LIBRARY.relative_to(ROOT)): build['library_sha256'],
+                build['python_binding']: build['python_binding_sha256'],
+                **build['dependency_sha256']}
+    for name, digest in expected.items():
+        if hashlib.sha256((ROOT / name).read_bytes()).hexdigest() != digest:
+            raise ValueError('Rebuild MC-VAMP and restart after a native source/binary change: ' + name)
+    return build
 
 
 def native_plan_status(count,stats):
@@ -100,9 +115,7 @@ class NativeScene:
         if not np.isfinite(self.position_tolerance_m) or self.position_tolerance_m<=0:
             raise ValueError('Arc position tolerance must be finite and positive')
         if not np.isfinite(gripper_padding) or gripper_padding<0:raise ValueError('Invalid gripper padding')
-        build=json.loads((LIBRARY.parent/'build.json').read_text())
-        if build['source_sha256']!=hashlib.sha256(SOURCE.read_bytes()).hexdigest():
-            raise ValueError('Rebuild MC-VAMP adapter after a source change')
+        build=verified_native_build()
         self.lib=ctypes.CDLL(str(LIBRARY))
         self.lib.mcvamp_create.restype=ctypes.c_void_p
         self.lib.mcvamp_create.argtypes=[FLOAT,ctypes.c_int,FLOAT,ctypes.c_int,FLOAT,ctypes.c_int,FLOAT,FLOAT,ctypes.c_int,ctypes.c_float]
@@ -305,7 +318,7 @@ class NativeScene:
         return report
 
     def validate_hand_pose(self,pose_world_xyzw):
-        """Upstream palm spheres at a requested pose; fingers have no environment veto."""
+        """Check the configured hand spheres at a requested pose before arm IK."""
         if self.record['moving_cloud_rotates_with_hand_implied_hinge_progress']:
             raise ValueError('Pre-IK hand filtering requires a fixed current scene')
         native_eef=_f(np.linalg.inv(self.world_robot)@pose_matrix(pose_world_xyzw)@np.linalg.inv(self.native_tcp))
@@ -313,7 +326,8 @@ class NativeScene:
         result=self.lib.mcvamp_validate_hand_pose(self.handle,_pointer(native_eef),statistics.ctypes.data_as(DOUBLE))
         if result<0:raise ValueError('Invalid hand-pose collision query')
         return {**self._collision_report(result,self.statistics(statistics)),
-            'scope':'upstream palm spheres versus observed scene before IK; fingers exempt','arm_posture_checked':False,
+            'scope':'configured hand spheres versus observed scene before IK','arm_posture_checked':False,
+            'finger_environment_collision_checked':self.record['finger_environment_collision_checked'],
             'pose_world_xyzw':np.asarray(pose_world_xyzw).tolist()}
 
     def _collision_report(self,result,stats):
