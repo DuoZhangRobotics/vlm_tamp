@@ -4,7 +4,9 @@ No vertical-door, cylindrical-handle, mount or panel-completion prior. A hinge
 annotation is a caller hypothesis, not recognition of a hidden physical joint.
 """
 import copy
+from typing import Any
 import numpy as np
+from numpy.typing import ArrayLike
 from scipy.spatial import cKDTree
 
 from .coupled_scene import Scene, RobotVolumes
@@ -15,7 +17,12 @@ from .surface_contact_tools import selected_pixel_point
 from .joint_rotation import canonical_axis, AXIS_CONVENTION, VIEW_CONVENTION
 
 
-def ground_pixels(cameras, metadata, choices, *, fixed_joint=None, panel_mask=None, contact_mask=None):
+def ground_pixels(
+    cameras: dict[str, Any], metadata: dict[str, Any], choices: dict[str, Any], *,
+    fixed_joint: dict[str, Any] | None = None,
+    panel_mask: ArrayLike | None = None, contact_mask: ArrayLike | None = None,
+) -> dict[str, Any]:
+    """Lift caller selections and identify which contact or hinge sample fails."""
     view=cameras[choices['camera']]
     selected,panel_box=region_mask(view,choices['moving_panel_box_xyxy'],panel_mask)
     world=np.asarray(view['world_points']);valid=usable_pixels(view)
@@ -31,7 +38,10 @@ def ground_pixels(cameras, metadata, choices, *, fixed_joint=None, panel_mask=No
     normal=basis[-1]
     if normal@(pose_matrix(view['camera_to_world'])[:3,3]-center)<0:normal=-normal
     if fixed_joint is None:
-        hinge=np.asarray([selected_pixel_point(view,p) for p in choices['hinge_pixels_xy']])
+        hinge=np.asarray([
+            selected_pixel_point(view,p,pixel_role=f'hinge endpoint {index + 1}')
+            for index,p in enumerate(choices['hinge_pixels_xy'])
+        ])
         axis=hinge[1]-hinge[0];length=float(np.linalg.norm(axis))
         if length==0:raise ValueError('The two hinge pixels resolve to the same 3D point')
         axis=canonical_axis(axis);origin=hinge.mean(0)

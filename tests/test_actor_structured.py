@@ -40,8 +40,9 @@ def test_image_selection_excludes_private_paths_and_duplicate_source_crops(tmp_p
 
 
 @pytest.mark.parametrize("retain_tool_documentation", [False, True])
+@pytest.mark.parametrize("help_tool", ["push_stroke", "refresh_contact"])
 def test_episode_uses_one_structured_action_and_complete_before_after_memory(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, retain_tool_documentation: bool
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, retain_tool_documentation: bool, help_tool: str
 ) -> None:
     work = tmp_path / "public"
     out = tmp_path / "run"
@@ -50,14 +51,14 @@ def test_episode_uses_one_structured_action_and_complete_before_after_memory(
     (work / "robot_data").mkdir()
     (work / "tools").mkdir()
     (work / "tools/schema-index.json").write_text(
-        json.dumps({"operations": {"push_stroke": {}, "observe": {}, "finish": {}}})
+        json.dumps({"operations": {"push_stroke": {}, "refresh_contact": {}, "observe": {}, "finish": {}}})
     )
     state = {"observation_id": 1, "attempt": 1, "control_steps": 60, "maximum_control_steps": 600}
     choices = iter(
         [
             {
                 "operation": "help",
-                "arguments_json": '{"operation":"push_stroke"}',
+                "arguments_json": json.dumps({"operation": help_tool}),
                 "expected_effect": "read contract",
                 "note": "unverified",
             },
@@ -77,6 +78,7 @@ def test_episode_uses_one_structured_action_and_complete_before_after_memory(
     )
     dispatched = []
     inputs = []
+    supplied_schemas = []
 
     def tool(_work: Path, operation: str, args: str, environment: dict) -> dict:
         dispatched.append(operation)
@@ -101,6 +103,7 @@ def test_episode_uses_one_structured_action_and_complete_before_after_memory(
 
     def decision(prompt: str, images: list, folder: Path, *args: Any) -> dict:
         inputs.append(json.loads(prompt.rsplit("\n", 1)[1]))
+        supplied_schemas.append(args[1])
         folder.mkdir()
         (folder / "events.jsonl").write_text("")
         return next(choices)
@@ -135,6 +138,9 @@ def test_episode_uses_one_structured_action_and_complete_before_after_memory(
         == 0
     )
     assert dispatched == ["reset", "push_stroke", "finish"]
+    assert help_tool in supplied_schemas[0]["properties"]["operation"]["enum"]
+    assert inputs[1]["latest_feedback"]["ok"]
+    assert inputs[1]["latest_feedback"]["result"]["name"] == help_tool
     assert inputs[1]["memory"]["retained_executed_transitions"] == 0
     transition = inputs[2]["memory"]["events"][0]
     assert transition["before_control"] == 60 and transition["after_control"] == 70
@@ -148,7 +154,7 @@ def test_episode_uses_one_structured_action_and_complete_before_after_memory(
     assert inputs[2]["memory"]["recent_nonmotion_feedback"] == []
     if retain_tool_documentation:
         assert inputs[0]["previously_consulted_tool_contracts"] == {}
-        expected = {"push_stroke": actor.operation_schemas()["push_stroke"]["function"]}
+        expected = {help_tool: actor.operation_schemas()[help_tool]["function"]}
         assert inputs[1]["previously_consulted_tool_contracts"] == expected
         assert inputs[2]["previously_consulted_tool_contracts"] == expected
     else:

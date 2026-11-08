@@ -35,18 +35,30 @@ def selected_region_points(view,region,occupied,selected_mask=None):
     return candidate,box
 
 
-def selected_pixel_point(view, pixel_xy, region=None, selected_mask=None):
+def selected_pixel_point(
+    view: dict[str, Any],
+    pixel_xy: ArrayLike,
+    region: ArrayLike | None = None,
+    selected_mask: ArrayLike | None = None,
+    *,
+    pixel_role: str = 'contact',
+) -> np.ndarray:
     """Lift the caller's exact RGB-D sample; never snap to a different surface."""
     pixel=np.asarray(pixel_xy,float)
     if pixel.shape!=(2,) or not np.isfinite(pixel).all() or not np.array_equal(pixel,np.rint(pixel)):
-        raise ValueError('contact_pixel_xy must contain two integer original-image pixel coordinates')
+        raise ValueError(f'The selected {pixel_role} pixel must contain two integer original-image coordinates')
     x,y=pixel.astype(int);world=np.asarray(view['world_points']);h,w=world.shape[:2]
-    if not (0<=x<w and 0<=y<h):raise ValueError('Contact pixel is outside the selected camera image')
+    if not (0<=x<w and 0<=y<h):
+        raise ValueError(f'The selected {pixel_role} pixel is outside the selected camera image')
     if not usable_pixels(view)[y,x]:
-        raise ValueError('The selected contact pixel has no measured non-robot depth; choose another pixel explicitly')
+        raise ValueError(
+            f'The selected {pixel_role} pixel has no measured non-robot depth at [{x}, {y}]; '
+            'choose another pixel explicitly'
+        )
     if region is not None or selected_mask is not None:
         mask,_=region_mask(view,region,selected_mask)
-        if not mask[y,x]:raise ValueError('Contact pixel is outside the selected target region/mask')
+        if not mask[y,x]:
+            raise ValueError(f'The selected {pixel_role} pixel is outside the selected target region/mask')
     return world[y,x].copy()
 
 

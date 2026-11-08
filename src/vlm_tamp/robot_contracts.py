@@ -7,8 +7,9 @@ the same schemas as named functions without inventing an operation envelope.
 import json
 import math
 from numbers import Real
+from typing import Any
 
-VERSION = 'robot-request-contract-v22'
+VERSION = 'robot-request-contract-v23'
 POINTING_HELP = '''- point(observation_id, camera, query): ask the local Molmo2 model to mark a
   visible location in agentview or wrist. It sees both original RGB images from
   that observation, and your exact query. Describe the object/part and intended
@@ -220,7 +221,7 @@ def multiview_ground_parameters(image_sizes=None):
         ['observation_id','regions','comparison_regions','check_view'])
 
 
-def operation_schemas(image_sizes=None):
+def operation_schemas(image_sizes: dict[str, dict[str, int]] | None = None) -> dict[str, dict[str, Any]]:
     """Schemas reflect public arguments; enabling an operation remains separate."""
     text = {'type': 'string', 'minLength': 1}
     integer = lambda lo, hi: {'type': 'integer', 'minimum': lo, 'maximum': hi}
@@ -371,6 +372,19 @@ def operation_schemas(image_sizes=None):
             'then':{'required':['surface_normal_world'],
                 'properties':{'surface_normal_world':array(3),'quaternion_xyzw':{'type':'null'}}},
             'else':{'properties':{'surface_normal_world':{'type':'null'}}}}]
+    for name in ('push','hook_pull','select_surface_contact'):
+        description,schema=definitions[name]
+        fields=['contact_part_id'] if name=='select_surface_contact' else ['contact_part_id','moving_part_id']
+        schema.setdefault('allOf',[]).append({
+            'title':'Contact target selection',
+            'anyOf':[
+                {'required':['region_xyxy'],'properties':{'region_xyxy':{'type':'array'}}},
+                *[{'required':[field],'properties':{field:{'type':'string','minLength':1}}}
+                  for field in fields],
+            ],
+        })
+        definitions[name]=(description+' Supply region_xyxy or a current '+
+            '/'.join(fields)+'; the contact pixel alone does not select the target region.',schema)
     return {name: {'type': 'function', 'function': {'name': name, 'description': description, 'parameters': schema}}
             for name, (description, schema) in definitions.items()}
 
@@ -400,7 +414,10 @@ def reject_nonfinite(value, operation, field='arguments'):
         raise RequestValidationError(operation, field, 'nonfinite_number', 'Use a finite number; NaN and infinity are invalid.')
 
 
-def validate_operation(operation, arguments, image_sizes=None):
+def validate_operation(
+    operation: str, arguments: Any, image_sizes: dict[str, dict[str, int]] | None = None,
+) -> None:
+    """Validate the published contract while retaining actionable field errors."""
     import jsonschema
     schemas = operation_schemas(image_sizes)
     if not isinstance(operation, str) or operation not in schemas:
@@ -410,6 +427,9 @@ def validate_operation(operation, arguments, image_sizes=None):
     errors = list(jsonschema.Draft202012Validator(schemas[operation]['function']['parameters']).iter_errors(arguments))
     if errors:
         error = errors[0]
+        if error.schema.get('title')=='Contact target selection':
+            raise RequestValidationError(operation,'region_xyxy','selection_required',
+                'Supply an original-pixel region or a current selected part ID')
         field = 'arguments' + ''.join(f'[{p}]' if isinstance(p, int) else '.'+p for p in error.absolute_path)
         message = error.message
         if operation == 'ground' and list(error.absolute_path) == ['regions', 'initial_image_direction_xy']:
@@ -424,8 +444,6 @@ def validate_operation(operation, arguments, image_sizes=None):
     if operation == 'ground':
         validate_ground_regions(arguments['regions'], image_sizes=image_sizes, schema_checked=True)
     if operation in {'push','hook_pull','select_surface_contact'}:
-        if arguments.get('region_xyxy') is None and not any(arguments.get(k) for k in ['contact_part_id','moving_part_id']):
-            raise RequestValidationError(operation,'region_xyxy','selection_required','Supply an original-pixel region or a current selected part ID')
         if image_sizes and arguments['camera'] not in image_sizes:
             raise RequestValidationError(operation,'camera','unknown_camera','Choose a camera in the current capture')
         for key in ['region_xyxy','target_region_xyxy']:

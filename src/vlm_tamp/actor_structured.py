@@ -39,6 +39,7 @@ OPERATIONS = (
     "push_stroke",
     "hook_pull",
     "ground",
+    "refresh_contact",
     "inspect_scene",
     "plan_arc",
     "start_tracking",
@@ -69,6 +70,8 @@ not independently verified facts. Keep the note concise and revise it when obser
 No examples, successful coordinates, task-specific strategy or closing sign are provided.
 The episode ends at native success, 600 controls or its wall deadline. Do not reset or issue
 meaningless actions to use the budget. A failed plan does not end the episode.
+One control is a 20 Hz simulator command (0.05 simulated seconds), including gripper commands
+and holds. Simulation time and model/planning wall time are separate.
 
 Each native camera image is attached separately, unmodified and without a header or montage.
 Use that image's own pixel coordinates for robot tools: x right and y down, origin at its

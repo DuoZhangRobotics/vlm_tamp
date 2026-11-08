@@ -1,4 +1,3 @@
-from pathlib import Path
 import json
 import numpy as np
 import pytest
@@ -75,9 +74,11 @@ def test_sequence_compaction_retains_contact_failure_and_pose_timestamps():
     assert result['scene_reference_control_step']==100 and result['observation']['observation_id']==16
 
 
-def test_refresh_contract_has_no_required_hinge_reannotation():
+def test_refresh_contract_has_no_required_hinge_reannotation() -> None:
+    """Refresh the explicitly selected contact without asking for new hinge pixels."""
     from vlm_tamp.robot_contracts import validate_operation
-    arguments={'camera':'view','contact_box_xyxy':[10,20,30,40],'moving_panel_box_xyxy':[5,10,50,60]}
+    arguments={'camera':'view','contact_box_xyxy':[10,20,30,40],
+        'moving_panel_box_xyxy':[5,10,50,60],'contact_pixel_xy':[20,30]}
     validate_operation('refresh_contact',arguments,{'view':{'width':100,'height':100}})
     with pytest.raises(ValueError):validate_operation('refresh_contact',{**arguments,'camera':'missing'},{'view':{'width':100,'height':100}})
     with pytest.raises(ValueError):validate_operation('refresh_contact',{**arguments,'contact_box_xyxy':[30,20,10,40]})

@@ -25,6 +25,26 @@ def test_missing_depth_does_not_snap_to_nearby_valid_pixel():
         selected_pixel_point(view,[8,4])
 
 
+@pytest.mark.parametrize('endpoint', [0, 1])
+@pytest.mark.parametrize('failure_kind', ['missing_depth', 'robot_pixel'])
+def test_grounding_attributes_bad_hinge_pixels_without_blaming_valid_contact(
+    endpoint: int, failure_kind: str,
+) -> None:
+    """A rejected hinge endpoint must not tell the caller to replace a valid contact."""
+    view, choices = capture()
+    x, y = choices['hinge_pixels_xy'][endpoint]
+    if failure_kind == 'missing_depth':
+        view['world_points'][y, x] = np.nan
+    else:
+        view['known_robot_depth_prior'] = np.full(view['depth'].shape, np.nan)
+        view['known_robot_depth_prior'][y, x] = view['depth'][y, x]
+    np.testing.assert_array_equal(
+        selected_pixel_point(view, choices['contact_pixel_xy']), view['world_points'][4, 8],
+    )
+    with pytest.raises(ValueError, match=f'hinge endpoint {endpoint + 1}'):
+        ground_pixels({'test': view}, {}, choices)
+
+
 def test_raw_grounding_keeps_exact_contact_nonvertical_hinge_and_selected_cloud():
     view,choices=capture();candidate=ground_pixels({'test':view},{},choices)
     np.testing.assert_array_equal(candidate['anchors'][0],view['world_points'][4,8])
