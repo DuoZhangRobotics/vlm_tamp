@@ -1,0 +1,36 @@
+{
+  "title": "Luna with persistent object placement",
+  "description": "One fresh Luna/high episode using persistent object selection, measured acquisition pose and constrained lifted placement. No inherited memory or supplied coordinates.",
+  "model": "gpt-6-luna",
+  "reasoning": "high",
+  "control_steps": 600,
+  "episode_seconds": 1800,
+  "memory_slots": 8,
+  "cases": [
+    {
+      "task": "place_bowl",
+      "state_index": 1,
+      "family": "pick and place"
+    }
+  ],
+  "conditions": [
+    {
+      "name": "objects",
+      "visual_interface": true,
+      "memory_mode": "anchored",
+      "retain_tool_documentation": false,
+      "compact_transitions": false
+    }
+  ],
+  "order": "alternate condition order between cases",
+  "scope": "One development evaluation after three matched public-tool qualifications. Operator replay choices and native diagnostic poses are not supplied to Luna.",
+  "source_cameras": [
+    "agentview",
+    "wrist"
+  ],
+  "inherited_memory": false,
+  "demonstrations": false,
+  "native_contact_feedback": false,
+  "policy_code_execution": false,
+  "planner_reference_commit": "4cabc1c8eaaa8964c3fb66d40d62519f76b69239"
+}

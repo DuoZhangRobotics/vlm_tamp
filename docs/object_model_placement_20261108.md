@@ -119,3 +119,50 @@ Each physical job has a 32 GiB cap, zero swap and the existing memory/I/O/SSH wa
 sequentially. There are no changes to another user's jobs, native task predicates or the two-camera
 observation contract. A fresh Luna result is reported separately under `luna-fresh`; no success is
 inferred for that evaluation from these operator replays.
+
+## Completed fresh Luna evaluation
+
+The clean Luna/high episode at revision `4cabc1c` achieved native success at control 398. It used
+its own regions and choices, eight anchored memories, the existing feedback format, two native
+cameras, 600 controls and the normal 1800-second wall limit. No operator coordinates, prior task
+memory, worked example or private native object pose was supplied.
+
+The success involved recovery, not a perfect high-level-tool sequence. Luna selected source and
+destination object models, retried a failed grasp batch with another seed, and later opened and
+regrasped after expressing uncertainty about retention. It then called `place_object` with an
+8 cm lift. That prepared path plus release required 1,204 controls with only 323 remaining, so it
+issued no motion. The separately scheduled phase costs were approximately 214 for lift, 95 for
+transfer and 879 for lowering; combined scheduling rounds differently. The current tool takes
+the first valid path per phase and checks total cost afterward. Remaining-control-aware goal/path
+selection is an unresolved limitation; no geometric impossibility was demonstrated.
+
+Luna recovered with `plan_object_point`, using the measured model references and explicit carry
+constraints. After correcting an omitted plan ID, it executed the transfer and requested release.
+Native success occurred after three of twelve opening controls; the normal episode terminated
+immediately. Thus this run validates successful agent use of object models and numerical tools,
+but it does not show that Luna's attempted composite placement path was executed.
+
+Actor session time was 394.40 s, including 305.37 s model/client time. The robot episode from reset
+through native termination took 381.06 s. There were 25 model decisions, including nine help calls.
+The control-time video is about 19.95 s. These are distinct time scopes, not a tightened deadline
+or a matched causal speed comparison against an earlier failed rollout.
+
+A separate private replay used the same commanded prefix, completed the remaining nine opening
+controls and continued twenty settling controls. Native success remained true at controls 407
+and 427. Maximum measured joint deviation along the replayed prefix was 0.000678 rad; the commands
+match, but this is not a claim of bit-identical physical states. No new planner targets, model
+calls or native object-pose inputs were used. Normal Luna stopping was not changed.
+
+Fresh-run evidence is in `luna-fresh/watch.html`, with exact requests, tool results, native scoring,
+all recovered errors and timing. Continuation evidence is in `retained-luna-success/summary.json`
+and its recorded video. These establish one successful fresh episode and local repeatability;
+broader task/state reliability remains to be evaluated.
+
+The frozen fresh-evaluation configuration is preserved as
+`configs/study_object_models_20261108.json` for the existing supervised visual-memory runner.
+It pins numerical revision `4cabc1c`; the usual resource-limited supervisor remains required.
+
+During the fresh episode, peak anonymous/shared job memory was 5.89 GiB, host available RAM stayed
+above 70.32 GiB, and maximum sampled host full-I/O pressure was 11.55%. All sampled SSH probes
+remained healthy and no OOM kill occurred. The episode, repeatability group and continuation
+diagnostic stopped and released their workers.
