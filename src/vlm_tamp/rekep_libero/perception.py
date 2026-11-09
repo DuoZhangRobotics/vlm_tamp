@@ -323,8 +323,10 @@ class GraspGen:
         before = time.monotonic()
         # One native sampler pass. Preserve every original pose and its score.
         with torch.inference_mode():
+            from vlm_tamp.pointcloud_graspgen import filter_graspgen_points
+            filtered, filtering = filter_graspgen_points(torch.from_numpy(xyz).cuda())
             poses, scores, contacts = self.sampler.sample(
-                torch.from_numpy(xyz).cuda(), threshold=-1., num_grasps=num_grasps, remove_outliers=True)
+                filtered, threshold=-1., num_grasps=num_grasps, remove_outliers=False)
         poses = poses.detach().cpu().numpy() if hasattr(poses, 'detach') else np.asarray(poses)
         scores = scores.detach().cpu().numpy() if hasattr(scores, 'detach') else np.asarray(scores)
         if len(poses):
@@ -346,6 +348,7 @@ class GraspGen:
                   'contacts_provided_by_model': contacts is not None,
                   'approach_axis': '+z', 'closing_axis': '+x', 'pose_origin': 'gripper_base_link',
                   'inference_seconds': time.monotonic() - before,
+                  'outlier_filter': filtering,
                   'peak_gpu_memory_bytes': torch.cuda.max_memory_allocated(),
                   'generator_checkpoint_sha256': _sha(self.cfg.eval.checkpoint),
                   'discriminator_checkpoint_sha256': _sha(self.cfg.discriminator.checkpoint)}

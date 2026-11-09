@@ -124,6 +124,27 @@ def test_model_reply_is_a_snapshot_not_a_mutable_registry_alias(registry: tuple)
     assert result['shape']['center_xy_m'][0]!=99.
 
 
+def test_selected_ids_can_be_rediscovered_without_prompt_history_or_sensing(registry: tuple) -> None:
+    """A trimmed actor history does not force guessed IDs or expose unselected objects."""
+    from vlm_tamp.compact_robot_interface import compact_response
+    models,service=registry
+    source=models.select('agentview',[5,5,30,30],[20,20],'supported_body',label='my source')['object_model']
+    service.calls+=1
+    target=models.select('agentview',[30,5,39,26],[34,17],'surface_center',label='my destination')['object_model']
+    service.state['control_steps']=90
+    validate_operation('object_status',{})
+    selected=models.selected_objects()
+    assert [row['object_id'] for row in selected]==[source['object_id'],target['object_id']]
+    assert [row['label'] for row in selected]==['my source','my destination']
+    assert all(not row['pose_current'] for row in selected)
+    assert all('reference_point_world_m' not in row for row in selected)
+    compact=compact_response({'ok':True,'result':{'selected_objects':selected,'robot_motion_executed':False}})
+    assert compact['result']['selected_objects']==selected
+    with pytest.raises(ValueError,match='Previously selected IDs/labels') as error:
+        models.summary('object999')
+    assert source['object_id'] in str(error.value)
+
+
 def test_object_tools_are_declared_in_actual_callable_schemas() -> None:
     """The stable-ID workflow is callable rather than documentation-only."""
     from vlm_tamp.actor_structured import OPERATIONS

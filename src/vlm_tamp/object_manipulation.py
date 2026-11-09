@@ -30,10 +30,20 @@ class ObjectModels:
 
     def summary(self, object_id: str) -> dict:
         """Return compact provenance and pose evidence, without duplicating point clouds."""
+        if object_id not in self.models:
+            selected = {key: model.get('label') for key, model in self.models.items()}
+            raise ValueError(f'Unknown selected object {object_id!r}. Previously selected IDs/labels: '
+                             f'{selected}. Call object_status without an ID to list their currentness.')
         model = self.models[object_id]
         return {**copy.deepcopy({key: value for key, value in model.items() if key != 'cloud'}),
                 'pose_current': model['pose_control_step'] == self.service.state['control_steps']
                                 and model['pose_status'] == 'observed'}
+
+    def selected_objects(self) -> list[dict]:
+        """List only caller-created references; never discover native simulator objects."""
+        return [{key: value for key, value in self.summary(object_id).items()
+                 if key in {'object_id', 'label', 'reference_type', 'camera', 'pose_control_step',
+                            'pose_status', 'pose_current'}} for object_id in self.models]
 
     def save(self, object_id: str) -> dict:
         """Persist the latest model independently of source and destination scene selection."""
@@ -267,8 +277,12 @@ class ObjectModels:
         result.update({key: value for key, value in released.items() if key != 'execution'})
         result['execution'] = {'issued_commands': sum(stage['execution']['issued_commands'] for stage in stages),
                                'termination_reason': released['execution'].get('termination_reason')}
-        result.update(release_issued=True, release_complete=available == release_steps,
-                      stop_reason='object_transfer_released' if available == release_steps else 'control_budget_exhausted')
+        issued_release = released['execution']['issued_commands']
+        release_complete = issued_release == release_steps
+        result.update(release_issued=issued_release > 0, release_complete=release_complete,
+                      stop_reason='object_transfer_released' if release_complete else
+                      'control_budget_exhausted' if remaining_controls(service.state) == 0 else
+                      released['execution']['termination_reason'])
         source['pose_status'] = 'requires_observation_after_release'
         self.save(object_id)
         return result

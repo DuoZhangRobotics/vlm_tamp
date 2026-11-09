@@ -9,7 +9,7 @@ import math
 from numbers import Real
 from typing import Any
 
-VERSION = 'robot-request-contract-v29'
+VERSION = 'robot-request-contract-v30'
 POINTING_HELP = '''- point(observation_id, camera, query): ask the local Molmo2 model to mark a
   visible location in agentview or wrist. It sees both original RGB images from
   that observation, and your exact query. Describe the object/part and intended
@@ -374,7 +374,7 @@ def operation_schemas(image_sizes: dict[str, dict[str, int]] | None = None) -> d
             'hold':{'type':'integer','minimum':0},'release_steps':{'type':'integer','minimum':1},
             'budget_seconds':number(exclusiveMinimum=0,maximum=1800)},
             ['object_id','destination_id','lift_distance_m','attachment_model'])),
-        'object_status': ('Read a persistent object model, observation provenance and whether its pose is current. No robot motion or automatic sensing.', parameters({'object_id':text},['object_id'])),
+        'object_status': ('Read a persistent object model, observation provenance and whether its pose is current. Omit object_id to list the IDs, labels and currentness of objects you previously selected. This reads your retained references, not simulator inventory. No robot motion or automatic sensing.', parameters({'object_id':text})),
         'practice_status': ('Read the granted practice budget and learning phase.', parameters()),
         'request_attempts': ('Request more practice within the existing hard cap with your findings and next tests.', parameters({'learned': text, 'next_experiments': {'type': 'array', 'items': text, 'minItems': 1, 'maxItems': 5}}, ['learned', 'next_experiments'])),
         'dino_landmarks': ('Find optional image-feature candidates; no semantic or motion guarantee.', parameters({'camera': text, 'region_xyxy': nullable(box), 'count': integer(1, 32)})),

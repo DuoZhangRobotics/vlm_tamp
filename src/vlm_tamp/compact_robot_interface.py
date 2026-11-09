@@ -383,7 +383,7 @@ def compact_response(response):
     if 'grasp_stage_contract' in value:result['grasp_stage_contract']=value['grasp_stage_contract']
     if 'grasp_execution' in value:result['grasp_execution']=value['grasp_execution']
     if 'object_point_goal' in value:result['object_point_goal']=value['object_point_goal']
-    result.update(pick(value, ('object_id','destination_id','object_model','planning_object_models',
+    result.update(pick(value, ('object_id','destination_id','object_model','selected_objects','planning_object_models',
         'release_issued','release_complete')))
     if 'object_pose_update' in value:
         result['object_pose_update']=pick(value['object_pose_update'],('object_model','object_motion'))

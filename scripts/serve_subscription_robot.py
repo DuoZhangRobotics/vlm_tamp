@@ -1126,9 +1126,11 @@ class RobotService:
         return models_for(self).place(object_id, destination_id, lift_distance_m, attachment_model,
             speed=speed, hold=hold, release_steps=release_steps, budget_seconds=budget_seconds)
 
-    def object_status(self, object_id: str) -> dict:
+    def object_status(self, object_id: str | None = None) -> dict:
         """Read retained object state and its observation timestamps without robot motion."""
         from vlm_tamp.object_manipulation import models_for
+        if object_id is None:
+            return {'selected_objects': models_for(self).selected_objects(), 'robot_motion_executed': False}
         return {'object_model': models_for(self).summary(object_id), 'robot_motion_executed': False}
 
     def plan_contact_pose(
