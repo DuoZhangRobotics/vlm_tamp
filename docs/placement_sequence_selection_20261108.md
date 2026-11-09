@@ -81,3 +81,42 @@ is not mislabeled as a complete 20-control release. Physical execution and stopp
 The interrupted batch remains an archived development result. A new frozen 15-episode batch will
 repeat all five states with the same model, cameras, memory settings, 600 controls and 1,800-second
 budget after these fixes; its outcome must be reported separately.
+
+## Completed v2 cohort (reviewed November 9)
+
+The frozen c925955 pipeline completed all 15 trials: **10/15 native task successes**.
+State 2: 2/3; state 12: 2/3; state 22: 3/3; state 32: 0/3; state 42: 3/3.
+All five failures reached the 600-control limit with wall time remaining. All source-integrity
+checks passed, and all execution videos are present. Results, all five failure diagnoses and
+nested timing are at `results/placement-budget-20261108/luna-five-state-v2/watch.html`.
+
+The successful-trial median actor time was 268.25 s (4.47 minutes); the median across all trials
+was 590.32 s. Model/client calls accounted for 74.7% of aggregate actor wall time. Across fourteen
+transfer searches, median search time was 25.18 s. The 355.38 s total transfer search comprised
+47.06 s of IK calls and 293.60 s of path-interface calls, with 10.27 s of native path solving nested
+inside the latter. These overlapping quantities must not be added as independent totals.
+
+Closing commands often ended before the fingers settled: eight controls left about 20 mm of
+pad gap, and ten left about 7 mm. Subsequent arm motion could occur while closing continued.
+Several agents also retried acquisition without first testing retention through a lift. These
+observations support a closure/commitment interface problem, but do not isolate closing duration
+from grasp-pose quality. No matched physical closure-duration ablation was run in this review.
+
+State 32 also had real physical blockage: palm/table, palm/stove and palm/cabinet contacts despite
+accepted observed-scene paths. In repeat 1, an approach stopped 5.42 mm from its goal and the 4 mm
+arrival rule withheld closure; native diagnostics also show stove contact there. Its graspability
+must be tested, not assumed. Later misses were much larger. Evaluator-only contacts were never
+provided to Luna. All five failed cases now have detailed stopping/budget/video evidence.
+
+One failed trial spent 332.78 s between its first nonterminal finish request and its final tool
+response because the existing evaluation mode disallowed voluntary early termination. The mode
+remained unchanged throughout the cohort. This time is not motion-planner computation.
+
+Resource monitoring recorded no OOM kills and no failures in 616 SSH checks. Peak active process/
+shared memory was 7.08 GiB; total job memory including file cache stayed within 32 GiB. Host I/O
+pressure briefly reached 15.84% while SSH remained responsive; the samples are retained.
+
+The scheduled report refresh succeeded, but the automatic chat review was rejected by a
+thread-store active-writer conflict. This manual review completed the reporting. No production
+code was changed and no additional experiments were started. Native success still stops an
+ordinary episode immediately; these scores do not separately establish post-release retention.
