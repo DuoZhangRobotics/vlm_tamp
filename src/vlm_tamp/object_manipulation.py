@@ -164,6 +164,8 @@ class ObjectModels:
     def grasp(self, object_id: str, **arguments: Any) -> dict:
         """Execute the existing grasp and measure the selected object's post-closure pose."""
         service = self.service
+        from .execution_grasp import require_new_grasp
+        require_new_grasp(service, arguments.get('regrasp', False))
         model = self.models[object_id]
         if model['reference_control_step'] != service.state['control_steps']:
             raise ValueError('Select a current object region before requesting a new grasp')

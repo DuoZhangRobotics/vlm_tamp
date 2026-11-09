@@ -107,6 +107,7 @@ class RobotService:
         self.motion_feedback=[]
         self.active_grasp_contact_offset_m=0.
         self.last_gripper_command=-1
+        self.gripper_closure = None
         self.active_push_contact=None
         self.push_preview_cache=None
         self.contact_observation_cache=None
@@ -295,6 +296,7 @@ class RobotService:
         self.motion_feedback=[]
         self.active_grasp_contact_offset_m=0.
         self.last_gripper_command=-1
+        self.gripper_closure = None
         self.active_push_contact=None
         self.push_preview_cache=None
         self.contact_observation_cache=None
@@ -846,6 +848,8 @@ class RobotService:
             'policy':'Contact stroke length/speed and search budgets are explicit experiment settings. Numerical uncertainty does not prove physical infeasibility.'}
 
     def _select_contact(self, probe_degrees, max_candidates, seed, options=None):
+        from vlm_tamp.execution_grasp import require_new_grasp
+        require_new_grasp(self, (options or {}).get('explicit_regrasp', False))
         surface=getattr(self,'contact_scene_kind','articulated')=='surface'
         if surface and self.config.get('grasp_selection_method')!='graspgen_direct':
             raise ValueError('A selected surface uses the existing direct GraspGen solver; no handle model is fabricated')
@@ -931,17 +935,22 @@ class RobotService:
         self.selected = selected
         return selected
 
-    def plan_grasp(self, probe_degrees=3., max_candidates=8, seed=0, speed=None, hold=6, close_steps=40,approach_speed=None,budget_seconds=30.,collision_policy=None):
+    def plan_grasp(self, probe_degrees=3., max_candidates=8, seed=0, speed=None, hold=6, close_steps=1,approach_speed=None,budget_seconds=30.,collision_policy=None,regrasp=False):
         speed=float(approach_speed if approach_speed is not None else speed if speed is not None else self.config.get('grasp_approach_speed_rad_s',.6))
         selected=self._select_contact(probe_degrees,max_candidates,seed,{**grasp_timing_options(speed,hold,close_steps),'maximum_grasp_search_seconds':min(float(budget_seconds),self.episode_status().get('remaining_wall_seconds') or float(budget_seconds)),
-            'environment_collision_policy':collision_policy or self.config.get('environment_collision_policy','veto')})
+            'environment_collision_policy':collision_policy or self.config.get('environment_collision_policy','veto'),
+            'explicit_regrasp':bool(regrasp)})
         result=self.keep_plan(selected['approach'], {'status':'solved',
             'grasp_pose_world_xyzw':selected['pose_world_xyzw'], 'proposal_source':selected['source'],
             'initial_contact_probe_degrees':probe_degrees if self.contact_scene_kind=='articulated' else None}, 'approach', {'grasp_joints':selected['joints'],'approach_speed':speed,
                 'approach_hold_steps':int(hold),'default_gripper_command':-1,
-                'grasp_close_steps':int(close_steps),
+                'grasp_close_steps':int(close_steps), 'explicit_regrasp': bool(regrasp),
                 'contact_depth_offset_m':selected.get('contact_depth_offset_m',0.)})
-        result['budget_timing_assumptions']=selected['budget_timing_assumptions']
+        from vlm_tamp.completion_gripper import DEFAULT_CLOSE_CONTROL_LIMIT
+        result['budget_timing_assumptions']={**selected['budget_timing_assumptions'],
+            'closure_is_measured':True, 'close_steps_is_minimum':True,
+            'closure_control_ceiling':max(int(close_steps),DEFAULT_CLOSE_CONTROL_LIMIT),
+            'approach_and_closure_controls_is_lower_bound':True}
         result['approach_selection']=selected.get('approach_selection')
         result['search_summary']=selected.get('search_summary')
         result['search_timing_seconds']=selected.get('search_timing_seconds')
@@ -950,7 +959,8 @@ class RobotService:
         result['environment_collision_policy']=collision_policy or self.config.get('environment_collision_policy','veto')
         result['grasp_stage_contract']={'plan_contains':'approach followed by automatic physical closure on execution',
             'approach_gripper_command':-1,'close_after_arrival':True,'close_steps':int(close_steps),
-            'note':'execute approaches with an open hand by default, then closes after measured arrival. close_gripper=false executes only the approach. Inspect retention before transport; closure alone does not prove a grasp.'}
+            'closure_completion':'measured finger motion and completed closing-reference ramp',
+            'note':'execute approaches open, then holds the arm until closure settles. close_steps is a minimum interval, not proof of closure. No lift is included. Test retention with lift/transport; use regrasp=true only to deliberately discard the prior attempt.'}
         return result
 
     def plan_sequence(self,degrees,max_candidates=8,seed=0,grasp_constraint=None,
@@ -1111,12 +1121,12 @@ class RobotService:
 
     def grasp_object(self, object_id: str, max_candidates: int = 8, seed: int = 0,
                      approach_speed: float | None = None, hold: int = 6,
-                     close_steps: int = 40, budget_seconds: float = 30.) -> dict:
+                     close_steps: int = 1, budget_seconds: float = 30., regrasp: bool = False) -> dict:
         """Plan and execute a grasp, then measure the persistent object's pose."""
         from vlm_tamp.object_manipulation import models_for
         return models_for(self).grasp(object_id, max_candidates=max_candidates, seed=seed,
             approach_speed=approach_speed, hold=hold, close_steps=close_steps,
-            budget_seconds=budget_seconds)
+            budget_seconds=budget_seconds, regrasp=regrasp)
 
     def place_object(self, object_id: str, destination_id: str, lift_distance_m: float,
                      attachment_model: str, speed: float = .35, hold: int = 6,
@@ -1310,6 +1320,9 @@ class RobotService:
         if plan['control_steps']!=self.state['control_steps'] or plan['epoch']!=self.epoch:
             raise ValueError('Plan belongs to an earlier state/model; request a fresh plan')
         settings=plan.get('extra') or {}
+        if plan['kind'] == 'approach' and gripper != -1:
+            from vlm_tamp.execution_grasp import require_new_grasp
+            require_new_grasp(self, settings.get('explicit_regrasp', False))
         automatic_close = ('grasp_close_steps' in settings if close_gripper is None else close_gripper)
         if automatic_close and 'grasp_close_steps' not in settings:
             raise ValueError('Automatic closure requires a plan_grasp plan; use gripper for manual closure')
@@ -1349,13 +1362,27 @@ class RobotService:
         # A gripper command holds the existing controller reference. It must
         # not invent an inward arm movement after measured tracking overshoot.
         target = vector(self.state['metadata']['joint_servo']['reference_joint_positions'], 7)
-        refs = np.repeat(target[None], int(steps), axis=0)
-        result = self.issue(refs, 1 if close else -1, 'close' if close else 'open')
+        completion = None
+        count = steps
+        if close:
+            from vlm_tamp.completion_gripper import DEFAULT_CLOSE_CONTROL_LIMIT
+            from vlm_tamp.execution_limits import remaining_controls
+            remaining = remaining_controls(self.state)
+            if steps > remaining:
+                raise ValueError(f'Minimum closing interval needs {steps} controls; {remaining} remain')
+            count = min(max(steps, DEFAULT_CLOSE_CONTROL_LIMIT), remaining)
+            completion = {'minimum_controls': steps}
+        refs = np.repeat(target[None], count, axis=0)
+        result = self.issue(refs, 1 if close else -1, 'close' if close else 'open',
+                            **({'gripper_completion': completion} if close else {}))
         result['arm_reference'] = {'policy': 'hold_existing_controller_reference',
             'joints': target.tolist(), 'automatic_arm_recovery': False}
         return result
 
-    def issue(self, refs, gripper, label, *, articulated=False,camera_names=None,track_scene=True,push_feedback=None,arrival=None):
+    def issue(self, refs, gripper, label, *, articulated=False,camera_names=None,track_scene=True,push_feedback=None,arrival=None,gripper_completion=None):
+        closure = getattr(self, 'gripper_closure', None)
+        if closure is not None and not closure['settled'] and gripper != -1 and gripper_completion is None:
+            raise ValueError('Finger closure has not settled; finish closing or explicitly open before moving the arm')
         if len(refs)>control_limit(self.state)-self.state['control_steps']:
             raise ValueError('Complete requested trajectory exceeds remaining physical-step budget: '
                 f'{len(refs)} references requested, {control_limit(self.state)-self.state["control_steps"]} controls remain')
@@ -1386,8 +1413,13 @@ class RobotService:
         self.state, result = execute_batch(self.sim,self.state,refs,gripper=gripper,event_sink=self.events.append,
                                           stop_on_success=self.stop_on_success,maximum_control_steps=getattr(self,'maximum_control_steps',control_limit(self.state)),
                                           **({'push_feedback':push_feedback} if push_feedback is not None else {}),
-                                          **({'arrival':arrival} if arrival is not None else {}))
+                                          **({'arrival':arrival} if arrival is not None else {}),
+                                          **({'gripper_completion':gripper_completion} if gripper_completion is not None else {}))
         if result['issued_commands'] and gripper!=0:self.last_gripper_command=gripper
+        if result['issued_commands'] and gripper == -1:
+            self.gripper_closure = None
+        if gripper_completion is not None:
+            self.gripper_closure = {**result['gripper_completion'], 'control_step': self.state['control_steps']}
         issued_refs=np.asarray([event['reference_joints'] for event in result['events']],float).reshape(-1,7)
         np.save(self.episode/f'{self.calls:03d}-issued-{label}.npy',issued_refs)
         compact = {k:v for k,v in result.items() if k!='events'}

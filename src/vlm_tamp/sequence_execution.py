@@ -45,8 +45,11 @@ def execute_sequence(service,plan_id,*,close_steps=40,speed=.35,approach_speed=N
 
     def issue(references,name,gripper):
         nonlocal last
-        last=service.issue(references,gripper,f'{plan_id}-{name}',articulated=name=='manipulation',
-            **({'arrival':{'maximum_wait_steps':20}} if name=='approach' else {}))
+        if name == 'closure':
+            last = service.gripper(close=True, steps=len(references))
+        else:
+            last=service.issue(references,gripper,f'{plan_id}-{name}',articulated=name=='manipulation',
+                **({'arrival':{'maximum_wait_steps':20}} if name=='approach' else {}))
         records.append({'stage':name,'artifact_id':service.calls,**last})
         result.update(task_success=bool(last.get('task_success')),episode_done=bool(last.get('episode_done')),
             observation=last.get('observation'),grasp_evidence=last.get('grasp_evidence'))
@@ -55,6 +58,9 @@ def execute_sequence(service,plan_id,*,close_steps=40,speed=.35,approach_speed=N
             if not result['approach_arrival']['goal_reached']:
                 result.update(stop_reason='approach_not_reached',recovery_required=True,closure_issued=False)
                 return True
+        if name == 'closure' and not last['execution']['gripper_completion']['settled']:
+            result.update(stop_reason=last['execution']['termination_reason'], recovery_required=True)
+            return True
         return result['episode_done'] or result['task_success']
 
     try:
@@ -93,9 +99,8 @@ def execute_sequence(service,plan_id,*,close_steps=40,speed=.35,approach_speed=N
         result['closure_joint_limit_recovery']=recovery
         result['measured_closure_aperture_qpos']=service.state['metadata']['gripper_qpos']
         result['closure_evidence']=grasp_observation(service.state['metadata'],service.spec)
-        requested=float(extra['goal_degrees']);direction=np.sign(requested);ineffective=0;calibration_done=not calibrate_joint
+        requested=float(extra['goal_degrees']);direction=np.sign(requested);calibration_done=not calibrate_joint
         manipulation_count=0;calibration_pair=None
-        feedback_records=[]
         while abs(commanded)<abs(requested)-1e-9:
             if service.episode_status()['episode_done']:
                 result.update(stop_reason=service.episode_status()['termination_reason'],episode_done=True);break

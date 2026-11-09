@@ -16,7 +16,8 @@ def service(tmp_path):
     robot.workspace=tmp_path/'workspace';robot.public=robot.workspace/'robot_data'
     (robot.public/'attempt01').mkdir(parents=True)
     robot.attempt=1;robot.calls=1;robot.epoch=0;robot.plans={}
-    robot.state={'control_steps':0,'metadata':{'joint_positions':[0.]*7}}
+    robot.state={'control_steps':0,'metadata':{'joint_positions':[0.]*7,
+        'joint_servo':{'reference_joint_positions':[.01]*7}}}
     robot.stop_on_success=True
     robot.config={};robot.spec={}
     robot.ik=SimpleNamespace(chain=SimpleNamespace(limits=np.tile([-3.,3.],(7,1))))
@@ -37,7 +38,8 @@ def test_sequence_native_success_stops_before_postclosure_planning(tmp_path):
         calls.append((label,gripper))
         robot.epoch+=1;robot.state['control_steps']+=len(refs)
         success=len(calls)==2
-        return {'task_success':success,'episode_done':success,'observation':{},'execution':{'arrival':{'goal_reached':True}}}
+        return {'task_success':success,'episode_done':success,'observation':{},'execution':{
+            'arrival':{'goal_reached':True},'gripper_completion':{'settled':True}}}
     robot.issue=issue
     result=robot.execute_sequence('test',close_steps=3,hold=0)
     assert len(calls)==2 and result['task_success']
@@ -58,12 +60,23 @@ def test_unresolved_tracking_does_not_cancel_requested_closure(tmp_path):
     robot.scene_reference_control_step=0
     def issue(refs,gripper,label,**kwargs):
         calls.append(label);robot.state['control_steps']+=len(refs)
-        return {'task_success':len(calls)==2,'episode_done':len(calls)==2,'observation':{'control_steps':robot.state['control_steps']},'execution':{'arrival':{'goal_reached':True}},
+        return {'task_success':len(calls)==2,'episode_done':len(calls)==2,'observation':{'control_steps':robot.state['control_steps']},'execution':{'arrival':{'goal_reached':True},'gripper_completion':{'settled':True}},
             'scene_pose_observation':{'source':'unresolved_rgbd_motion','fit':{'reason':'insufficient_moving_landmarks'}}}
     robot.issue=issue
     result=robot.execute_sequence('test',close_steps=40,hold=0)
-    assert calls==['test-approach','test-closure']
+    assert calls==['test-approach','close']
     assert result['closure_issued'] and result['task_success']
+
+
+def test_sequence_cannot_start_manipulation_with_unsettled_closure(tmp_path):
+    _,robot=service(tmp_path);install_sequence(robot)
+    robot.issue=lambda *args,**kwargs:{'task_success':False,'episode_done':False,
+        'execution':{'arrival':{'goal_reached':True}}}
+    robot.gripper=lambda **kwargs:{'task_success':False,'episode_done':False,
+        'execution':{'gripper_completion':{'settled':False},'termination_reason':'gripper_unsettled'}}
+    result=robot.execute_sequence('test',close_steps=1,hold=0)
+    assert result['stop_reason']=='gripper_unsettled'
+    assert not result['post_closure_replanning']
 
 
 @pytest.mark.parametrize('gripper',[0,1])

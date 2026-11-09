@@ -104,13 +104,23 @@ class ProfiledWorker(CoupledWorker):
                 'maximum_control_steps':self.maximum_control_steps,'step_limit_reached':self.control_steps>=self.maximum_control_steps}
     def joint_trajectory(self, references: ArrayLike, gripper: int = 1,
                          stop_on_success: bool = False, push_feedback: dict | None = None,
-                         arrival: dict | None = None) -> dict[str, Any]:
+                         arrival: dict | None = None,
+                         gripper_completion: dict | None = None) -> dict[str, Any]:
         """Execute references with measured completion for the declared contact model."""
         self._require_env();refs=np.asarray(references,float)
         if refs.ndim!=2 or refs.shape[1]!=7 or not np.isfinite(refs).all():raise ValueError('Finite seven-joint trajectory required')
         if len(refs)>self.maximum_control_steps-self.control_steps:raise ValueError('Complete trajectory exceeds remaining budget')
         for q in refs:checked_joint_target(q,self.ik_solver.limits)
         if gripper not in (-1,0,1):raise ValueError('Invalid gripper command')
+        closure = None
+        if gripper_completion is not None:
+            from .completion_gripper import closure_sample
+            minimum = gripper_completion['minimum_controls']
+            if (gripper != 1 or arrival is not None or push_feedback is not None or not len(refs)
+                    or not np.array_equal(refs, np.repeat(refs[:1], len(refs), axis=0))
+                    or type(minimum) is not int or not 1 <= minimum <= len(refs)):
+                raise ValueError('Measured closure requires a stationary arm and a valid minimum interval')
+            closure = {'settled': False, 'minimum_controls': minimum, 'maximum_controls': len(refs)}
         stop_on_success=bool(stop_on_success or getattr(self,'stop_on_success',False))
         terminal=bool(stop_on_success and self.env.check_success())
         feedback=None;tracking=None;tracking_failure=False
@@ -145,12 +155,23 @@ class ProfiledWorker(CoupledWorker):
                 while True:
                     # Hold the same reference while the physical arm catches up.
                     # No IK correction, path replacement or simulator state edit.
+                    if closure is not None:
+                        finger_before = self.env.sim.data.qpos[self.robot._ref_gripper_joint_pos_indexes].copy()
+                        reference_before = self.robot.gripper.current_action.copy()
                     state=super().joint_action(q,gripper=gripper,max_steps=1)
+                    if closure is not None:
+                        closure.update(closure_sample(
+                            finger_before, self.env.sim.data.qpos[self.robot._ref_gripper_joint_pos_indexes],
+                            self.env.sim.data.qvel[self.robot._ref_gripper_joint_vel_indexes],
+                            reference_before, self.robot.gripper.current_action))
                     measured=np.asarray(state['metadata']['joint_positions'])
                     events.append({'control_step':state['control_steps'],'reference_index':i,
                         'reference_joints':q.tolist(),'measured_joints':measured.tolist(),
                         'joint_reference_error_rad':float(np.max(np.abs(measured-q))),
                         'command_issued':True,'execution_veto_checks':0,
+                        **({'gripper_motion': {key: closure[key] for key in (
+                            'settled', 'positions_m', 'velocities_m_s',
+                            'controller_reference_stopped_changing')}} if closure is not None else {}),
                         **({'reference_repeat':repeats>0} if tracking is not None else {})})
                     terminal=bool(stop_on_success and self.action_log[-1]['evaluation_task_success'])
                     if feedback is not None:feedback.update(state['metadata']['eef_pose_world_xyzw'],i)
@@ -165,7 +186,7 @@ class ProfiledWorker(CoupledWorker):
                     if repeats>=wait_steps or self.control_steps>=self.maximum_control_steps:
                         tracking_failure=True;break
                     repeats+=1;tracking['extra_controls']+=1
-                if tracking_failure:break
+                if tracking_failure or (closure is not None and i+1 >= minimum and closure['settled']):break
             if tracking is not None:
                 complete=tracking['references_advanced']==len(refs)
                 tracking['goal']={**pose_arrival(goal_pose,self._eef_pose(),tracked_offset,tracked_normal),'reference_path_completed':complete}
@@ -175,17 +196,25 @@ class ProfiledWorker(CoupledWorker):
         state=self._response_state()
         issued_path=0 if not events else events[-1]['reference_index']+1
         complete=(issued_path==len(refs) and (tracking is None or tracking['goal_reached']))
+        if closure is not None:
+            complete = bool(closure['settled'] and issued_path >= minimum)
+            closure.update(minimum_interval_completed=issued_path >= minimum,
+                           executed_controls=len(events), additional_controls=max(0, len(events)-minimum))
         budget_stop=bool(not terminal and not complete and self.control_steps>=self.maximum_control_steps)
         return {**state,'trajectory':{'all_commands_issued':complete,'nominal_path_commands':len(refs),
-            'planned_commands':len(refs)+(tracking['extra_controls'] if tracking is not None else 0),'issued_commands':len(events),
+            'planned_commands':(len(events) if closure is not None else
+                                len(refs)+(tracking['extra_controls'] if tracking is not None else 0)),
+            'issued_commands':len(events),
             'terminated_on_simulator_success':terminal,
             'termination_reason':'simulator_success' if terminal else
                 'control_budget_exhausted' if budget_stop else
+                ('gripper_settled' if complete else 'gripper_unsettled') if closure is not None else
                 'reference_not_reached' if tracking_failure else 'trajectory_complete',
             'terminated_on_tracking_error':bool(tracking_failure and not terminal and not budget_stop),
             'terminated_on_control_budget':budget_stop,
             'physical_stall_is_execution_gate':False,
             **({'arrival':tracking} if tracking is not None else {}),
+            **({'gripper_completion':closure} if closure is not None else {}),
             **({'push_feedback':feedback.result()} if feedback is not None else {}),
             'worker_seconds':time.perf_counter()-before,'execution_veto_checks':0,
             'maximum_joint_reference_error_rad':max((r['joint_reference_error_rad'] for r in events),default=0.),'events':events}}

@@ -101,10 +101,13 @@ def grasp_execution_service(tmp_path: Path, *, reached: bool = True) -> tuple[Ro
 
     def issue(refs: np.ndarray, gripper: int, label: str, **kwargs: object) -> dict:
         """Advance controls and expose arrival independently of finger closure."""
-        sent.append({'gripper': gripper, 'label': label, 'count': len(refs), 'artifact': service.calls})
-        service.state['control_steps'] += len(refs)
-        execution = {'planned_commands': len(refs), 'issued_commands': len(refs),
+        count = kwargs['gripper_completion']['minimum_controls'] if 'gripper_completion' in kwargs else len(refs)
+        sent.append({'gripper': gripper, 'label': label, 'count': count, 'artifact': service.calls})
+        service.state['control_steps'] += count
+        execution = {'planned_commands': count, 'issued_commands': count,
                      'all_commands_issued': True, 'termination_reason': 'trajectory_complete'}
+        if 'gripper_completion' in kwargs:
+            execution['gripper_completion'] = {'settled': True, 'executed_controls': count}
         if 'arrival' in kwargs:
             execution['arrival'] = {'goal_reached': reached, 'goal': {'reached': reached}}
         return {'execution': execution, 'observation': {'control_steps': service.state['control_steps']},
@@ -125,7 +128,7 @@ def test_execute_grasp_closes_after_arrival_without_another_tool_call(tmp_path: 
     assert result['execution']['issued_commands'] == 44
     assert result['execution']['all_commands_issued'] is True
     assert result['grasp_execution']['closure_completed'] is True
-    assert result['grasp_execution']['object_retention'] == 'unverified'
+    assert result['grasp_execution']['object_retention'] == 'not_tested'
     assert result['task_success'] is False
     assert [stage['control_steps'] for stage in result['stages']] == [581, 601]
     assert result['observation']['control_steps'] == 601
@@ -139,6 +142,53 @@ def test_blocked_approach_does_not_issue_closure(tmp_path: Path) -> None:
     assert result['stop_reason'] == 'approach_not_reached'
     assert result['grasp_execution']['closure_issued'] is False
     assert result['execution']['all_commands_issued'] is False
+
+
+def test_sent_closing_interval_is_not_mechanical_completion(tmp_path: Path) -> None:
+    """Even all requested commands cannot certify closure while the fingers keep moving."""
+    service,plan,_=grasp_execution_service(tmp_path)
+    service.state['maximum_control_steps']=620
+    original=service.issue
+    def moving_fingers(refs: np.ndarray, gripper: int, label: str, **kwargs: object) -> dict:
+        """Return an executed interval with an explicitly unfinished mechanical state."""
+        result=original(refs,gripper,label,**kwargs)
+        if 'gripper_completion' in kwargs:
+            result['execution']['gripper_completion']['settled']=False
+            result['execution']['termination_reason']='gripper_unsettled'
+        return result
+    service.issue=moving_fingers
+    result=service.execute_plan(plan['plan_id'])
+    assert result['grasp_execution']['closing_interval_completed']
+    assert not result['grasp_execution']['closure_completed']
+    assert not result['execution']['all_commands_issued']
+    assert result['stop_reason']=='gripper_unsettled'
+
+
+def test_approach_executor_cannot_implicitly_release_a_preserved_grasp(tmp_path: Path) -> None:
+    """A stored approach's default opening requires an explicit regrasp decision."""
+    service,plan,sent=planned_service(tmp_path)
+    service.gripper_closure={'settled':True,'retention':'not_tested'}
+    with pytest.raises(ValueError,match='previous closing attempt is preserved'):
+        service.execute_plan(plan['plan_id'],close_gripper=False)
+    assert not sent
+    service.plans[plan['plan_id']]['extra']['explicit_regrasp']=True
+    service.execute_plan(plan['plan_id'],close_gripper=False)
+    assert sent[0][1]==-1
+
+
+def test_unfinished_closure_cannot_be_followed_by_arm_transport() -> None:
+    """The executor preserves the arm when a closing attempt reaches its ceiling unsettled."""
+    service=SimpleNamespace(gripper_closure={'settled':False})
+    with pytest.raises(ValueError,match='finish closing'):
+        RobotService.issue(service,np.zeros((2,7)),0,'transport')
+
+
+def test_explicit_minimum_closing_interval_must_fit_the_remaining_budget() -> None:
+    """A direct minimum-duration request cannot silently become a shorter completed request."""
+    service=SimpleNamespace(state={'control_steps':594,'maximum_control_steps':600,
+        'metadata':{'joint_servo':{'reference_joint_positions':[0.]*7}}})
+    with pytest.raises(ValueError,match='8 controls; 6 remain'):
+        RobotService.gripper(service,close=True,steps=8)
 
 
 def test_closure_uses_remaining_budget_and_reports_partial_execution(tmp_path: Path) -> None:

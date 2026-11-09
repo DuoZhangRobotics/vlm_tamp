@@ -83,6 +83,10 @@ Choose regions and reference models; tools preserve separate object identities, 
 body, track its pose after grasping, and bind a prepared lifted placement to those observations.
 Choose the lift distance and rigid attachment model explicitly. No task-specific recipe or
 successful coordinates are supplied. Native success and measured retention remain separate.
+Grasp closes until finger motion settles while holding the arm; it does not lift the object.
+No lift during a closing command is not evidence of failure. Test retention by lifting or
+transporting. A repeated grasp preserves the closed hand unless regrasp=true or an explicit
+opening command discards it. close_steps is an optional minimum interval, not a completion test.
 Object-relative motion: plan_object_point (current object point, its destination, rigid attachment).
 This converts the object's point to a TCP offset; it does not choose the object's support point,
 certify retention/payload collision or release the gripper. Optional carry_constraints
@@ -363,7 +367,7 @@ def compact_response(response):
             'first_blocking_surface_by_rejected_goal', 'first_blocking_robot_part_by_rejected_goal',
             'interpretation', 'full_diagnostic', 'requested_constraints',
             'candidate_status_counts', 'candidates_tried', 'search_stage_counts',
-            'attempted_postures', 'requested_probe_degrees', 'physical_motion_issued'))
+            'attempted_postures', 'requested_probe_degrees', 'physical_motion_issued', 'gripper_completion'))
         if 'scene_observation_support' in diagnostic:
             display['planning_diagnostic']['scene_observation_support'] = evidence(diagnostic['scene_observation_support'])
     value = response.get('result')
@@ -536,7 +540,8 @@ def compact_response(response):
         result['execution'] = pick(value['execution'], ('planned_commands', 'issued_commands',
             'all_commands_issued', 'terminated_on_simulator_success', 'termination_reason',
             'worker_seconds', 'wall_seconds', 'maximum_joint_reference_error_rad','endpoint_tracking',
-            'arrival','arrival_scope','terminated_on_tracking_error','terminated_on_control_budget','nominal_path_commands'))
+            'arrival','arrival_scope','terminated_on_tracking_error','terminated_on_control_budget','nominal_path_commands',
+            'gripper_completion'))
     if 'motion_effect' in value:result['motion_effect']=value['motion_effect']
     if 'selected_frame_count' in value:
         result.update(pick(value,('available','camera','requested_control_interval','available_control_interval',
