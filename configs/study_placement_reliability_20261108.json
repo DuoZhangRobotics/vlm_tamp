@@ -1,0 +1,73 @@
+{
+  "title": "Luna placement reliability: five states, three fresh trials each",
+  "description": "Frozen control-cost-aware complete transfer selection; Luna/high with the same tools, two native cameras, 600 controls and no inherited experience.",
+  "model": "gpt-6-luna",
+  "reasoning": "high",
+  "control_steps": 600,
+  "episode_seconds": 1800,
+  "memory_slots": 8,
+  "cases": [
+    {
+      "task": "place_bowl",
+      "state_index": 2,
+      "family": "pick and place"
+    },
+    {
+      "task": "place_bowl",
+      "state_index": 12,
+      "family": "pick and place"
+    },
+    {
+      "task": "place_bowl",
+      "state_index": 22,
+      "family": "pick and place"
+    },
+    {
+      "task": "place_bowl",
+      "state_index": 32,
+      "family": "pick and place"
+    },
+    {
+      "task": "place_bowl",
+      "state_index": 42,
+      "family": "pick and place"
+    }
+  ],
+  "conditions": [
+    {
+      "name": "repeat1",
+      "repeat_index": 1,
+      "visual_interface": true,
+      "memory_mode": "anchored",
+      "retain_tool_documentation": false,
+      "compact_transitions": false
+    },
+    {
+      "name": "repeat2",
+      "repeat_index": 2,
+      "visual_interface": true,
+      "memory_mode": "anchored",
+      "retain_tool_documentation": false,
+      "compact_transitions": false
+    },
+    {
+      "name": "repeat3",
+      "repeat_index": 3,
+      "visual_interface": true,
+      "memory_mode": "anchored",
+      "retain_tool_documentation": false,
+      "compact_transitions": false
+    }
+  ],
+  "order": "alternate condition order between cases",
+  "scope": "Fifteen fresh Luna episodes on five additional bowl initialization states. Each policy starts clean; no cross-episode memory, demonstrations or recorded coordinates. Physical reset seed stays 0; model sampling seed is not controlled. Same-source model repetitions, not fifteen different geometries. All completed attempts are reported; no success-selected retries.",
+  "source_cameras": [
+    "agentview",
+    "wrist"
+  ],
+  "inherited_memory": false,
+  "demonstrations": false,
+  "native_contact_feedback": false,
+  "policy_code_execution": false,
+  "planner_reference_commit": "621aa2804206262f5e873bfc38f9da131f400418"
+}
