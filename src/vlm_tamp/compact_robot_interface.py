@@ -388,7 +388,7 @@ def compact_response(response):
     if 'object_pose_update' in value:
         result['object_pose_update']=pick(value['object_pose_update'],('object_model','object_motion'))
     if 'prepared_transfer' in value:
-        result['prepared_transfer']=pick(value['prepared_transfer'],('nominal_controls','planning_seconds','lift_distance_m'))
+        result['prepared_transfer']=pick(value['prepared_transfer'],('nominal_controls','planning_seconds','lift_distance_m','sequence_search'))
         result['prepared_transfer']['stages']=[{'stage':stage['stage'],'status':stage['result'].get('status'),
             'planner':stage['result'].get('planner')} for stage in value['prepared_transfer']['stages']]
     if 'skill' in value:

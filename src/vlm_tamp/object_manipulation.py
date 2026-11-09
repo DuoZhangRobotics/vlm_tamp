@@ -13,7 +13,7 @@ from .coupled_storage import write_json
 from .observation_completion import plane_fit
 from .part_motion import pair_points
 from .part_perception import association, region_mask, usable_pixels
-from .placement_point import plan_object_point
+from .planner_object_transfer import plan_object_transfer
 from .rekep_libero.geometry import pose_matrix, transform_points
 from .rekep_libero.task_geometry_v4 import surface_summary
 from .timed_execution import schedule
@@ -217,30 +217,18 @@ class ObjectModels:
         targets = [('lift', lifted, point), ('transfer', over, floor), ('lower', selected, selected)]
         metadata = dict(service.state['metadata'])
         folder = service.folder('object-transfer');folder.mkdir()
-        paths, reports = [], []
         began = time.perf_counter()
-        for name, target, plane_point in targets:
-            remaining = budget_seconds-(time.perf_counter()-began)
-            if remaining <= 0:
-                raise TimeoutError('Object transfer planning budget exhausted before execution')
-            pose = pose_matrix(metadata['eef_pose_world_xyzw'])
-            start_point = transform_points([local_point], pose)[0]
-            path, report = plan_object_point(
-                service.ik, query, service.record, metadata, start_point, target,
-                attachment_model, folder/name, budget_seconds=remaining,
-                carry_constraints={'object_axis_world': (pose[:3, :3]@local_axis).tolist(),
-                    'target_axis_world': axis.tolist(), 'support_plane_point_world_m': plane_point.tolist(),
-                    'support_plane_normal_world': normal.tolist()})
-            report['object_point_goal']['source'] = 'observed object pose plus rigid prediction within prepared transfer'
-            paths.append(path if not paths else path[1:])
-            reports.append({'stage': name, 'result': report})
-            following = path[-1]
-            geometry = service.sim.fk(following, include_volumes=True,
+        def metadata_at(joints: np.ndarray) -> dict:
+            """Predict robot geometry for an unexecuted branch without clearing future scene points."""
+            geometry = service.sim.fk(joints, include_volumes=True,
                                       gripper_qpos=service.state['metadata']['gripper_qpos'])
-            metadata = {**metadata, 'joint_positions': following.tolist(),
-                        'eef_pose_world_xyzw': service.ik.chain.forward(following).tolist(),
-                        'robot_collision_volumes_world': geometry['robot_collision_volumes_world']}
-        combined = np.vstack(paths)
+            return {**metadata, 'joint_positions': joints.tolist(),
+                    'eef_pose_world_xyzw': service.ik.chain.forward(joints).tolist(),
+                    'robot_collision_volumes_world': geometry['robot_collision_volumes_world']}
+        combined, reports, search = plan_object_transfer(
+            service.ik, query, service.record, metadata, metadata_at, local_point, local_axis,
+            axis, normal, targets, folder, speed=speed, hold=hold, release_steps=release_steps,
+            available_controls=remaining_controls(service.state), budget_seconds=budget_seconds)
         controls = len(schedule(combined, maximum_joint_speed=speed, endpoint_hold_steps=hold))
         planning_seconds = time.perf_counter()-began
         if controls+release_steps > remaining_controls(service.state):
@@ -257,7 +245,11 @@ class ObjectModels:
                   'planning_object_models': planning_models,
                   'prepared_transfer': {'stages': reports, 'nominal_controls': controls,
                                         'planning_seconds': planning_seconds,
-                                        'lift_distance_m': lift_distance_m},
+                                        'lift_distance_m': lift_distance_m,
+                                        'sequence_search': {key: search[key] for key in (
+                                            'retained_prefix_limit','selected_branches','ik_queries','path_queries',
+                                            'budget_rejected_prefixes','complete_controls_including_release',
+                                            'global_optimality_claimed')}},
                   'release_issued': False, 'attachment_verified': False}
         status = service.episode_status()
         if moved.get('episode_done') or status['episode_done']:

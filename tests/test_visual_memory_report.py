@@ -33,11 +33,14 @@ def test_completed_case_generates_detailed_timing_before_linking_it(tmp_path: Pa
         },
         "source-integrity.json": {"numerical_backend_unchanged": True},
         "agent-exit.json": {"wall_seconds": 12.0},
+        "attempt01/initial/actions.json": [],
+        "attempt01/opened/metadata.json": {"control_steps": 60},
     }
     for name, value in values.items():
+        (run / name).parent.mkdir(parents=True, exist_ok=True)
         (run / name).write_text(json.dumps(value))
     event = {
-        "request": {"operation": "observe"},
+        "request": {"operation": "observe", "arguments": {}},
         "wall_seconds": 0.25,
         "response": {"ok": True, "result": {}},
     }
