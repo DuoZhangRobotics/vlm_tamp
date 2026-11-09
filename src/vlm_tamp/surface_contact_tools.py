@@ -212,11 +212,13 @@ def plan_point_goal(
     ik: Any, scene: Any, record: dict, metadata: dict, point: ArrayLike,
     folder: Path | str, solve_candidate: Callable[[], tuple[dict, list]], *,
     budget_seconds: float = 30.0, goal_key: str = 'contact_pose',
+    configure_context: Callable[[Any], None] | None = None, constrained: bool = False,
 ) -> tuple[np.ndarray, dict]:
     """Plan one explicit tool-relative point using the existing IK and native path solver."""
     folder=Path(folder);folder.mkdir();start=np.asarray(metadata['joint_positions'])
     began=time.perf_counter();deadline=began+float(budget_seconds);attempts=[]
     with NativeScene(scene,record,metadata,start,.05,articulated=False) as context:
+        if configure_context is not None:configure_context(context)
         ik.configure_scene(context)
         candidate,solutions=solve_candidate()
         timing={'ik_seconds':time.perf_counter()-began,'approach_planning_seconds':0.}
@@ -224,7 +226,7 @@ def plan_point_goal(
             remaining=deadline-time.perf_counter()
             if remaining<=0:break
             before=time.perf_counter()
-            path,result=context.plan(start,solution['joints'],constrained=False,seconds=min(8.,remaining))
+            path,result=context.plan(start,solution['joints'],constrained=constrained,seconds=min(8.,remaining))
             timing['approach_planning_seconds']+=time.perf_counter()-before
             attempts.append({'joints':solution['joints'],'path_result':result})
             if result['exact_solution']:

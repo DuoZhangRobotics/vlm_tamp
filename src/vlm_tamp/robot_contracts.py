@@ -9,7 +9,7 @@ import math
 from numbers import Real
 from typing import Any
 
-VERSION = 'robot-request-contract-v27'
+VERSION = 'robot-request-contract-v29'
 POINTING_HELP = '''- point(observation_id, camera, query): ask the local Molmo2 model to mark a
   visible location in agentview or wrist. It sees both original RGB images from
   that observation, and your exact query. Describe the object/part and intended
@@ -340,9 +340,13 @@ def operation_schemas(image_sizes: dict[str, dict[str, int]] | None = None) -> d
         'plan_joint': ('Plan simulation free motion under the declared environment prediction policy to seven joint angles in radians.', parameters({'joints': array(7),'collision_policy':policy}, ['joints'])),
         'ik': ('Compute IK proposals for your world TCP pose; no robot motion.', parameters({'pose_world_xyzw': pose}, ['pose_world_xyzw'])),
         'plan_pose': ('Plan simulation free motion under the declared environment prediction policy to your world TCP pose.', parameters({'pose_world_xyzw': pose,'collision_policy':policy}, ['pose_world_xyzw'])),
-        'plan_object_point': ('Plan a current object material point to its chosen world destination under your explicit rigid attachment model. source_point_world_m is the CURRENT object point, not an old pre-grasp coordinate; target_point_world_m is the intended destination of that same point. Numerical tools compute its offset from the measured TCP and use cuRobo point IK and VAMP. Wrist/object orientation is free. Robot scene collisions are checked; carried-object shape collisions and retention are not certified. No automatic support-point guess, clearance, lift/lower sequence or release. Execution holds the gripper; arrived means the rigid model predicts point arrival, not measured object placement.', parameters({
+        'plan_object_point': ('Plan a current object material point to its chosen world destination under your explicit rigid attachment model. source_point_world_m is the CURRENT object point, not an old pre-grasp coordinate; target_point_world_m is the intended destination of that same point. Numerical tools compute its offset from the measured TCP and use cuRobo point IK and VAMP. Without carry_constraints wrist/object orientation is free. Optional carry_constraints preserve the supplied current object axis and keep its reference point on/above the supplied support plane throughout the MC-VAMP path, with no added clearance. Robot scene collisions are checked; carried-object shape collisions and retention are not certified. No automatic support-point guess, clearance, lift/lower sequence or release. Execution holds the gripper; arrived means the rigid model predicts point arrival, not measured object placement.', parameters({
             'source_point_world_m':array(3),'target_point_world_m':array(3),
             'attachment_model':{'type':'string','enum':['rigid']},'collision_policy':policy,
+            'carry_constraints':parameters({'object_axis_world':array(3),
+                'target_axis_world':array(3),
+                'support_plane_point_world_m':array(3),'support_plane_normal_world':array(3)},
+                ['object_axis_world','support_plane_point_world_m','support_plane_normal_world']),
             'budget_seconds':number(exclusiveMinimum=0,maximum=1800)},
             ['source_point_world_m','target_point_world_m','attachment_model'])),
         'plan_contact_pose': ('Plan your chosen contact_name to an observed world point. point leaves orientation free; surface_normal uses an explicit signed outward surface_normal_world and leaves twist free. Alternatively supply a full quaternion. No pose menus, substituted points or automatic model fallback. Execute with gripper=0. A plan does not establish contact or task direction.', parameters({
@@ -356,6 +360,21 @@ def operation_schemas(image_sizes: dict[str, dict[str, int]] | None = None) -> d
             'speed':speed,'approach_speed':speed,'hold':{'type':'integer','minimum':0},'close_steps':{'type':'integer','minimum':1},'budget_seconds':number(exclusiveMinimum=0,maximum=1800),'collision_policy':policy}, ['degrees','grasp_constraint'])),
         'execute_sequence': ('Execute a prepared sequence with the documented gripper stages.', parameters({'plan_id': text, 'close_steps': {'type':'integer','minimum':1}, 'speed': speed, 'approach_speed':speed, 'hold': {'type':'integer','minimum':0}, 'manipulation_gripper': {'type': 'integer', 'enum': [0, 1]},'feedback_degrees':number(exclusiveMinimum=0),'calibrate_joint':{'type':'boolean'},'open_steps':{'type':'integer','minimum':1}}, ['plan_id'])),
         'select_surface_contact': ('Select a current observed target using a region or contact_part_id. The complete region/mask supplies GraspGen; radius_m only limits the local contact patch and normal fit around contact_pixel_xy. Collision checking retains the whole scene. No grasp or hinge assumption.', parameters({'camera': text, 'region_xyxy': nullable(box), 'contact_part_id':nullable(text), 'radius_m': number(exclusiveMinimum=0),'contact_pixel_xy':array(2,{'type':'integer','minimum':0})}, ['camera','contact_pixel_xy'])),
+        'select_object': ('Register a persistent object from your current image region and click. MobileSAM supplies the highest-score mask; overlays and uncertainty remain visible. supported_body declares a rigid object resting on the planar surface measured outside its mask within your region. surface_center selects the center of a visible support mask; surface_point uses your exact pixel. Object identities and reference geometry persist when another object is selected. No task-specific coordinates or native object geometry. No motion.', parameters({
+            'camera':text,'region_xyxy':box,'contact_pixel_xy':array(2,{'type':'integer','minimum':0}),
+            'reference_type':{'type':'string','enum':['supported_body','surface_center','surface_point']},
+            'label':nullable(text)},['camera','region_xyxy','contact_pixel_xy','reference_type'])),
+        'grasp_object': ('Use a currently selected object region with the existing GraspGen/IK/planner, execute approach and closure, then measure the persistent object pose from recorded video and RGB-D. Keeps the existing region input to GraspGen; the mask defines object geometry/tracking. No alternative grasp or tracker is substituted on failure. Pose measurement and grasp retention are separate evidence.', parameters({
+            'object_id':text,'max_candidates':candidates,'seed':seed,'approach_speed':nullable(speed),
+            'hold':{'type':'integer','minimum':0},'close_steps':{'type':'integer','minimum':1},
+            'budget_seconds':number(exclusiveMinimum=0,maximum=1800)},['object_id'])),
+        'place_object': ('Prepare and execute a lifted transfer between persistent object references under your declared rigid attachment. You choose lift_distance_m, a physical motion distance, not collision padding. Tools bind observed object pose to the hand, use cuRobo goals and MC-VAMP paths preserving the object axis/support half-spaces, then release if the reference is reached. Native task termination remains unchanged. No automatic withdrawal, retry, fallback or true-payload collision certificate. Source/destination poses remain separate from planner predictions.', parameters({
+            'object_id':text,'destination_id':text,'lift_distance_m':number(exclusiveMinimum=0),
+            'attachment_model':{'type':'string','enum':['rigid']},'speed':speed,
+            'hold':{'type':'integer','minimum':0},'release_steps':{'type':'integer','minimum':1},
+            'budget_seconds':number(exclusiveMinimum=0,maximum=1800)},
+            ['object_id','destination_id','lift_distance_m','attachment_model'])),
+        'object_status': ('Read a persistent object model, observation provenance and whether its pose is current. No robot motion or automatic sensing.', parameters({'object_id':text},['object_id'])),
         'practice_status': ('Read the granted practice budget and learning phase.', parameters()),
         'request_attempts': ('Request more practice within the existing hard cap with your findings and next tests.', parameters({'learned': text, 'next_experiments': {'type': 'array', 'items': text, 'minItems': 1, 'maxItems': 5}}, ['learned', 'next_experiments'])),
         'dino_landmarks': ('Find optional image-feature candidates; no semantic or motion guarantee.', parameters({'camera': text, 'region_xyxy': nullable(box), 'count': integer(1, 32)})),

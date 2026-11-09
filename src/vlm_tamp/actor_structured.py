@@ -29,6 +29,10 @@ OPERATIONS = (
     "segment_parts",
     "measure_surface",
     "select_surface_contact",
+    "select_object",
+    "grasp_object",
+    "place_object",
+    "object_status",
     "plan_contact_pose",
     "plan_object_point",
     "plan_pose",
@@ -80,6 +84,11 @@ top-left corner. The image manifest names the camera. Scene projections instead 
 full labelled 640-by-640 image coordinates.
 You may inspect earlier recorded frames with inspect_video. Every attached image is indexed below.
 Geometry and perception tools are read-only unless their contract says they install a model.
+Persistent object tools retain separate source and destination models. select_object segments
+your region and builds the declared reference; grasp_object executes acquisition and tracks the
+object afterward. place_object uses those references to plan a lifted transfer and release.
+You choose the objects, reference models, rigid attachment assumption and physical lift distance.
+The tools supply geometric bookkeeping, not task-specific coordinates or a recovery policy.
 For free pose motion, first select observed scene geometry with select_surface_contact or ground.
 plan_object_point targets a chosen current point on a held object under your explicit rigid
 attachment assumption. plan_contact_pose targets a robot landmark; plan_pose targets the TCP.

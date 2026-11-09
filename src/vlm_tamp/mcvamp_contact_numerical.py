@@ -13,6 +13,7 @@ import time
 import weakref
 
 import numpy as np
+from numpy.typing import ArrayLike
 from scipy.spatial.transform import Rotation
 
 from .rekep_libero.geometry import pose_matrix,transform_points
@@ -127,6 +128,7 @@ class NativeScene:
         self.lib.mcvamp_create_reusing_static.argtypes=[ctypes.c_void_p,FLOAT,ctypes.c_int,FLOAT,ctypes.c_int,FLOAT,FLOAT,ctypes.c_int]
         self.lib.mcvamp_set_palm_contact.argtypes=[ctypes.c_void_p,ctypes.c_int]
         self.lib.mcvamp_set_finger_model.argtypes=[ctypes.c_void_p,FLOAT]
+        self.lib.mcvamp_set_object_carry.argtypes=[ctypes.c_void_p,FLOAT,FLOAT,FLOAT,FLOAT,FLOAT]
         self.lib.mcvamp_set_position_tolerance.argtypes=[ctypes.c_void_p,ctypes.c_float]
         self.lib.mcvamp_set_orientation_tolerance.argtypes=[ctypes.c_void_p,ctypes.c_float]
         self.lib.mcvamp_constraint_error.argtypes=[ctypes.c_void_p,FLOAT,FLOAT,DOUBLE]
@@ -346,10 +348,44 @@ class NativeScene:
             'timed_out','last_rejected_part','last_rejected_surface','solve_seconds','resampling_seconds','iterations',
             'sparse_states','dense_states'],stats.tolist()))
 
+    def set_object_carry(self, point_local: ArrayLike, axis_local: ArrayLike,
+                         axis_world: ArrayLike, plane_point: ArrayLike, plane_normal: ArrayLike,
+                         *, orientation_tolerance_rad: float = np.radians(3.)) -> None:
+        """Use native MC-VAMP to maintain an object axis and reference-point support half-space."""
+        tolerance=float(orientation_tolerance_rad)
+        if not 0<tolerance<np.pi:raise ValueError('Carry orientation tolerance must be in (0, pi)')
+        self.orientation_tolerance_rad=tolerance
+        if not self.lib.mcvamp_set_orientation_tolerance(self.handle,tolerance):
+            raise ValueError('Native carry orientation tolerance was rejected')
+        arguments=[]
+        for value in (point_local,axis_local,axis_world,plane_point,plane_normal):
+            array=_f(value)
+            if array.shape!=(3,) or not np.isfinite(array).all():raise ValueError('Carry geometry needs finite 3D vectors')
+            arguments.append(array)
+        robot_world=np.linalg.inv(self.world_robot)
+        native=[arguments[0],arguments[1],_f(robot_world[:3,:3]@arguments[2]),
+                _f(transform_points([arguments[3]],robot_world)[0]),
+                _f(robot_world[:3,:3]@arguments[4])]
+        if not self.lib.mcvamp_set_object_carry(self.handle,*[_pointer(a) for a in native]):
+            raise ValueError('Native object carry constraint was rejected')
+        self.object_carry_constraint={'point_local_m':arguments[0].tolist(),
+            'axis_local':arguments[1].tolist(),'axis_world':arguments[2].tolist(),
+            'plane_point_world_m':arguments[3].tolist(),'plane_normal_world':arguments[4].tolist(),
+            'orientation_tolerance_rad':tolerance,'position_tolerance_m':self.position_tolerance_m,
+            'additional_clearance_m':0.,'scope':'native constrained path; rigid object relation is caller supplied'}
+        self.record['object_carry_constraint']=self.object_carry_constraint
+
     def constraint_errors(self,q):
         """Evaluate physical errors without projection or collision checking."""
         error=np.zeros(6,np.float32);metric=ctypes.c_double()
         code=self.lib.mcvamp_constraint_error(self.handle,_pointer(self.q(q)),_pointer(error),ctypes.byref(metric))
+        if hasattr(self,'object_carry_constraint'):
+            return {'accepted':bool(code),'constraint_acceptance_ratio':metric.value/1e-6,
+                'residual':metric.value,'residual_units':'scaled_dimensionless_acceptance_ratio',
+                'support_plane_violation_m':abs(float(error[0])),
+                'axis_error_rad':float(2*np.arcsin(np.clip(np.linalg.norm(error[2:5])/.3,0,1))),
+                'position_tolerance_m':self.position_tolerance_m,
+                'orientation_tolerance_rad':self.orientation_tolerance_rad}
         return {'accepted':bool(code),'residual':metric.value,
             'residual_units':'scaled_dimensionless_acceptance_ratio',
             'constraint_acceptance_ratio':metric.value/1e-6,
@@ -400,7 +436,7 @@ class NativeScene:
             'total_seconds':time.perf_counter()-before,**statistics,
             'path_validation':'upstream planner checks only',
             'additional_dense_validation':False,'post_plan_projection':False,
-            'dynamic_domain_pruning':bool(constrained),
+            'dynamic_domain_pruning':bool(constrained and not hasattr(self,'object_carry_constraint')),
             'planner_motion_resolution':32,'continuous_collision_certificate':False,
             'maximum_solve_seconds':seconds,'maximum_planning_seconds':seconds,
             'deadline_scope':'upstream planner search','maximum_iterations':iterations}

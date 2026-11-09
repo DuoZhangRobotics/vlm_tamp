@@ -42,21 +42,47 @@ def plan_object_point(
     ik: Any, scene: Any, record: dict, metadata: dict, source_point_world_m: ArrayLike,
     target_point_world_m: ArrayLike, attachment_model: str, folder: Path | str,
     *, budget_seconds: float = 30.,
+    carry_constraints: dict | None = None,
 ) -> tuple[np.ndarray, dict]:
-    """Plan the supplied material point's destination, leaving wrist orientation free.
+    """Plan the material point, optionally preserving its axis and support half-space.
 
     The caller supplies the current point and rigid-attachment assumption. This
     operation does not estimate object support, certify retention, or release it.
     """
     binding = object_point_binding(
         metadata, source_point_world_m, target_point_world_m, attachment_model)
+    normal_arguments = {}
+    configure_context = None
+    if carry_constraints is not None:
+        from .contact_orientation import normal_vector
+        axis_world = normal_vector(carry_constraints['object_axis_world'])
+        target_axis = normal_vector(carry_constraints.get('target_axis_world', axis_world))
+        plane_normal = normal_vector(carry_constraints['support_plane_normal_world'])
+        plane_point = np.asarray(carry_constraints['support_plane_point_world_m'], float)
+        if plane_point.shape != (3,) or not np.isfinite(plane_point).all():
+            raise ValueError('Support-plane point must contain three finite world coordinates')
+        axis_local = pose_matrix(metadata['eef_pose_world_xyzw'])[:3, :3].T @ axis_world
+        normal_arguments = {'contact_normal_local': -axis_local, 'surface_normal_world': target_axis}
+        binding.update(object_orientation_constrained=True, carry_constraints={
+            'object_axis_world': axis_world.tolist(), 'object_axis_local': axis_local.tolist(),
+            'target_axis_world': target_axis.tolist(),
+            'support_plane_point_world_m': plane_point.tolist(),
+            'support_plane_normal_world': plane_normal.tolist(),
+            'scope': 'MC-VAMP whole-path axis and support half-space constraints',
+            'additional_clearance_m': 0.})
+
+        def configure_carry(context: Any) -> None:
+            """Install the declared carry relation in the native constrained planner."""
+            context.set_object_carry(binding['contact_local_m'], axis_local, target_axis,
+                                     plane_point, plane_normal)
+        configure_context = configure_carry
 
     def solve_candidate() -> tuple[dict, list]:
         """Use native partial-pose IK on the object offset, without robot-landmark substitution."""
         solutions = ik.solve_contact_many(
             binding['target_point_world_m'], binding['contact_local_m'],
             np.asarray(metadata['joint_positions']),
-            pose_matrix(metadata['eef_pose_world_xyzw'])[:3, :3])
+            pose_matrix(metadata['eef_pose_world_xyzw'])[:3, :3], **normal_arguments)
         if ik.events:
             binding['ik_diagnostic'] = {key: ik.events[-1][key] for key in (
                 'scene_collision_checked', 'self_collision_checked', 'minimum_position_error_m',
@@ -65,6 +91,7 @@ def plan_object_point(
 
     path, report = plan_point_goal(
         ik, scene, record, metadata, target_point_world_m, folder, solve_candidate,
-        budget_seconds=budget_seconds, goal_key='object_point_goal')
+        budget_seconds=budget_seconds, goal_key='object_point_goal',
+        configure_context=configure_context, constrained=carry_constraints is not None)
     report.update(grasp_required=True, physical_attachment_verified=False)
     return path, report

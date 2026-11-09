@@ -45,6 +45,9 @@ struct Scene {
     float goal_angle=0;
     bool aligned_jaws=true;
     int grasp_constraint=0;
+    bool object_carry=false;
+    Eigen::Vector3f carry_point_local=Eigen::Vector3f::Zero(),carry_axis_local=Eigen::Vector3f::Zero(),carry_axis_world=Eigen::Vector3f::Zero();
+    Eigen::Vector3f carry_plane_point=Eigen::Vector3f::Zero(),carry_plane_normal=Eigen::Vector3f::Zero();
     Eigen::Matrix3f reference_rotation;
     Clock::time_point deadline;
     bool timed_out=false;
@@ -174,12 +177,23 @@ public:
         geometry.grasp_constraint=s.grasp_constraint;
         geometry.position_tolerance=s.position_tolerance;
         geometry.orientation_tolerance=s.orientation_tolerance;
+        geometry.object_carry=s.object_carry;
+        geometry.carry_point_local=s.carry_point_local;
+        geometry.carry_axis_local=s.carry_axis_local;geometry.carry_axis_world=s.carry_axis_world;
+        geometry.carry_plane_point=s.carry_plane_point;geometry.carry_plane_normal=s.carry_plane_normal;
     }
     Task(const Task& other): Task(other.geometry) {}
     using Residual = Eigen::Matrix<float,6,1>;
     Residual error(const std::array<float,7>& q) const {
         const auto& s=geometry;
         const Eigen::Matrix4f tcp=Panda::eefk(q)[0].matrix()*s.eef_to_tcp;
+        if(s.object_carry) {
+            const Eigen::Vector3f point=tcp.block<3,1>(0,3)+tcp.block<3,3>(0,0)*s.carry_point_local;
+            Residual result=Residual::Zero();
+            result[0]=std::min(0.F,s.carry_plane_normal.dot(point-s.carry_plane_point));
+            result.segment<3>(2)=.15F*(tcp.block<3,3>(0,0)*s.carry_axis_local-s.carry_axis_world);
+            return result;
+        }
         const Eigen::Vector3f point=tcp.block<3,1>(0,3)+tcp.block<3,3>(0,0)*s.pad_local;
         Eigen::Vector3f first=s.anchor-s.origin,now=point-s.origin;
         const float height=now.dot(s.axis)-first.dot(s.axis);
@@ -209,6 +223,11 @@ public:
         // must not be interpreted as a distance in metres. Keep error() and its
         // Jacobian in their original scale to preserve projection conditioning.
         if(!residual.allFinite()) return std::numeric_limits<float>::infinity();
+        if(geometry.object_carry) {
+            const float angular=.15F*2.F*std::sin(geometry.orientation_tolerance/2.F);
+            return constraint_metric_threshold*std::max(std::abs(residual[0])/geometry.position_tolerance,
+                residual.segment<3>(2).norm()/angular);
+        }
         float angular_ratio=residual.tail<4>().norm()/angular_weighted_tolerance;
         if(geometry.grasp_constraint && geometry.orientation_tolerance>0.F) {
             const float tolerance=.15F*(geometry.grasp_constraint==1 ? geometry.orientation_tolerance
@@ -283,7 +302,7 @@ void mcvamp_configure(Scene* s,const float* config,const float* gripper,int ng) 
     std::array<float,7> reference;
     std::copy_n(config+44,7,reference.begin());
     s->reference_rotation=(Panda::eefk(reference)[0].matrix()*s->eef_to_tcp).block<3,3>(0,0);
-    s->goal_angle=config[51];s->aligned_jaws=config[52]>.5;s->grasp_constraint=0;
+    s->goal_angle=config[51];s->aligned_jaws=config[52]>.5;s->grasp_constraint=0;s->object_carry=false;
     s->gripper.resize(ng);
     for(int i=0;i<ng;++i) std::copy_n(gripper+5*i,5,s->gripper[i].begin());
     s->deadline=Clock::now()+std::chrono::hours(1);
@@ -327,6 +346,20 @@ void mcvamp_destroy(void* p) { delete static_cast<Scene*>(p); }
 int mcvamp_set_grasp_constraint(void* p,int mode) {
     if(mode<0 || mode>2) return 0;
     static_cast<Scene*>(p)->grasp_constraint=mode;return 1;
+}
+int mcvamp_set_object_carry(void* p,const float* point,const float* local_axis,const float* world_axis,
+                          const float* plane_point,const float* plane_normal) {
+    auto& s=*static_cast<Scene*>(p);
+    if(s.articulated || s.orientation_tolerance<=0.F) return 0;
+    for(int i=0;i<3;++i) {
+        if(!std::isfinite(point[i]) || !std::isfinite(local_axis[i]) || !std::isfinite(world_axis[i])
+           || !std::isfinite(plane_point[i]) || !std::isfinite(plane_normal[i])) return 0;
+        s.carry_point_local[i]=point[i];s.carry_axis_local[i]=local_axis[i];s.carry_axis_world[i]=world_axis[i];
+        s.carry_plane_point[i]=plane_point[i];s.carry_plane_normal[i]=plane_normal[i];
+    }
+    if(s.carry_axis_local.norm()==0.F || s.carry_axis_world.norm()==0.F || s.carry_plane_normal.norm()==0.F) return 0;
+    s.carry_axis_local.normalize();s.carry_axis_world.normalize();s.carry_plane_normal.normalize();
+    s.object_carry=true;return 1;
 }
 void mcvamp_set_palm_contact(void* p,int enabled) {
     static_cast<Scene*>(p)->allow_palm_contact=bool(enabled);
@@ -401,6 +434,9 @@ int mcvamp_plan(void* p,const float* start,const float* goal,const float* tsr,in
             vamp::planning::CRRTCSettings settings;
             settings.rrtc_settings.range=.15F; settings.rrtc_settings.max_iterations=max_iterations;
             settings.rrtc_settings.max_samples=100000;
+            // Near-contact carry roots otherwise prune almost every sample
+            // after the first blocked connection. Keep ordinary C-RRTC exploration.
+            if(s.object_carry) settings.rrtc_settings.dynamic_domain=false;
             settings.constraint_settings.num_projection_iterations=100;
             settings.constraint_settings.std_dev_scaling_factor=.05F;
             solved=vamp::planning::CRRTC<ObservedPanda,lanes,32,Task>::solve(a,b,empty,settings,*c,rng);

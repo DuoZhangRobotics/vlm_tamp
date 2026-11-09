@@ -121,7 +121,8 @@ def case_summary(study: Path, entry: dict) -> dict:
         response = event["response"]
         value = response.get("result", {})
         reason = response.get("error") if not response.get("ok") else value.get("stop_reason")
-        if reason and reason not in {"preview_only", "stroke_executed", "native_task_success", "closure_completed"}:
+        if reason and reason not in {"preview_only", "stroke_executed", "native_task_success", "closure_completed",
+                                     "simulator_success", "object_transfer_released"}:
             issues.append(
                 {
                     "event": event["sequence"],

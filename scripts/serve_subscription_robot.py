@@ -291,6 +291,7 @@ class RobotService:
             self.sim.close();self.sim=None
             raise
         self.events, self.executions, self.plans = [], [], {}
+        self._object_models = None
         self.motion_feedback=[]
         self.active_grasp_contact_offset_m=0.
         self.last_gripper_command=-1
@@ -1102,6 +1103,34 @@ class RobotService:
                 for c in contact_landmarks(self.state['metadata'],'fingertips')],
             'next_planning_interfaces':['plan_contact_pose','plan_pose','plan_joint']}
 
+    def select_object(self, camera: str, region_xyxy: list, contact_pixel_xy: list,
+                      reference_type: str, label: str | None = None) -> dict:
+        """Create a persistent sensor-selected object without replacing another object model."""
+        from vlm_tamp.object_manipulation import models_for
+        return models_for(self).select(camera, region_xyxy, contact_pixel_xy, reference_type, label)
+
+    def grasp_object(self, object_id: str, max_candidates: int = 8, seed: int = 0,
+                     approach_speed: float | None = None, hold: int = 6,
+                     close_steps: int = 40, budget_seconds: float = 30.) -> dict:
+        """Plan and execute a grasp, then measure the persistent object's pose."""
+        from vlm_tamp.object_manipulation import models_for
+        return models_for(self).grasp(object_id, max_candidates=max_candidates, seed=seed,
+            approach_speed=approach_speed, hold=hold, close_steps=close_steps,
+            budget_seconds=budget_seconds)
+
+    def place_object(self, object_id: str, destination_id: str, lift_distance_m: float,
+                     attachment_model: str, speed: float = .35, hold: int = 6,
+                     release_steps: int = 20, budget_seconds: float = 60.) -> dict:
+        """Prepare a constrained lifted transfer using current observed object references."""
+        from vlm_tamp.object_manipulation import models_for
+        return models_for(self).place(object_id, destination_id, lift_distance_m, attachment_model,
+            speed=speed, hold=hold, release_steps=release_steps, budget_seconds=budget_seconds)
+
+    def object_status(self, object_id: str) -> dict:
+        """Read retained object state and its observation timestamps without robot motion."""
+        from vlm_tamp.object_manipulation import models_for
+        return {'object_model': models_for(self).summary(object_id), 'robot_motion_executed': False}
+
     def plan_contact_pose(
         self,
         point_world_m: ArrayLike,
@@ -1133,6 +1162,7 @@ class RobotService:
         self, source_point_world_m: ArrayLike, target_point_world_m: ArrayLike,
         attachment_model: str, collision_policy: str | None = None,
         budget_seconds: float = 30.,
+        carry_constraints: dict | None = None,
     ) -> dict[str, Any]:
         """Plan a caller-selected object point under an explicit rigid attachment assumption."""
         self._check_surface_freshness()
@@ -1142,7 +1172,8 @@ class RobotService:
         path, report = plan_object_point(
             self.ik, self._query_scene(collision_policy), self.record, self.state['metadata'],
             source_point_world_m, target_point_world_m, attachment_model,
-            self.folder('object-point-plan'), budget_seconds=budget_seconds)
+            self.folder('object-point-plan'), budget_seconds=budget_seconds,
+            carry_constraints=carry_constraints)
         binding = report['object_point_goal']
         result = self.keep_plan(path, report, 'free', extra={
             'arrival': {'maximum_wait_steps': 20, 'contact_local_m': binding['contact_local_m']},
@@ -1481,17 +1512,20 @@ class RobotService:
         deadline_path=self.output/'episode-deadline.json'
         deadline=read_json(deadline_path)['deadline_monotonic'] if deadline_path.exists() else None
         seconds=max(0.,deadline-time.monotonic()) if deadline is not None else None
-        success=bool(getattr(self,'episode_success',False))
+        success_available=bool(getattr(self,'stop_on_success',False))
+        success=bool(getattr(self,'episode_success',False)) if success_available else False
         failed_initialization=getattr(self,'initialization_error',None)
         reason=('simulator_initialization_failed' if failed_initialization else 'simulator_success' if success else 'control_budget_exhausted' if steps>=getattr(self,'maximum_control_steps',control_limit(state))
                 else 'wall_budget_exhausted' if seconds is not None and seconds<=0 else None)
-        return {'task_success':success,'episode_done':reason is not None,
+        return {'task_success':success if success_available else None,
+            'task_success_available':success_available,'episode_done':reason is not None,
             'termination_reason':reason,'control_steps':steps,'maximum_control_steps':getattr(self,'maximum_control_steps',control_limit(state)),'remaining_control_steps':max(0,getattr(self,'maximum_control_steps',control_limit(state))-steps),
             'remaining_wall_seconds':seconds,'needs_initial_reset':getattr(self,'attempt',0)==0,
             'infrastructure_failure':failed_initialization,'valid_task_attempt':getattr(self,'attempt',0)>0 and not bool(failed_initialization),
             'voluntary_early_finish_allowed':not getattr(self,'persistent_episode',False)}
 
     def finish_attempt(self, reason):
+        self._object_models = None
         from vlm_tamp.push_contact_state import clear_motion_context
         clear_motion_context(self);self.contact_observation_cache=None
         perception=getattr(self,'_perception_tools',None)
@@ -1609,6 +1643,9 @@ class RobotService:
             operations.update(select_surface_contact=self.select_surface_contact,plan_pose=self.plan_pose,plan_contact_pose=self.plan_contact_pose,
                 plan_object_point=self.plan_object_point,
                 push=self.push,continue_push=self.continue_push,push_stroke=self.push_stroke,hook_pull=self.hook_pull)
+            if getattr(self,'part_motion_tools',False):
+                operations.update(select_object=self.select_object, grasp_object=self.grasp_object,
+                                  place_object=self.place_object, object_status=self.object_status)
         if self.completion_checks:
             operations.update(declare_completion=self.declare_completion,measure_surface=self.measure_surface,
                 compare_surfaces=self.compare_surfaces,compare_surface_geometry=self.compare_surface_geometry,

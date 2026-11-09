@@ -608,6 +608,26 @@ merely to consume control steps. Runtime/account failures are reported separatel
 from simulator outcomes and do not become fabricated budget exhaustion.\n'''
     if a.surface_contact_tools:
         document+='\n'+(ROOT/'prompts/contact_skills_introduction.txt').read_text()+'\n'
+        if a.part_motion_tools:
+            document+='''\nPersistent observed objects:
+- select_object(camera, region_xyxy, contact_pixel_xy, reference_type, label=null):
+  segment your current region and register a persistent object ID. supported_body
+  declares an object resting on the planar surface measured in its region outside
+  the mask. surface_center or surface_point describes a destination support.
+  The highest-score SAM mask is used and displayed; identity is not certified.
+- grasp_object(object_id, max_candidates=8, seed=0, approach_speed=null,
+  hold=6, close_steps=40, budget_seconds=30): use the existing grasp tools, execute
+  approach and closure, and update the object's pose using recorded video/RGB-D.
+  A measured pose does not certify retained grasp. No alternate grasp is substituted.
+- place_object(object_id, destination_id, lift_distance_m, attachment_model="rigid",
+  speed=0.35, hold=6, release_steps=20, budget_seconds=60): bind the observed object
+  reference to the hand, prepare lift/transfer/lower paths with MC-VAMP object-axis
+  and support-plane constraints, execute, and release if the reference is reached.
+  You select the objects, reference models and lift distance. There is no collision
+  padding, automatic withdrawal, retry, task-specific direction or native object pose.
+- object_status(object_id): inspect the retained object state and its observation
+  timestamps without motion. Selecting a destination does not discard the source.
+'''
         document+='''\nGeneral multi-stage manipulation:
 A task may require several stages and different contacts. A continuous grasp is
 not mandatory. Grasping, releasing, regrasping, pushing, pulling and sliding are
@@ -637,7 +657,10 @@ Additional generic contact interfaces:
 - plan_object_point(source_point_world_m, target_point_world_m, attachment_model="rigid"):
   move YOUR selected current object point to its destination under an explicit
   rigid hand attachment assumption. The tool computes the offset from measured
-  TCP pose and uses cuRobo point IK and VAMP. Wrist orientation is free. Execute
+  TCP pose and uses cuRobo point IK and VAMP. Optional carry_constraints preserve
+  object_axis_world and keep the point above support_plane_point_world_m with
+  support_plane_normal_world throughout an MC-VAMP path. No clearance is added.
+  Without that option wrist orientation is free. Execute
   holds the gripper. Point arrival is predicted from robot motion; object
   retention, support and carried-object collision are not certified. No support
   point is guessed, and no lift/lower sequence or release is automatic.

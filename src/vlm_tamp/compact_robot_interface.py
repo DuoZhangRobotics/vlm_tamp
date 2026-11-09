@@ -78,9 +78,15 @@ Omit regions.contact_box_xyxy for door-only grounding. A failed handle fit can
 preserve a usable door/joint model; read grounding_status and handle_fit.
 Door-only geometry supports tracking and joint-linked push/hook, not a pinch.
 Contact positioning: select_surface_contact, plan_contact_pose
+Persistent rigid objects: select_object, grasp_object, place_object, object_status.
+Choose regions and reference models; tools preserve separate object identities, segment the
+body, track its pose after grasping, and bind a prepared lifted placement to those observations.
+Choose the lift distance and rigid attachment model explicitly. No task-specific recipe or
+successful coordinates are supplied. Native success and measured retention remain separate.
 Object-relative motion: plan_object_point (current object point, its destination, rigid attachment).
 This converts the object's point to a TCP offset; it does not choose the object's support point,
-certify retention/payload collision, constrain object orientation, or release the gripper.
+certify retention/payload collision or release the gripper. Optional carry_constraints
+preserve a chosen object axis and keep the reference point above a chosen support plane.
 plan_contact_pose(point_world_m, contact_name) converts an observed surface point into a
 calibrated fingertip/pad pose. plan_pose instead takes the TCP origin; never
 copy a surface point directly into that TCP position.
@@ -241,7 +247,7 @@ def contact_search_summary(diagnostic: dict) -> dict:
 
 
 STATE_KEYS = ('instruction', 'attempt', 'control_steps', 'remaining_control_steps',
-              'remaining_wall_seconds', 'task_success', 'episode_done',
+              'remaining_wall_seconds', 'task_success', 'task_success_available', 'episode_done',
               'termination_reason', 'needs_initial_reset', 'observation_id',
               'infrastructure_failure','valid_task_attempt',
               'eef_pose_world_xyzw', 'gripper_qpos', 'sensor_arrays', 'camera_calibration',
@@ -377,6 +383,14 @@ def compact_response(response):
     if 'grasp_stage_contract' in value:result['grasp_stage_contract']=value['grasp_stage_contract']
     if 'grasp_execution' in value:result['grasp_execution']=value['grasp_execution']
     if 'object_point_goal' in value:result['object_point_goal']=value['object_point_goal']
+    result.update(pick(value, ('object_id','destination_id','object_model','planning_object_models',
+        'release_issued','release_complete')))
+    if 'object_pose_update' in value:
+        result['object_pose_update']=pick(value['object_pose_update'],('object_model','object_motion'))
+    if 'prepared_transfer' in value:
+        result['prepared_transfer']=pick(value['prepared_transfer'],('nominal_controls','planning_seconds','lift_distance_m'))
+        result['prepared_transfer']['stages']=[{'stage':stage['stage'],'status':stage['result'].get('status'),
+            'planner':stage['result'].get('planner')} for stage in value['prepared_transfer']['stages']]
     if 'skill' in value:
         result.update(pick(value,('skill','mode','preview','status','stop_reason','diagnostic',
             'task_instruction','contact_constraint','selected_surface_normal_world','planner_rejection_views','visual_comparison',
