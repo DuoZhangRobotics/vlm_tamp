@@ -1,0 +1,74 @@
+{
+  "title": "Luna grasp completion and measured-feedback validation",
+  "description": "Fifteen fresh Luna/high episodes with measured gripper completion, explicit regrasp and audited action feedback. Same five development states, two native cameras, clean per-episode memory and 600 controls.",
+  "model": "gpt-6-luna",
+  "reasoning": "high",
+  "control_steps": 600,
+  "episode_seconds": 1800,
+  "memory_slots": 8,
+  "cases": [
+    {
+      "task": "place_bowl",
+      "state_index": 2,
+      "family": "pick and place"
+    },
+    {
+      "task": "place_bowl",
+      "state_index": 12,
+      "family": "pick and place"
+    },
+    {
+      "task": "place_bowl",
+      "state_index": 22,
+      "family": "pick and place"
+    },
+    {
+      "task": "place_bowl",
+      "state_index": 32,
+      "family": "pick and place"
+    },
+    {
+      "task": "place_bowl",
+      "state_index": 42,
+      "family": "pick and place"
+    }
+  ],
+  "conditions": [
+    {
+      "name": "repeat1",
+      "repeat_index": 1,
+      "visual_interface": true,
+      "memory_mode": "anchored",
+      "retain_tool_documentation": false,
+      "compact_transitions": false
+    },
+    {
+      "name": "repeat2",
+      "repeat_index": 2,
+      "visual_interface": true,
+      "memory_mode": "anchored",
+      "retain_tool_documentation": false,
+      "compact_transitions": false
+    },
+    {
+      "name": "repeat3",
+      "repeat_index": 3,
+      "visual_interface": true,
+      "memory_mode": "anchored",
+      "retain_tool_documentation": false,
+      "compact_transitions": false
+    }
+  ],
+  "order": "alternate condition order between cases",
+  "scope": "Matched development rerun: states 2, 12, 22, 32 and 42, three fresh policy episodes each. These states have been tested before; this is not unseen-geometry generalization. No inherited experience or demonstrations. All completed attempts retained; no outcome-selected retries.",
+  "source_cameras": [
+    "agentview",
+    "wrist"
+  ],
+  "inherited_memory": false,
+  "demonstrations": false,
+  "native_contact_feedback": false,
+  "policy_code_execution": false,
+  "planner_reference_commit": "ba2659bec72f572532b8d61d607d92c94fc75dbc",
+  "comparison_study": "results/placement-budget-20261108/luna-five-state-v2"
+}
