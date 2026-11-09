@@ -54,7 +54,8 @@ class TaskIK(BaseIK):
     def configure_scene(self, context):
         """Give IK the exact observed point partitions already prepared for VAMP."""
         return self._configure_clouds(context.ik_clouds_world, bool(context.record.get('palm_contact_allowed')),
-                                      context.record.get('finger_model'))
+                                      context.record.get('finger_model'),
+                                      bool(context.record.get('fingertip_contact_allowed')))
 
     def configure_observed_scene(self, scene):
         """Prepare the shared points for a direct IK stroke without building a path planner."""
@@ -63,13 +64,13 @@ class TaskIK(BaseIK):
         return self._configure_clouds(world_points(clouds, self.world_robot),
             getattr(scene, 'skill_contact_surface', None) == 'palm')
 
-    def _configure_clouds(self, clouds, palm_contact, finger_model=None):
+    def _configure_clouds(self, clouds, palm_contact, finger_model=None, fingertip_contact=False):
         import hashlib
         path = self.output/'curobo-observed-scene.npz'
         np.savez(path, **clouds)
         result = self.client.request('configure_scene', arrays_path=str(path.resolve()),
             arrays_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
-            palm_contact=palm_contact,finger_model=finger_model)
+            palm_contact=palm_contact,finger_model=finger_model,fingertip_contact=fingertip_contact)
         self.scene_setup = result
         return result
 

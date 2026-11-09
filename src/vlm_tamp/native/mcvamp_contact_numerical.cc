@@ -40,7 +40,7 @@ struct Scene {
     float orientation_tolerance=0.F;
     std::array<float,7> lower,upper;
     bool articulated=false, allow_contact=true, allow_palm_contact=false;
-    bool check_fingers=false;
+    bool check_fingers=false, allow_fingertip_contact=false;
     std::array<std::array<float,4>,4> finger_model{};
     float goal_angle=0;
     bool aligned_jaws=true;
@@ -55,6 +55,11 @@ struct Scene {
     int last_part=-1,last_surface=-1;
 };
 thread_local Scene* active=nullptr;
+
+bool permitted_target_contact(const Scene& s,int sphere) {
+    return (s.allow_palm_contact && sphere>=first_palm_sphere && sphere<first_finger_sphere)
+        || (s.allow_fingertip_contact && (sphere==56 || sphere==58));
+}
 
 std::shared_ptr<CAPT> tree(const float* xyz,int n,float radius) {
     if(!n) return {};
@@ -82,7 +87,7 @@ bool gripper_scene_clear(Scene& s,const Eigen::Matrix3f& rotation,
         const auto& g=geometry[i];
         const Eigen::Vector3f center=rotation*Eigen::Vector3f(g[0],g[1],g[2])+translation;
         for(int surface=0;surface<3;++surface) {
-            if(!trees[surface] || (surface==2 && i<s.gripper.size() && s.allow_palm_contact)) continue;
+            if(!trees[surface] || (surface==2 && permitted_target_contact(s,first_palm_sphere+int(i)))) continue;
             if(trees[surface]->collides(Point{center.x(),center.y(),center.z()},g[3])) {
                 s.last_part=first_palm_sphere+int(i);s.last_surface=surface;
                 if(surface==0) ++s.static_rejects;else ++s.moving_rejects;
@@ -143,7 +148,7 @@ struct ObservedPanda : Panda {
                 radius=V(f[3]);
             }
             auto blocked=[&](int surface,const std::shared_ptr<CAPT>& cloud,const std::array<V,3>& points) {
-                if(!cloud || (surface==2 && i>=first_palm_sphere && i<first_finger_sphere && s.allow_palm_contact)) return false;
+                if(!cloud || (surface==2 && permitted_target_contact(s,i))) return false;
                 if(!cloud->collides_simd(points,radius)) return false;
                 s.last_part=i;s.last_surface=surface;
                 if(surface==0) ++s.static_rejects;else ++s.moving_rejects;
@@ -363,6 +368,9 @@ int mcvamp_set_object_carry(void* p,const float* point,const float* local_axis,c
 }
 void mcvamp_set_palm_contact(void* p,int enabled) {
     static_cast<Scene*>(p)->allow_palm_contact=bool(enabled);
+}
+void mcvamp_set_fingertip_contact(void* p,int enabled) {
+    static_cast<Scene*>(p)->allow_fingertip_contact=bool(enabled);
 }
 void mcvamp_set_finger_model(void* p,const float* model) {
     auto& s=*static_cast<Scene*>(p);s.check_fingers=true;

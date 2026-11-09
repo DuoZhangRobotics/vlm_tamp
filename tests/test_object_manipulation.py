@@ -20,7 +20,7 @@ def registry(tmp_path: Path) -> tuple:
     view={'world_points':points,'depth':np.ones((40,40)), 'rgb':np.zeros((40,40,3),np.uint8),
           'known_robot_depth_prior':np.zeros((40,40)), 'camera_to_world':camera}
     service=SimpleNamespace(public=tmp_path/'robot_data',attempt=1,calls=1,
-        state={'control_steps':60},latest_observation={'observation_id':1},scene=object(),
+        state={'control_steps':60},latest_observation={'observation_id':1},scene=SimpleNamespace(),
         observation_records={1:{'control_steps':60},2:{'control_steps':90},3:{'control_steps':102}})
     (service.public/'attempt01').mkdir(parents=True)
     engine=SimpleNamespace(parts={},tracks={},_view=lambda oid, name:view)
@@ -112,6 +112,9 @@ def test_grasp_composes_existing_tools_and_measures_postclosure_pose(registry: t
     result=models.grasp(source['object_id'],close_steps=12,seed=0)
     assert [row[0] for row in calls]==['selection','planning','execution']
     assert len(calls[0][1])==3  # Grasp input remains the caller's region, not a substituted mask.
+    np.testing.assert_array_equal(service.scene.grasp_contact_reference,
+                                  models.models[source['object_id']]['cloud'])
+    assert service.scene.grasp_contact_object_id == source['object_id']
     assert result['object_model']['pose_current']
     assert result['object_pose_update']['object_motion']['accepted']
 

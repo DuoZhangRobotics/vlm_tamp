@@ -127,6 +127,7 @@ class NativeScene:
         self.lib.mcvamp_create_reusing_static.restype=ctypes.c_void_p
         self.lib.mcvamp_create_reusing_static.argtypes=[ctypes.c_void_p,FLOAT,ctypes.c_int,FLOAT,ctypes.c_int,FLOAT,FLOAT,ctypes.c_int]
         self.lib.mcvamp_set_palm_contact.argtypes=[ctypes.c_void_p,ctypes.c_int]
+        self.lib.mcvamp_set_fingertip_contact.argtypes=[ctypes.c_void_p,ctypes.c_int]
         self.lib.mcvamp_set_finger_model.argtypes=[ctypes.c_void_p,FLOAT]
         self.lib.mcvamp_set_object_carry.argtypes=[ctypes.c_void_p,FLOAT,FLOAT,FLOAT,FLOAT,FLOAT]
         self.lib.mcvamp_set_position_tolerance.argtypes=[ctypes.c_void_p,ctypes.c_float]
@@ -206,7 +207,11 @@ class NativeScene:
         self.lib.mcvamp_set_grasp_constraint.argtypes=[ctypes.c_void_p,ctypes.c_int]
         if not self.lib.mcvamp_set_grasp_constraint(self.handle,{'point':0,'rigid':1,'jaw_axis':2}[grasp_constraint]):
             self.close();raise RuntimeError('Could not configure grasp constraint')
-        self.lib.mcvamp_set_palm_contact(self.handle,int(allow_contact and contact_surface=='palm'))
+        palm_contact=allow_contact and contact_surface in {'palm','palm_fingertips'}
+        fingertip_contact=allow_contact and contact_surface=='palm_fingertips'
+        self.lib.mcvamp_set_palm_contact(self.handle,int(palm_contact))
+        self.lib.mcvamp_set_fingertip_contact(self.handle,int(fingertip_contact))
+        parts[0]['selected_handle_contact_allowed']=palm_contact
         self.finger_model=None
         if check_fingers:
             from .vamp_sphere_model import finger_environment_model
@@ -265,7 +270,8 @@ class NativeScene:
         self.record.update(contact_exemption='all finger geometry versus every environment surface, including stationary points',
             skill_contact_surface=contact_surface,proximal_fingers_checked=False,
             proximal_fingers_checked_against_other_surfaces=False,finger_body_target_contact_allowed=True,
-            finger_environment_collision_checked=False,palm_contact_allowed=allow_contact and contact_surface=='palm',
+            finger_environment_collision_checked=False,palm_contact_allowed=palm_contact,
+            fingertip_contact_allowed=fingertip_contact,
             contact_association_m=.0035,bar_contact_distance_m=None,local_mount_distance_m=None,
             local_mount_plane_association_extra_m=None)
         if check_fingers:
@@ -273,6 +279,13 @@ class NativeScene:
                 finger_environment_collision_checked=True, finger_body_target_contact_allowed=False,
                 proximal_fingers_checked=True, proximal_fingers_checked_against_other_surfaces=True,
                 finger_environment_spheres=list(range(55,59)), finger_model=self.finger_model)
+            if fingertip_contact:
+                self.record.update(
+                    contact_exemption='palm and distal fingertip spheres versus selected object only',
+                    target_contact_exempt_sphere_indices=[*range(37,55),56,58],
+                    contact_object_id=getattr(scene,'grasp_contact_object_id',None),
+                    contact_reference_source='selected object RGB-D mask',
+                    finger_pad_target_contact_allowed=True)
         update=getattr(scene,'pose_update',None)
         if update is not None:
             self.record.update(contact_geometry_source='observed endpoints transported to the current query frame',

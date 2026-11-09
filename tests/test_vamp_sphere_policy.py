@@ -125,6 +125,35 @@ def test_measured_aperture_changes_finger_centers_without_inflating_spheres(robo
     np.testing.assert_allclose(a[-2:],b[-2:],atol=1e-8)
 
 
+@pytest.mark.parametrize('role', ['stationary', 'moving', 'contact'])
+@pytest.mark.parametrize('sphere', [14, 52, 55, 56, 57, 58])
+def test_selected_object_contact_matches_hand_filter_and_native_fk(robot, role, sphere):
+    """Only the target can touch palm/tips; arm and proximal fingers still collide."""
+    record, metadata, values, chain, world = robot
+    if sphere >= 55:
+        model = finger_environment_model(metadata, world)
+        tcp = pose_matrix(metadata['eef_pose_world_xyzw'])
+        local = np.asarray(model['hand_spheres_tcp'])[sphere-37, :3]
+        point = tcp[:3, :3]@local+tcp[:3, 3]
+    else:
+        point = values[sphere, :3]
+    scene = scene_for(point, role)
+    scene.skill_contact_surface = 'palm_fingertips'
+    allowed = role == 'contact' and sphere in (52, 56, 58)
+    with NativeScene(scene, record, metadata, metadata['joint_positions'], 0.,
+                     articulated=False, check_fingers=True) as context:
+        assert context.validate(metadata['joint_positions'])['accepted'] == allowed
+        hand = context.validate_hand_pose(metadata['eef_pose_world_xyzw'])
+        assert hand['accepted'] == (allowed or sphere == 14)
+        assert context.record['fingertip_contact_allowed']
+        if allowed:
+            goal = np.asarray(metadata['joint_positions']) + .001
+            path, result = context.plan(metadata['joint_positions'], goal,
+                                        constrained=False, seconds=.2)
+            assert result['exact_solution'], result
+            assert len(path) >= 2
+
+
 def test_hand_pose_filter_uses_stock_palm_and_never_fingers(robot):
     record,metadata,values,chain,world=robot
     for sphere,allowed in [(56,True),(40,False)]:

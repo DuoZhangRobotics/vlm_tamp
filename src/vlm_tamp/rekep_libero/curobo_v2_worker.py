@@ -125,7 +125,8 @@ class Worker:
             scene_collision_checker=self.point_scene if environment_collision else None)
 
     def configure_scene(self, arrays_path: str, arrays_sha256: str,
-                        palm_contact: bool = False, finger_model: dict | None = None) -> dict[str, Any]:
+                        palm_contact: bool = False, finger_model: dict | None = None,
+                        fingertip_contact: bool = False) -> dict[str, Any]:
         """Update the shared collision world without changing observed geometry."""
         from pathlib import Path
         from .curobo_scene_points import ObservedPointScene
@@ -150,14 +151,15 @@ class Worker:
             self.contact_solvers = retained
             self.point_scene = ObservedPointScene(self.device, self.native_indices, 1 << (needed-1).bit_length())
             self.solver = self.create_solver(self.robot_config)
-        self.point_scene.update(clouds, palm_contact, finger_model)
+        self.point_scene.update(clouds, palm_contact, finger_model, fingertip_contact)
         return {'scene_collision_checked': True, 'self_collision_checked': True,
             'observed_points': {k: len(v) for k, v in clouds.items()},
             'scene_sha256': arrays_sha256, 'solver_recreated': recreated,
             'scene_setup_seconds': time.perf_counter()-started,
             'geometry': 'native cuRobo zero-size cuboids at VAMP observed points',
             'point_radius_m': 0., 'collision_activation_distance_m': 0.,
-            'palm_contact_allowed': bool(palm_contact), 'finger_environment_collision_checked': finger_model is not None}
+            'palm_contact_allowed': bool(palm_contact), 'fingertip_contact_allowed': bool(fingertip_contact),
+            'finger_environment_collision_checked': finger_model is not None}
 
     def move_scene_target(self, transform: ArrayLike) -> dict[str, Any]:
         matrix = np.asarray(transform, float)

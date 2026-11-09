@@ -28,12 +28,13 @@ def test_learned_positions_are_preserved_with_one_fixed_asset_conversion():
     np.testing.assert_array_equal(generated['poses_world_base'],saved)
 
 
-def test_first_executable_pose_stops_search_without_variants(monkeypatch,tmp_path):
+@pytest.mark.parametrize('target_contact', [False, True])
+def test_first_executable_pose_stops_search_without_variants(monkeypatch,tmp_path,target_contact):
     import vlm_tamp.graspgen_selection as module
     import vlm_tamp.hinged_contact_tools as shared
-    calls=[]
+    calls=[];permissions=[]
     class Context:
-        def __init__(self,*args,**kw):self.record={}
+        def __init__(self,*args,**kw):self.record={};permissions.append(kw)
         def __enter__(self):return self
         def __exit__(self,*args):pass
         def validate_hand_pose(self,pose):return {'accepted':True}
@@ -50,6 +51,9 @@ def test_first_executable_pose_stops_search_without_variants(monkeypatch,tmp_pat
     monkeypatch.setattr(shared,'virtual_metadata',lambda *args:{})
     state={'metadata':{'joint_positions':np.zeros(7),'robot_calibration':calibration()}}
     scene=SimpleNamespace(robot=None)
+    if target_contact:
+        scene.grasp_contact_reference=np.array([[0.,0.,1.]])
+        scene.grasp_contact_object_id='selected-source'
     budget={'maximum_joint_speed':.6,'endpoint_hold_steps':6,'available_approach_steps':500,
         'grasp_closure_steps_reserved':40,'remaining_control_steps':540}
     result=select_direct_grasp(proposals(),state,IK(),{},scene,.2,tmp_path/'selection',{},budget)
@@ -59,6 +63,10 @@ def test_first_executable_pose_stops_search_without_variants(monkeypatch,tmp_pat
     assert not result['search_summary']['geometric_fallback_used']
     assert result['search_summary']['admission_aperture']=='open'
     assert not result['search_summary']['closed_hand_admission_used']
+    assert permissions[0]['allow_contact']==target_contact
+    assert permissions[0]['check_fingers']
+    assert result['search_summary']['palm_target_contact_allowed']==target_contact
+    assert result['approach_selection']['target_contact_during_approach_allowed']==target_contact
 
 
 def test_closest_scene_valid_ik_is_chosen_without_an_extra_route(monkeypatch,tmp_path):

@@ -39,12 +39,13 @@ def select_direct_grasp(generated,state,ik,record,open_scene,goal,folder,config,
     rows=list(learned_poses(generated,state['metadata']['robot_calibration'],
         maximum=int(config.get('maximum_grasp_poses',8))))
     open_scene=copy.copy(open_scene)
-    open_scene.skill_contact_surface='fingertips'
+    target_contact=getattr(open_scene,'grasp_contact_reference',None) is not None
+    open_scene.skill_contact_surface='palm_fingertips' if target_contact else 'fingertips'
     policy=config.get('environment_collision_policy','veto')
     attempts=[];queries=0;hand_seconds=ik_seconds=path_seconds=0.;best=None
     speed=budget['maximum_joint_speed'];hold=budget['endpoint_hold_steps']
     with NativeScene(open_scene,record,state['metadata'],initial,goal,articulated=False,
-                     allow_contact=False,check_fingers=True,collision_policy=policy) as approach_context:
+                     allow_contact=target_contact,check_fingers=True,collision_policy=policy) as approach_context:
         start=approach_context.validate(initial)
         write_json(folder/'approach-initial-scene.json',{'record':approach_context.record,'start':start,
             'admission_aperture':'open','closure_policy':'execute closure and inspect measured engagement'})
@@ -99,7 +100,7 @@ def select_direct_grasp(generated,state,ik,record,open_scene,goal,folder,config,
             path,result=approach_context.plan(initial,q,constrained=False,seconds=min(2.,remaining))
             path_seconds+=time.perf_counter()-t;queries+=1
             route={'route':policy,'standoff_m':0.,'one_route_per_learned_pose':True,
-                'target_contact_during_approach_allowed':False}
+                'target_contact_during_approach_allowed':target_contact}
             with (folder/'approach-queries.jsonl').open('a') as stream:
                 import json
                 stream.write(json.dumps({'pose_index':ordinal,'ik_rank':rank,**route,**result})+'\n')
@@ -127,7 +128,11 @@ def select_direct_grasp(generated,state,ik,record,open_scene,goal,folder,config,
         'scene_valid_ik_selected':sum('joints' in a for a in attempts),'approach_queries':queries,
         'deadline_reached':time.perf_counter()>=deadline,'global_optimality_claimed':False,
         'geometric_fallback_used':False,'selection':'first executable learned pose by discriminator rank; closest scene-valid returned IK',
-        'environment_collision_policy':policy,'finger_pad_target_contact_allowed':False,
+        'environment_collision_policy':policy,'finger_pad_target_contact_allowed':target_contact,
+        'palm_target_contact_allowed':target_contact,
+        'contact_object_id':getattr(open_scene,'grasp_contact_object_id',None),
+        'contact_permission':('selected object: palm and distal fingertips; arm, proximal fingers '
+            'and unrelated surfaces remain checked' if target_contact else 'no target-contact exemption'),
         'arm_palm_checked':policy=='veto','finger_environment_collision_checked':policy=='veto',
         'additional_dense_validation':False,
         'admission_aperture':'open','closed_hand_admission_used':False,

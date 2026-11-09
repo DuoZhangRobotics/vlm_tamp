@@ -89,6 +89,36 @@ def test_native_distance_gradient_matches_point_geometry(native_query):
                                [-np.sqrt(.5), -np.sqrt(.5), 0.], atol=1e-6)
 
 
+@pytest.mark.parametrize('role', ['stationary', 'moving', 'contact'])
+@pytest.mark.parametrize('finger', [0, 1, 2, 3])
+def test_target_fingertip_permission_survives_cuda_graph(native_query, role, finger):
+    """Distal spheres may touch only target points, with warm query masks updated in place."""
+    scene, spheres, query = native_query
+    spheres[0, 0, 37, :3] = torch.tensor([10., 0, 0], device=spheres.device)
+    spheres[0, 0, 40, :3] = torch.tensor([11., 0, 0], device=spheres.device)
+    spheres[0, 0, 45, :3] = torch.tensor([10., 1, 0], device=spheres.device)
+    coefficients = [[0., 0., 0., .024] for _ in range(4)]
+    coefficients[finger] = [-9.98, 0., 0., .024]
+    model = {'coefficients': coefficients}
+    points = clouds(role, [[0., 0., 0.]])
+    scene.update(points, palm_contact=True, finger_model=model)
+    for _ in range(3):
+        query()
+    torch.cuda.synchronize()
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        result = query()
+    graph.replay()
+    assert result.max().item() == pytest.approx(.004, abs=1e-6)
+    scene.update(points, palm_contact=True, finger_model=model, fingertip_contact=True)
+    graph.replay()
+    exempt = role == 'contact' and finger in (1, 3)
+    assert result.max().item() == pytest.approx(0. if exempt else .004, abs=1e-6)
+    scene.update(points, palm_contact=True, finger_model=model, fingertip_contact=False)
+    graph.replay()
+    assert result.max().item() == pytest.approx(.004, abs=1e-6)
+
+
 @pytest.mark.parametrize('role',['stationary','moving','contact'])
 def test_finger_phase_and_measured_geometry_updates_survive_warm_cuda_graph(native_query,role):
     """A warm optimizer sees changed finger permissions and aperture, without recreation."""

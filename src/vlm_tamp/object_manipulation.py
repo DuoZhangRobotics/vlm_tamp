@@ -170,6 +170,10 @@ class ObjectModels:
         if model['reference_control_step'] != service.state['control_steps']:
             raise ValueError('Select a current object region before requesting a new grasp')
         service.select_surface_contact(model['camera'], model['contact_pixel_xy'], model['region_xyxy'])
+        # Keep the existing GraspGen input. Collision permission belongs to the
+        # segmented object, not the rectangle or the smaller contact-normal patch.
+        service.scene.grasp_contact_reference = model['cloud']
+        service.scene.grasp_contact_object_id = object_id
         service.calls += 1
         planned = service.plan_grasp(**arguments)
         service.calls += 1

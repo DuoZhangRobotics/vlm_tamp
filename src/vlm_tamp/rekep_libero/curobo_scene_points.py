@@ -32,6 +32,7 @@ class ObservedPointScene(SceneCollision):
         self.batch_buffers: dict[tuple[int, bool, int, int], CollisionBuffer] = {}
         self.reference_clouds: dict[str, np.ndarray] = {}
         self.palm_contact = False
+        self.fingertip_contact = False
         self.loaded = False
         self._masks: dict[tuple[int, bool], torch.Tensor] = {}
         self.check_fingers = False
@@ -41,13 +42,15 @@ class ObservedPointScene(SceneCollision):
         """Apply phase permissions without changing self-collision spheres."""
         indices = self.native_indices + [-1]*(count-len(self.native_indices))
         return [1 <= i < (59 if self.check_fingers else 55)
-                and not (contact and self.palm_contact and 37 <= i < 55) for i in indices]
+                and not (contact and ((self.palm_contact and 37 <= i < 55)
+                         or (self.fingertip_contact and i in (56, 58)))) for i in indices]
 
     def update(self, clouds: dict[str, np.ndarray], palm_contact: bool,
-               finger_model: dict | None = None) -> None:
+               finger_model: dict | None = None, fingertip_contact: bool = False) -> None:
         """Load the same role-separated points used by native path planning."""
         self.reference_clouds = clouds
         self.palm_contact = bool(palm_contact)
+        self.fingertip_contact = bool(fingertip_contact)
         self.check_fingers = finger_model is not None
         if finger_model is not None:
             self.finger_coefficients.copy_(self.device_cfg.to_device(finger_model['coefficients']))
