@@ -37,5 +37,5 @@ def closure_sample(previous_positions: ArrayLike, positions: ArrayLike,
         'speed_tolerance_m_s': FINGER_SPEED_TOLERANCE_M_S,
         'positions_m': current.tolist(), 'velocities_m_s': velocity.tolist(),
         'source': 'finger joint proprioception and closing command reference',
-        'retention': 'not_tested', 'simulator_contacts_used': False,
+        'simulator_contacts_used': False,
     }

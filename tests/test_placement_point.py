@@ -100,7 +100,7 @@ def test_uses_existing_point_ik_and_native_path_without_alternate_solver(
     np.testing.assert_array_equal(calls[0]['local'], expected['contact_local_m'])
 
 
-def test_registered_tool_and_compact_feedback_preserve_attachment_uncertainty() -> None:
+def test_registered_tool_and_compact_feedback_preserve_attachment_model_and_coverage() -> None:
     """Luna can call the real schema and sees the assumption in its compact result."""
     from vlm_tamp.actor_structured import OPERATIONS
     from vlm_tamp.compact_robot_interface import compact_response
@@ -111,7 +111,11 @@ def test_registered_tool_and_compact_feedback_preserve_attachment_uncertainty() 
     assert 'plan_object_point' in OPERATIONS
     binding = object_point_binding(measured_state(), **args)
     reply = compact_response({'ok': True, 'result': {'object_point_goal': binding}})
-    assert reply['result']['object_point_goal'] == binding
+    assert reply['result']['object_point_goal'] == {
+        key:value for key,value in binding.items() if key not in {'attachment_verified','task_success_predicted'}}
+    assert reply['result']['object_point_goal']['attachment_model'] == 'rigid'
+    assert reply['result']['object_point_goal']['payload_collision_checked'] is False
+    assert binding['attachment_verified'] is False  # Raw numerical provenance stays unchanged.
 
 
 def test_execution_reports_predicted_object_point_and_holds_gripper(tmp_path: Path) -> None:

@@ -14,6 +14,7 @@ import time
 from typing import Any
 
 from .compact_robot_interface import compact_response
+from .feedback_measured import measured_feedback
 from .coupled_storage import write_json
 from .interaction_memory import InteractionMemory
 from .robot_contracts import operation_schemas
@@ -70,8 +71,8 @@ request can produce an action. Targets, strategies, directions and recovery are 
 
 Current images and proprioception follow your task. Before/after memory records are measured
 transitions from THIS episode; request success and robot movement are not task completion.
-TRAJECTORY_GAP means omitted interactions, not adjacent frames. Notes are your hypotheses,
-not independently verified facts. Keep the note concise and revise it when observations disagree.
+TRAJECTORY_GAP marks omitted interactions between frames. Notes record your previous observations
+and plans. Keep them concise and revise them when current measurements change the picture.
 No examples, successful coordinates, task-specific strategy or closing sign are provided.
 The episode ends at native success, 600 controls or its wall deadline. Do not reset or issue
 meaningless actions to use the budget. A failed plan does not end the episode.
@@ -92,11 +93,13 @@ The tools supply geometric bookkeeping, not task-specific coordinates or a recov
 For free pose motion, first select observed scene geometry with select_surface_contact or ground.
 plan_object_point targets a chosen current point on a held object under your explicit rigid
 attachment assumption. plan_contact_pose targets a robot landmark; plan_pose targets the TCP.
-Neither point arrival nor the attachment assumption establishes object placement or retention.
-execute of a plan_grasp plan automatically closes after measured approach arrival, using
-the planned close_steps. close_gripper=false opts out. No automatic lift; inspect retention.
-Motion planning and control use the existing numerical tools. Do not infer task completion from
-an accepted plan or hand arrival. For a terminal finish request, set arguments_json to "{}"
+execute of a plan_grasp plan reaches the approach and holds the arm until the fingers settle.
+After closing, proceed with the planned motion. For picking, lift or continue the transfer.
+Compare the object with the hand and fixed surroundings: continue if it follows; choose another
+grasp if it stays behind or slips.
+A closing-only command contains no arm lift. close_gripper=false selects approach only.
+Motion planning and control use the existing numerical tools. Read native task_success for task
+completion, and use measured action results to choose the next step. For a terminal finish request, set arguments_json to "{}"
 and put supported findings and limits in the note field.
 """
 
@@ -134,7 +137,7 @@ def tool_call(work: Path, operation: str, arguments_json: str, environment: dict
             "ok": False,
             "error_type": "tool_client_error",
             "error": reply.stderr[-4000:],
-            "execution_status": "unknown; inspect episode_status before retrying",
+            "execution_status": "reply_unavailable; check episode_status for the completed or pending request before retrying",
             "client_returncode": reply.returncode,
         }
     return json.loads(reply.stdout)
@@ -193,14 +196,14 @@ def image_paths(value: Any, work: Path) -> list[str]:
 def feedback_record(response: dict, operation: str) -> dict:
     """Preserve compact existing outcomes; visual-tool metadata is already small."""
     result = (
-        response
+        measured_feedback(response)
         if operation in VISUAL_TOOLS or operation in {"help", "inspect_image"}
         else compact_response(response)
     )
     preview = response.get("result", {}).get("hand_preview")
     if preview is not None:
         result.setdefault("result", {})["hand_preview"] = preview
-    return result
+    return measured_feedback(result)
 
 
 def episode_status(work: Path) -> dict:
@@ -413,6 +416,7 @@ def run_structured_actor(
         }
         if retain_tool_documentation:
             payload["previously_consulted_tool_contracts"] = consulted_tool_contracts
+        payload = measured_feedback(payload)
         original_payload = json.dumps(payload, separators=(",", ":"))
         if compact_transitions:
             from .feedback_transition import compact_transition_context

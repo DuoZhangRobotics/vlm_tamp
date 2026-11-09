@@ -22,9 +22,9 @@ the same measured primitive.
 
 A completed closing attempt is preserved across selections and planning requests. Calling a new
 grasp does not silently release it: use `regrasp=true` on `plan_grasp` / `grasp_object`, or explicitly
-open first. This is an intent transition, not a grasp-success certificate. The compact feedback and
-actual callable contracts distinguish mechanical completion, retention not yet tested, and the fact
-that a grasp command contains no lift. Luna still chooses transport, a lift test or deliberate retry.
+open first. This is an intent transition, not a grasp-success certificate. The current compact feedback reports completed closure and directs the next physical motion.
+Luna chooses transport, a lift test or deliberate retry from the measured outcome. The later
+feedback audit removed the redundant holding-status labels; see `feedback_audit_20261109.md`.
 
 ## Targeted validation
 

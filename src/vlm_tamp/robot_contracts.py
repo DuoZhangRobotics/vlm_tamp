@@ -9,7 +9,7 @@ import math
 from numbers import Real
 from typing import Any
 
-VERSION = 'robot-request-contract-v31'
+VERSION = 'robot-request-contract-v32'
 POINTING_HELP = '''- point(observation_id, camera, query): ask the local Molmo2 model to mark a
   visible location in agentview or wrist. It sees both original RGB images from
   that observation, and your exact query. Describe the object/part and intended
@@ -26,8 +26,8 @@ POINTING_HELP = '''- point(observation_id, camera, query): ask the local Molmo2 
   Feed a selected contact_pixel_xy into existing surface, push or hook tools.
   Targeted push/hook also need your selected region or current part ID; pointing
   alone does not supply that mask or region.
-  You choose the contact, attachment model and motion direction. Molmo2 does not
-  supply a grasp pose or certify engagement, reachability or opening/closing.
+  You choose the contact, attachment model and motion direction. Molmo2 supplies image
+  points; the numerical grasp and motion tools compute poses and paths.
   The model remains loaded; every query has fresh context. Reuse an established
   contact instead of pointing again for each stroke. No motion, scene update,
   depth reconstruction or automatic substitute point is produced. If no point
@@ -49,11 +49,10 @@ GROUND_HELP = '''- ground(regions, moving_part_id=null, contact_part_id=null): l
   Near-vertical axes point toward +Z; horizontal axes toward +X or +Y. The line
   is not snapped to those directions. View from the positive-axis end: CCW is
   positive, CW negative. Use joint_degrees as a positive magnitude together with
-  rotation_direction='cw' or 'ccw' in push/hook_pull. Opening/closing is still
-  unverified. Legacy initial_image_direction_xy is recorded only and cannot
-  reverse the axis. Omit it. The hinge remains
-  your hypothesis; depth does not identify the hidden physical joint or decide
-  opening/closing. Inspect it in other views or use measured part motion.
+  rotation_direction='cw' or 'ccw' in push/hook_pull. Choose that rotation from
+  the current object and its goal reference. Legacy initial_image_direction_xy is
+  recorded only; omit it. Compare the selected hinge in the other view or use
+  measured part motion to update it.
   refresh_contact also requires contact_pixel_xy and keeps the existing hinge.
   These tools update the model and invalidate old plans; they issue no motion.
 '''
@@ -63,16 +62,15 @@ MULTIVIEW_GROUND_HELP = '''- ground_multiview(observation_id, regions, compariso
   contains camera and hinge_pixels_xy from a third view. The primary view's
   depth-lifted hinge is installed unchanged. Independent depth and reprojection
   disagreements are reported, with no hard consistency cutoff or upright prior.
-  accepted means required measurements were available, not that your hinge is
-  verified. Inspect the overlays and uncertainty. No robot motion occurs.
+  accepted means the required measurements were available. Inspect the reported
+  depth and reprojection residuals alongside the overlays. This query issues no motion.
 '''
 
 PART_MOTION_HELP = '''- segment_parts(observation_id, camera, points_xy=null, point_labels=null, box_xyxy=null, label=null):
   Use a coarse original-pixel box or clicked points to request up to three
   MobileSAM masks. Give one point_labels value per point: 1 includes, 0 excludes.
   label is YOUR descriptive name, not a text prompt or an automatic category.
-  Choose a returned part_id after inspecting its overlay. Raw mask scores do
-  not certify semantic identity. Invalid depth and known robot pixels are
+  Choose a returned part_id by matching its overlay to the intended object. Invalid depth and known robot pixels are
   excluded from usable masks. No hinge annotation or hinge guess is required.
 - associate_views(part_id, cameras, comparison_part_id=null):
   Project that part's observed surface into 1..4 cameras of the SAME capture.
@@ -154,13 +152,10 @@ PART_MOTION_HELP = '''- segment_parts(observation_id, camera, points_xy=null, po
   position allowance or put more than 10% of contact samples in observed free
   space in at least two views (5 mm depth tolerance). Rejection changes no model.
 
-The five perception operations read recorded sensors and issue no robot motion;
-apply_joint_estimate is the explicit planner-model update. A mask
-proposal, same-time correspondence, motion estimate, later-motion support and
-physical task success are different claims. Inspect the evidence; none alone
-certifies part identity, contact retention or collision-free execution. Offline
-CoTracker sees the whole supplied clip, so later-interval support is not a claim
-of statistically independent tracking data.
+The five perception operations read recorded sensors and issue no robot motion.
+apply_joint_estimate installs the selected estimate in the planner. Read each
+measurement with its capture and control-step timestamps. Offline CoTracker uses
+the complete supplied clip; its reports include interval correspondences and residuals.
 '''
 
 
@@ -323,14 +318,14 @@ def operation_schemas(image_sizes: dict[str, dict[str, int]] | None = None) -> d
         'apply_part_motion': ('Apply measured part pose between matching captured states; preserve the fixed joint and issue no motion.',parameters({
             'track_id':text,'reference_observation_id':integer(0,2**31-1),'current_observation_id':integer(0,2**31-1)},
             ['track_id','reference_observation_id','current_observation_id'])),
-        'inspect_scene': ('Compare selected geometry with current depth; this does not establish contact.', parameters({'camera': nullable(text)})),
+        'inspect_scene': ('Compare the selected planning geometry with the current depth observation and return the measured agreement.', parameters({'camera': nullable(text)})),
         'start_tracking': ('Start tracking selected observed moving geometry; no motion.', parameters()),
         'measure_tracking': ('Measure tracked RGB-D motion without changing the planning model.', parameters()),
         'apply_tracking': ('Apply measured geometry motion, optionally with your updated hinge hypothesis.', parameters({'hinge_world_m': nullable(array(3))})),
         'set_model': ('Set a hinge-line hypothesis; its axis sign is canonical (largest absolute component positive). Existing plans become stale.', parameters({'hinge_world_m': nullable(array(3)), 'axis_world': nullable(array(3))})),
-        'plan_grasp': ('Try up to eight original GraspGen poses by learned score on the complete image region or mask installed by select_surface_contact (its radius limits the local contact patch, not the grasp target) or an articulated handle installed by ground. Surface grasps require no joint model and use no angular probe. Filter open-hand scene collisions before IK, then check the arm and approach against the full observed scene. No motion during planning. execute holds the arm until measured finger closure settles after approach arrival; close_gripper=false opts out. close_steps is an optional minimum interval (default 1), not a fixed completion timer; completion may extend up to the existing 40-control closing budget or a larger requested minimum, capped by the episode. Grasp does not lift. Test retention with lift/transport. A previous closing attempt is preserved; regrasp=true explicitly permits opening it for another approach.', parameters({'probe_degrees': angle, 'max_candidates': candidates, 'seed': seed,
+        'plan_grasp': ('Generate a configured GraspGen batch (default eight), rank its poses, check the open hand and arm against the observed scene, and plan an approach. max_candidates limits selection within this pool; changing the seed or target region changes proposals. probe_degrees does not rotate these GraspGen poses. execute approaches and holds the arm until the fingers settle. close_steps is a minimum interval (default 1), with the existing 40-control closing ceiling or a larger requested minimum, capped by the episode. After closing, lift or transport and compare object motion with hand motion. regrasp=true explicitly releases the previous attempt for a new approach.', parameters({'probe_degrees': angle, 'max_candidates': candidates, 'seed': seed,
             'speed':speed,'approach_speed':speed,'hold':{'type':'integer','minimum':0},'close_steps':{'type':'integer','minimum':1,'default':1},'budget_seconds':number(exclusiveMinimum=0,maximum=1800),'collision_policy':policy,'regrasp':{'type':'boolean','default':False}})),
-        'plan_arc': ('Plan the complete requested relative contact arc; no robot motion. Points overlapping the measured current robot are removed from the planning cloud with zero padding. Future candidate poses do not clear additional points; remaining scene collisions are checked. Contact permission is not proof of a grasp.', parameters({
+        'plan_arc': ('Plan the complete requested relative contact arc; no robot motion. Points overlapping the measured current robot are removed from the planning cloud with zero padding. Future candidate poses do not clear additional points; remaining scene collisions are checked. Execute and compare the measured object motion with the requested arc.', parameters({
             'rotation_direction':nullable({'type':'string','enum':['cw','ccw'],'description':'View from the positive hinge-axis end toward its origin. Supply degrees as a positive magnitude.'}),
             'degrees':angle,'refined':{'type':'boolean'},'grasp_constraint':grasp,
             'position_tolerance_m':nullable({'type':'number','exclusiveMinimum':0}),
@@ -340,7 +335,7 @@ def operation_schemas(image_sizes: dict[str, dict[str, int]] | None = None) -> d
         'plan_joint': ('Plan simulation free motion under the declared environment prediction policy to seven joint angles in radians.', parameters({'joints': array(7),'collision_policy':policy}, ['joints'])),
         'ik': ('Compute IK proposals for your world TCP pose; no robot motion.', parameters({'pose_world_xyzw': pose}, ['pose_world_xyzw'])),
         'plan_pose': ('Plan simulation free motion under the declared environment prediction policy to your world TCP pose.', parameters({'pose_world_xyzw': pose,'collision_policy':policy}, ['pose_world_xyzw'])),
-        'plan_object_point': ('Plan a current object material point to its chosen world destination under your explicit rigid attachment model. source_point_world_m is the CURRENT object point, not an old pre-grasp coordinate; target_point_world_m is the intended destination of that same point. Numerical tools compute its offset from the measured TCP and use cuRobo point IK and VAMP. Without carry_constraints wrist/object orientation is free. Optional carry_constraints preserve the supplied current object axis and keep its reference point on/above the supplied support plane throughout the MC-VAMP path, with no added clearance. Robot scene collisions are checked; carried-object shape collisions and retention are not certified. No automatic support-point guess, clearance, lift/lower sequence or release. Execution holds the gripper; arrived means the rigid model predicts point arrival, not measured object placement.', parameters({
+        'plan_object_point': ('Plan a current point on the object to its selected world destination under attachment_model=rigid. The tool computes the object-to-TCP offset and uses cuRobo IK plus VAMP planning. Optional carry_constraints preserve the selected object axis and support half-space along the path. Robot collisions are checked against observed points; carried-object collision geometry is not modeled. Execute with the gripper held, compare the object motion with the hand, and release at the destination.', parameters({
             'source_point_world_m':array(3),'target_point_world_m':array(3),
             'attachment_model':{'type':'string','enum':['rigid']},'collision_policy':policy,
             'carry_constraints':parameters({'object_axis_world':array(3),
@@ -349,26 +344,26 @@ def operation_schemas(image_sizes: dict[str, dict[str, int]] | None = None) -> d
                 ['object_axis_world','support_plane_point_world_m','support_plane_normal_world']),
             'budget_seconds':number(exclusiveMinimum=0,maximum=1800)},
             ['source_point_world_m','target_point_world_m','attachment_model'])),
-        'plan_contact_pose': ('Plan your chosen contact_name to an observed world point. point leaves orientation free; surface_normal uses an explicit signed outward surface_normal_world and leaves twist free. Alternatively supply a full quaternion. No pose menus, substituted points or automatic model fallback. Execute with gripper=0. A plan does not establish contact or task direction.', parameters({
+        'plan_contact_pose': ('Plan the selected robot contact landmark to an observed world point. point leaves orientation free; surface_normal aligns the pad with the supplied outward surface normal and leaves twist free. Supply a quaternion for full orientation. Execute with gripper=0 and read the measured arrival result.', parameters({
             'point_world_m':array(3),'quaternion_xyzw':nullable(array(4)),'contact_name':text,
             'contact_constraint':contact_arguments['contact_constraint'],
             'surface_normal_world':contact_arguments['surface_normal_world'],
             'collision_policy':policy,'budget_seconds':number(exclusiveMinimum=0,maximum=1800)},['point_world_m','contact_name'])),
-        'execute': ('Execute a fresh complete plan. For plan_grasp, hold the arm and close until measured finger motion settles after approach arrival; set close_gripper=false for approach only. gripper controls the approach phase, not this final closure. No automatic lift or retention claim. Omitted speed/hold inherit stored grasp-plan timing; plans without timing use 0.35 rad/s and six hold steps. gripper=-1 opens, 0 holds, +1 closes. Omitted gripper follows the plan aperture setting; grasp approaches open, and plans without an aperture setting retain default +1. Explicit overrides remain available subject to the existing contact-plan aperture contract.', parameters({'plan_id': text, 'close_gripper': {'type': 'boolean'}, 'gripper': {'type': 'integer', 'enum': [-1, 0, 1]}, 'speed': speed, 'hold': {'type':'integer','minimum':0}}, ['plan_id'])),
-        'gripper': ('Physically open/close while holding the existing arm reference. Closing continues until its command reference and finger motion settle after the requested minimum steps, within the existing 40-control closing budget (or a larger requested minimum) and the remaining episode. Settled closure does not prove retention. Explicit opening releases the preserved grasp intent.', parameters({'close': {'type': 'boolean'}, 'steps': {'type':'integer','minimum':1}})),
+        'execute': ('Execute a fresh plan. A grasp plan approaches and holds the arm until the fingers settle; then lift or transport and observe the object. close_gripper=false selects approach only. speed and hold inherit the stored grasp-plan settings; other plans default to 0.35 rad/s and six holds. gripper=-1 opens, 0 maintains the current gripper command, and +1 closes. Omitted gripper uses the plan setting: open for grasp approaches and +1 for plans without an aperture setting. The result reports actual arrival and closing completion.', parameters({'plan_id': text, 'close_gripper': {'type': 'boolean'}, 'gripper': {'type': 'integer', 'enum': [-1, 0, 1]}, 'speed': speed, 'hold': {'type':'integer','minimum':0}}, ['plan_id'])),
+        'gripper': ('Open or close while holding the existing arm reference. Closing continues until the closing reference and measured finger motion settle after the requested minimum steps, within the existing 40-control closing ceiling or a larger requested minimum and the remaining episode. After closing, lift or transport and observe the object. An explicit opening releases the previous grasp attempt.', parameters({'close': {'type': 'boolean'}, 'steps': {'type':'integer','minimum':1}})),
         'plan_sequence': ('Plan a small GraspGen-only approach; retain the signed manipulation request for fresh planning after measured closure.', parameters({'degrees': angle, 'max_candidates': candidates, 'seed': seed, 'grasp_constraint': grasp,
             'speed':speed,'approach_speed':speed,'hold':{'type':'integer','minimum':0},'close_steps':{'type':'integer','minimum':1},'budget_seconds':number(exclusiveMinimum=0,maximum=1800),'collision_policy':policy}, ['degrees','grasp_constraint'])),
         'execute_sequence': ('Execute a prepared sequence with the documented gripper stages.', parameters({'plan_id': text, 'close_steps': {'type':'integer','minimum':1}, 'speed': speed, 'approach_speed':speed, 'hold': {'type':'integer','minimum':0}, 'manipulation_gripper': {'type': 'integer', 'enum': [0, 1]},'feedback_degrees':number(exclusiveMinimum=0),'calibrate_joint':{'type':'boolean'},'open_steps':{'type':'integer','minimum':1}}, ['plan_id'])),
         'select_surface_contact': ('Select a current observed target using a region or contact_part_id. The complete region/mask supplies GraspGen; radius_m only limits the local contact patch and normal fit around contact_pixel_xy. Collision checking retains the whole scene. No grasp or hinge assumption.', parameters({'camera': text, 'region_xyxy': nullable(box), 'contact_part_id':nullable(text), 'radius_m': number(exclusiveMinimum=0),'contact_pixel_xy':array(2,{'type':'integer','minimum':0})}, ['camera','contact_pixel_xy'])),
-        'select_object': ('Register a persistent object from your current image region and click. MobileSAM supplies the highest-score mask; overlays and uncertainty remain visible. supported_body declares a rigid object resting on the planar surface measured outside its mask within your region. surface_center selects the center of a visible support mask; surface_point uses your exact pixel. Object identities and reference geometry persist when another object is selected. No task-specific coordinates or native object geometry. No motion.', parameters({
+        'select_object': ('Register an object from the current image region and click using the highest-scoring MobileSAM mask. supported_body defines a body resting on the planar support measured outside its mask. surface_center defines the center of the visible support surface; surface_point uses the exact selected pixel. Choose a surface reference for a placement destination. IDs and reference geometry persist across selections. This operation records geometry and issues no motion.', parameters({
             'camera':text,'region_xyxy':box,'contact_pixel_xy':array(2,{'type':'integer','minimum':0}),
             'reference_type':{'type':'string','enum':['supported_body','surface_center','surface_point']},
             'label':nullable(text)},['camera','region_xyxy','contact_pixel_xy','reference_type'])),
-        'grasp_object': ('Use a currently selected object region with the existing GraspGen/IK/planner, execute approach and mechanically settled closure, then measure the persistent object pose from recorded video and RGB-D. Keeps the existing region input to GraspGen; the mask defines object geometry/tracking. No alternative grasp or tracker is substituted on failure. No lift is performed: lack of lift during closing is not grasp failure. Use a lift/transfer to test retention. A previous closing attempt stays preserved unless you explicitly open or choose regrasp=true.', parameters({
+        'grasp_object': ('Use the selected object region to plan and execute an approach, hold the arm until the fingers settle, and update the object pose from recorded RGB-D. Next, lift or continue the transfer and observe whether the object follows. If it stays behind or slips, choose another grasp with regrasp=true. This operation includes approach and closing; lifting is the next action.', parameters({
             'object_id':text,'max_candidates':candidates,'seed':seed,'approach_speed':nullable(speed),
             'hold':{'type':'integer','minimum':0},'close_steps':{'type':'integer','minimum':1,'default':1},
             'budget_seconds':number(exclusiveMinimum=0,maximum=1800),'regrasp':{'type':'boolean','default':False}},['object_id'])),
-        'place_object': ('Prepare and execute a lifted transfer between persistent object references under your declared rigid attachment. You choose lift_distance_m, a physical motion distance, not collision padding. Tools bind observed object pose to the hand, use cuRobo goals and MC-VAMP paths preserving the object axis/support half-spaces, then release if the reference is reached. Native task termination remains unchanged. No automatic withdrawal, retry, fallback or true-payload collision certificate. Source/destination poses remain separate from planner predictions.', parameters({
+        'place_object': ('Update the selected source and destination poses from recorded RGB-D, bind the source reference to the hand using the declared rigid attachment, and plan lift, transfer, lower and release. Choose the physical lift_distance_m. The planner preserves the object axis and support half-spaces and checks robot collisions against observed points. Carried-object collision geometry is not modeled. Results report measured execution, release, stop reasons and control usage.', parameters({
             'object_id':text,'destination_id':text,'lift_distance_m':number(exclusiveMinimum=0),
             'attachment_model':{'type':'string','enum':['rigid']},'speed':speed,
             'hold':{'type':'integer','minimum':0},'release_steps':{'type':'integer','minimum':1},
@@ -383,9 +378,9 @@ def operation_schemas(image_sizes: dict[str, dict[str, int]] | None = None) -> d
         'measure_surface': ('Measure a planar material patch in a saved session observation.', parameters({'observation_id': {'type': 'integer'}, 'camera': text, 'polygon_xy': {'type': 'array', 'items': point, 'minItems': 3, 'maxItems': 32}}, ['observation_id', 'camera', 'polygon_xy'])),
         'compare_surfaces': ('Compare two selected material patches using measured correspondences.', parameters({'first_id': text, 'second_id': text, 'pixels_first_xy': nullable(coordinates), 'pixels_second_xy': nullable(coordinates)}, ['first_id', 'second_id'])),
         'check_completion': ('Check your declared goal against supplied measured evidence.', parameters({'evidence': {'type': 'object', 'additionalProperties': {'type': 'string'}}, 'interpretation': text}, ['evidence', 'interpretation'])),
-        'finish': ('Finish only when the active episode policy permits; never fabricates success.', parameters({'claim': {'enum': ['completed', 'incomplete', 'uncertain']}, 'reason': {'type': 'string'}, 'check_id': nullable(text)})),
+        'finish': ('Return episode status. The active evaluation ends on native success or its control/wall limit; a finish call while episode_done=false leaves it active.', parameters({'claim': {'enum': ['completed', 'incomplete', 'uncertain']}, 'reason': {'type': 'string'}, 'check_id': nullable(text)})),
     }
-    definitions['push_stroke']=('Move the current hand in a world direction for the requested distance, using physical execution feedback. Requires only reset, direction and distance: no prior push, target region, object model or contact search. Retains current gripper aperture. Reports measured hand motion, physical stalls and native task success; object motion is separate when a target was previously associated.',definitions['continue_push'][1])
+    definitions['push_stroke']=('Move the current hand in a world direction for the requested distance, using physical execution feedback. Requires only reset, direction and distance: no prior push, target region, object model or contact search. Maintains the current gripper command. This can perform a straight lift of the hand. Reports measured hand motion, physical stalls and native task success; object motion is separate when a target was previously associated.',definitions['continue_push'][1])
     for operation in ('push','hook_pull'):
         definitions[operation][1]['anyOf']=[
             {'required':['direction_world'],'properties':{'direction_world':array(3)}},

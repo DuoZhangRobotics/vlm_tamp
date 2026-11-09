@@ -35,11 +35,11 @@ def motion_record() -> dict:
 
 
 def test_hand_success_does_not_become_contact_object_or_task_success() -> None:
-    """A truthful unknown must survive even when the robot reached its reference."""
+    """Actual failed tracking and native task status survive successful hand arrival."""
     result = transition_record(motion_record())['receipt']
     assert result['command_accepted'] is True
     assert result['requested_and_measured_hand_motion']['hand_reference_reached'] is True
-    assert result['contact_evidence']['physical_contact_verified'] is False
+    assert 'physical_contact_verified' not in result['contact_evidence']
     assert result['object_motion']['object_motion_status'] == 'unresolved'
     assert result['object_motion']['part_motion_evidence']['latest']['pairs'] == 0
     assert 'observed_progress' not in result['object_motion']
@@ -132,11 +132,13 @@ def test_automatic_grasp_closure_survives_both_feedback_formats() -> None:
                    {'stage': 'gripper-close', 'control_steps': 120,
                     'execution': {'issued_commands': 20}, 'grasp_evidence': {'pad_gap_mm': 3.8}}]}
     compact = compact_response(record['receipt'])
-    assert compact['result']['grasp_execution'] == summary
+    expected={key:value for key,value in summary.items() if key not in {'object_retention','closure_completed'}}
+    expected['closing_interval_completed']=True
+    assert compact['result']['grasp_execution'] == expected
     assert compact['result']['stages'][1]['execution']['issued_commands'] == 20
     record['receipt'] = compact
     receipt = transition_record(record)['receipt']
-    assert receipt['grasp_execution'] == summary
+    assert receipt['grasp_execution'] == expected
     assert receipt['phases'][0]['arrival']['goal']['reached'] is True
     assert receipt['phases'][1]['grasp_evidence']['pad_gap_mm'] == 3.8
     assert receipt['task_success'] is False

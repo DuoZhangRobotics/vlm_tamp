@@ -1,7 +1,6 @@
 import hashlib
 import json
 from pathlib import Path
-from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -211,7 +210,7 @@ def test_schema_and_compaction_preserve_measurement_scope():
     value.update(estimate_id='joint1',semantic_identity_verified=False,physical_contact_verified=False)
     result=compact_response({'ok':True,'result':value})['result']
     assert result['status']=='motion_estimate_unverified' and not result['motion_supported']
-    assert not result['semantic_identity_verified'] and not result['physical_contact_verified']
+    assert 'semantic_identity_verified' not in result and 'physical_contact_verified' not in result
     assert result['estimate']['joint_origin_world_m']==value['estimate']['joint_origin_world_m']
 
 

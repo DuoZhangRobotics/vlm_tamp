@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import json
 from typing import Any
+from .feedback_measured import measured_feedback
 
 
 def selected(value: dict, names: tuple[str, ...]) -> dict:
@@ -56,7 +57,7 @@ def transition_record(record: dict[str, Any]) -> dict[str, Any]:
         phases.append(phase)
     result = {
         **selected(record, ('type', 'decision', 'operation', 'expected_effect',
-                            'learner_note_unverified', 'before_control', 'after_control',
+                            'learner_note', 'learner_note_unverified', 'before_control', 'after_control',
                             'before_observation', 'after_observation', 'before_images', 'after_images')),
         'command': json.loads(record['arguments_json']),
         'receipt': {
@@ -74,7 +75,6 @@ def transition_record(record: dict[str, Any]) -> dict[str, Any]:
                 'requested_rotation_direction', 'rotation_view_convention',
                 'hand_reference_reached', 'measured_hand_travel_along_request_m')),
             'contact_evidence': {
-                'interpretation': 'Hand arrival alone does not establish contact retention.',
                 **selected(value, ('engagement_status', 'physical_contact_verified', 'grasp_evidence')),
             },
             'selected_contact': selected(value.get('contact', {}), (
@@ -87,7 +87,6 @@ def transition_record(record: dict[str, Any]) -> dict[str, Any]:
                                    'observed_progress', 'progress_units', 'motion_measurement_scope',
                                    'object_motion_tracker_class', 'task_direction_verified',
                                    'scene_pose_observation', 'scene_pose_update', 'motion_effect')),
-                'missing_measurement_meaning': 'unknown, not zero displacement or lost contact',
             },
             'task_success': value.get('task_success'),
             'observation_after': selected(value.get('observation', {}), (
@@ -105,7 +104,7 @@ def transition_record(record: dict[str, Any]) -> dict[str, Any]:
             **selected(receipt, ('error', 'error_type', 'execution_status')),
         },
     }
-    return result
+    return measured_feedback(result)
 
 
 def compact_transition_context(payload: dict[str, Any]) -> dict[str, Any]:

@@ -17,10 +17,10 @@ def test_completion_needs_both_finished_reference_and_measured_finger_rest() -> 
     assert not closure_sample([.02,-.02],[.01999,-.01999],[.01,-.01],reference,reference)['settled']
     assert not closure_sample([.02,-.02],[.019,-.019],[0,0],reference,reference)['settled']
     result=closure_sample([.002,-.002],[.002001,-.002001],[.0001,-.0001],reference,reference)
-    assert result['settled'] and result['retention']=='not_tested'
+    assert result['settled'] and 'retention' not in result
     assert not result['simulator_contacts_used']
     # Fully closed without an object is still mechanical completion, not retention.
-    assert closure_sample([0,0],[0,0],[0,0],reference,reference)['retention']=='not_tested'
+    assert 'retention' not in closure_sample([0,0],[0,0],[0,0],reference,reference)
 
 
 def worker_with_script(monkeypatch: pytest.MonkeyPatch, maximum_controls: int = 600) -> tuple:
@@ -98,4 +98,5 @@ def test_callable_schema_and_compact_feedback_keep_mechanical_state() -> None:
     validate_operation('plan_grasp',{'regrasp':True})
     measured={'settled':True,'retention':'not_tested'}
     compact=compact_response({'ok':True,'result':{'execution':{'gripper_completion':measured}}})
-    assert compact['result']['execution']['gripper_completion']==measured
+    assert compact['result']['execution']['gripper_completion']=={'settled':True}
+    assert compact['feedback']['message']=='Fingers settled.'

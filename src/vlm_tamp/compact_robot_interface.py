@@ -82,14 +82,13 @@ Persistent rigid objects: select_object, grasp_object, place_object, object_stat
 Choose regions and reference models; tools preserve separate object identities, segment the
 body, track its pose after grasping, and bind a prepared lifted placement to those observations.
 Choose the lift distance and rigid attachment model explicitly. No task-specific recipe or
-successful coordinates are supplied. Native success and measured retention remain separate.
+successful coordinates are supplied. Read the returned action result and current images before choosing the next action.
 Grasp closes until finger motion settles while holding the arm; it does not lift the object.
-No lift during a closing command is not evidence of failure. Test retention by lifting or
-transporting. A repeated grasp preserves the closed hand unless regrasp=true or an explicit
+After the fingers settle, proceed with the planned motion; for picking, lift or transfer and observe the object. A repeated grasp preserves the closed hand unless regrasp=true or an explicit
 opening command discards it. close_steps is an optional minimum interval, not a completion test.
 Object-relative motion: plan_object_point (current object point, its destination, rigid attachment).
-This converts the object's point to a TCP offset; it does not choose the object's support point,
-certify retention/payload collision or release the gripper. Optional carry_constraints
+This converts the selected object point to a TCP offset. You supply the object point and destination.
+The planner checks robot geometry; carried-object collision geometry is not modeled. Optional carry_constraints
 preserve a chosen object axis and keep the reference point above a chosen support plane.
 plan_contact_pose(point_world_m, contact_name) converts an observed surface point into a
 calibrated fingertip/pad pose. plan_pose instead takes the TCP origin; never
@@ -106,9 +105,8 @@ closest valid IK and one approach query per pose. No angle/height/depth sweeps.
 The network receives the complete selected image region/mask. The contact radius
 only limits the local patch/normal fit; it does not crop the grasp target. Check the proposed open hand
 against the whole observed workspace before IK; then check the arm and path.
-execute of plan_grasp automatically closes after measured approach arrival, for the
-planned close_steps. Use close_gripper=false for approach only. No automatic lift;
-closure alone does not prove retention. gripper remains available for manual control.
+execute of plan_grasp approaches and holds the arm until the fingers settle. close_steps is
+a minimum interval; the result reports actual closing controls. Then proceed with the planned motion and compare the object with the hand. Use close_gripper=false for approach only.
 Fingers may contact any environment surface; arm/palm stay checked.
 For arcs, point mode constrains only the grip point and leaves wrist orientation
 free. It does not carry the whole hand rigidly with the door. Choose rigid to
@@ -121,12 +119,11 @@ Contact IK is solved first; approach travel is the minimum outward translation
 of that solved hand to clear the face plane, with zero added distance/padding.
 Point-only pushes use the opposite of the requested push direction as approach side.
 Preview approach_plan/approach_images show this route; they do not verify task intent.
-Sending all nominal commands does not establish arrival. A targeted push or
+execution.arrival reports measured goal error and whether the reference was reached. A targeted push or
 sequence closure starts only after its approach has physically reached its goal.
 If RGB-D tracks the selected target moving during approach, targeted contact
 reacquires that same point before the stroke. contact_handoff reports this work.
-Reaching a contact point alone leaves wrist orientation free and does not prove
-physical engagement; plan_contact_pose accepts your explicit quaternion when needed.
+Point-only contact positioning leaves wrist orientation free; plan_contact_pose accepts your explicit quaternion when needed.
 For a resolved surface face, push and plan_contact_pose also accept
 contact_constraint='surface_normal' and its signed outward surface_normal_world.
 Use the normal of your selected observed face, for example normal_toward_camera_world
@@ -156,7 +153,7 @@ required. Use it to attempt a push from the current pose, including after a
 target-acquisition failure. It does not claim the hand is touching an object.
 push/hook_pull execute by default; preview=true has no motion. An unchanged
 preview is reused by execution. continue_push_available=true describes executable
-robot motion, not established contact or a recommendation to repeat it.
+measured robot motion. Compare the object before and after that motion.
 continue_push(direction_world, distance_m) reuses retained geometry and the scene.
 Targeted push/hook_pull require contact_pixel_xy, a contact_name from reset,
 and an explicit world direction or signed associated
@@ -191,7 +188,7 @@ It uses no upright/cylinder prior. The line is your hypothesis; inspect other vi
 or measured motion. plan_arc and plan_sequence require an explicit grasp_constraint.
 
 Plans do not move the robot. Execute explicitly. Use fresh plans after scene or
-robot changes. A solved plan does not establish grasp retention or task success.
+robot changes. Execute a solved plan, then use the measured motion and current views to choose the next action.
 all_commands_issued means the references were sent. execution.endpoint_tracking
 reports whether the hand actually arrived and its position/orientation error.
 Use that measured result before an action that assumes arrival, such as closure.
@@ -201,15 +198,15 @@ task_success=false means incomplete; it does not mean the last action failed
 or had the wrong direction. Compare observed state changes with the goal.
 Execute requests sequentially; await_request retrieves an already pending reply.
 Scene updates label measured RGB-D motion versus prediction assuming contact.
-Inspect those labels and uncertainty. Read full diagnostics when they matter.
+Inspect the selected part, measured fit and any reported failure reason.
 Failed contact searches can return rejection images. Red is the native planner's
 reported sphere, blue an observed cloud point, and yellow the requested touch
 projection. These depict an unexecuted candidate, not a measured collision.
 cuRobo checks environment and self-collisions when solving the initial contact pose.
 After acquisition, push strokes use IK without an environment collision constraint;
 the simulator determines the physical contact response. Robot self-collision and
-the existing joint/speed limits remain enabled. An executed push is not proof of
-task progress; inspect observed object motion and native task success.
+the existing joint/speed limits remain enabled. Compare observed object motion with
+the requested direction and read native task_success for completion.
 """
 
 
@@ -252,7 +249,7 @@ def contact_search_summary(diagnostic: dict) -> dict:
 
 STATE_KEYS = ('instruction', 'attempt', 'control_steps', 'remaining_control_steps',
               'remaining_wall_seconds', 'task_success', 'task_success_available', 'episode_done',
-              'termination_reason', 'needs_initial_reset', 'observation_id',
+              'termination_reason', 'stop_reason', 'status', 'needs_initial_reset', 'observation_id',
               'infrastructure_failure','valid_task_attempt',
               'eef_pose_world_xyzw', 'gripper_qpos', 'sensor_arrays', 'camera_calibration',
               'in_flight_requests', 'control_state_is_last_completed_request',
@@ -302,6 +299,26 @@ def motion(value):
     return result
 
 
+def object_measurement(model: dict) -> dict:
+    """Keep object references and fit results; full clouds/transforms stay in raw records."""
+    result = pick(model, ('object_id', 'label', 'camera', 'region_xyxy', 'contact_pixel_xy',
+        'reference_type', 'reference_point_world_m', 'axis_world', 'pose_status', 'pose_current',
+        'pose_control_step', 'pose_observation_id', 'reference_assumption', 'mask_overlay'))
+    if 'shape' in model:
+        result['shape'] = pick(model['shape'], ('center_xy_m', 'low_z_m', 'high_z_m', 'extent_m'))
+        if 'reference_control_step' in model:
+            result['shape']['measured_at_control_step'] = model['reference_control_step']
+    if model.get('pose_measurement') is not None:
+        result['pose_measurement'] = pick(model['pose_measurement'],
+            ('accepted', 'reason', 'pairs', 'inliers', 'rms_m', 'span_m', 'source'))
+        if 'pose_control_step' in model:
+            result['pose_measurement']['measured_at_control_step'] = model['pose_control_step']
+    if 'support_fit' in model:
+        result['support_fit'] = pick(model['support_fit'],
+            ('normal_world', 'centroid_world_m', 'rms_m', 'inlier_fraction'))
+    return result
+
+
 def practice(value):
     result = pick(value, ('initial_attempts', 'granted_attempts', 'maximum_attempts',
         'attempts_started', 'remaining_granted_attempts', 'possible_additional_attempts',
@@ -323,29 +340,27 @@ def skill_feedback(value: dict) -> dict:
         'rotation_view_convention':value.get('rotation_view_convention'),
         'contact_effect':value.get('selection_geometry',{}).get('contact_effect'),
         'task_success':value.get('task_success'),
-        'task_progress_assessment':'completed' if value.get('task_success') else 'not_measured_by_motion_tool',
         'requested_direction_world':value.get('contact',{}).get('direction_world'),
         'requested_hand_distance_m':value.get('requested_distance_m'),
         'robot_motion_executed':value.get('robot_motion_executed',False),
         'hand_reference_reached':arrival.get('goal_reached'),
         'measured_hand_travel_along_request_m':value.get('measured_contact_progress_m'),
-        'object_motion_status':value.get('object_motion_status','unmeasured'),
+        **({'object_motion_status':value['object_motion_status']} if 'object_motion_status' in value else {}),
         'object_motion_tracker_class':value.get('object_motion_tracker_class'),
         'joint_progress_requires_object_tracking':value.get('joint_progress_requires_object_tracking'),
         'object_progress_is_execution_gate':value.get('object_progress_is_execution_gate'),
         'object_measurement_reason':latest.get('reason'),
         'object_measurement_control_step':latest.get('control_step'),
         'current_control_step':current,
-        'object_measurement_is_current':current is not None and latest.get('control_step')==current,
+        **({'object_measurement_is_current':latest.get('control_step')==current} if latest and current is not None else {}),
         'visual_comparison':value.get('visual_comparison'),
         'phase_visual_comparisons':value.get('phase_visual_comparisons',[]),
-        'interpretation':('A preview issues no motion.' if value.get('preview') else
-            'Hand travel is not object progress. The whole-call images include approach/repositioning; '
-            'use the stroke phase images to assess the requested direction separately. Compare the moving '
-            'part against its fixed goal reference; unresolved tracking does not confirm task direction.')}
+        'interpretation':('Preview ready; execute to move.' if value.get('preview') else
+            'Compare the object before and after the stroke against its fixed goal reference. '
+            'The phase images separate approach motion from the stroke.')}
 
 
-def compact_response(response):
+def _compact_response(response):
     """Lossy display with explicit full-file access; never mutates the response."""
     display = pick(response, ('ok', 'error_type', 'error', 'in_flight_requests'))
     if isinstance(response.get('request_diagnostic'), dict):
@@ -367,7 +382,10 @@ def compact_response(response):
             'first_blocking_surface_by_rejected_goal', 'first_blocking_robot_part_by_rejected_goal',
             'interpretation', 'full_diagnostic', 'requested_constraints',
             'candidate_status_counts', 'candidates_tried', 'search_stage_counts',
-            'attempted_postures', 'requested_probe_degrees', 'physical_motion_issued', 'gripper_completion'))
+            'attempted_postures', 'requested_probe_degrees', 'physical_motion_issued', 'gripper_completion',
+            'available_control_steps', 'hold_steps', 'release_steps', 'speed_rad_s', 'budget_seconds',
+            'elapsed_seconds', 'budget_rejected_prefixes', 'ik_queries', 'path_queries',
+            'search_deadline_reached', 'physical_infeasibility_proved'))
         if 'scene_observation_support' in diagnostic:
             display['planning_diagnostic']['scene_observation_support'] = evidence(diagnostic['scene_observation_support'])
     value = response.get('result')
@@ -381,16 +399,24 @@ def compact_response(response):
             'requested_task_motion':value['direction_contract'].get('requested_task_motion'),
             'task_direction_verified':False,
             'surface_plane_rms_m':value.get('fit_diagnostics',{}).get('surface_plane_rms_m'),
-            'interpretation':'Grounding lifts your selected pixels; it does not verify the joint identity or which sign achieves the task.'}
+            'interpretation':'The selected pixels are mapped to world geometry. Use the chosen axis and goal reference for the requested motion.'}
     result = observation(value)
     if 'joint_limit_recovery' in value:result['joint_limit_recovery']=value['joint_limit_recovery']
     if 'grasp_stage_contract' in value:result['grasp_stage_contract']=value['grasp_stage_contract']
     if 'grasp_execution' in value:result['grasp_execution']=value['grasp_execution']
     if 'object_point_goal' in value:result['object_point_goal']=value['object_point_goal']
-    result.update(pick(value, ('object_id','destination_id','object_model','selected_objects','planning_object_models',
+    result.update(pick(value, ('object_id','destination_id','selected_objects',
         'release_issued','release_complete')))
+    if 'object_model' in value:
+        result['object_model'] = object_measurement(value['object_model'])
+    if 'planning_object_models' in value:
+        result['planning_object_models'] = [object_measurement(model) for model in value['planning_object_models']]
     if 'object_pose_update' in value:
-        result['object_pose_update']=pick(value['object_pose_update'],('object_model','object_motion'))
+        update = value['object_pose_update']
+        result['object_pose_update'] = {
+            'object_id': update.get('object_model', {}).get('object_id'),
+            'object_motion': pick(update.get('object_motion', {}),
+                ('accepted', 'reason', 'pairs', 'inliers', 'rms_m', 'span_m', 'source'))}
     if 'prepared_transfer' in value:
         result['prepared_transfer']=pick(value['prepared_transfer'],('nominal_controls','planning_seconds','lift_distance_m','sequence_search'))
         result['prepared_transfer']['stages']=[{'stage':stage['stage'],'status':stage['result'].get('status'),
@@ -615,6 +641,20 @@ def compact_response(response):
     return display
 
 
+def compact_response(response: dict) -> dict:
+    """Present executed actions and measurements; retain explicit failure evidence."""
+    from .feedback_measured import measured_feedback, grasp_action_feedback
+    display = measured_feedback(_compact_response(response))
+    value = response.get('result')
+    if isinstance(value, dict):
+        action = grasp_action_feedback(value)
+        if action:
+            display['feedback'] = action
+            if 'grasp_execution' in display.get('result', {}):
+                display['result']['grasp_execution'].pop('next_action', None)
+    return display
+
+
 def present(root, operation, arguments, response, *, mode='python_brief'):
     """Save exact full result and a small display, with presentation-size telemetry."""
     root = Path(root)
@@ -699,7 +739,11 @@ def install(work, document, *, attempts, initial_attempts, practice_mode, contro
     from vlm_tamp.robot_contracts import export_schemas
     registry=export_schemas(folder/'schemas',contracts)
     (folder/'schema-index.json').write_text(json.dumps(registry,indent=2)+'\n')
-    shutil.copyfile(__file__, work / 'robot_interface.py')
+    source = Path(__file__).read_text().replace(
+        'from .feedback_measured import measured_feedback, grasp_action_feedback',
+        'from robot_feedback_measured import measured_feedback, grasp_action_feedback')
+    (work / 'robot_interface.py').write_text(source)
+    shutil.copyfile(Path(__file__).with_name('feedback_measured.py'), work / 'robot_feedback_measured.py')
     return {'mode': 'compact-v1', 'full_document': 'tools/full.txt',
         'index_bytes': (work / 'tools.txt').stat().st_size,
         'full_document_bytes': len(document.encode()), 'default_rgb_previews': 2,

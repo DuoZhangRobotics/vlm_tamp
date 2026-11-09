@@ -128,7 +128,8 @@ def test_hand_travel_and_stale_object_evidence_are_not_task_progress():
     result=compact_response({'ok':True,'result':value})
     assert list(result).index('feedback')<list(result).index('result')
     feedback=result['feedback']
-    assert feedback['task_progress_assessment']=='not_measured_by_motion_tool'
+    assert 'task_progress_assessment' not in feedback
+    assert feedback['task_success'] is False
     assert feedback['measured_hand_travel_along_request_m']==.12
     assert not feedback['object_measurement_is_current']
     assert feedback['visual_comparison']['comparison_image']=='paired.png'
@@ -151,7 +152,7 @@ def test_compact_grounding_keeps_plane_residual_and_literal_depth_samples():
     output=compact_response(response)
     assert output['result']['fit_diagnostics']==fit
     assert output['feedback']['surface_plane_rms_m']==.052
-    assert not output['feedback']['task_direction_verified']
+    assert 'task_direction_verified' not in output['feedback']
 
 
 @pytest.mark.parametrize('intent',['open','close'])

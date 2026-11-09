@@ -35,7 +35,9 @@ def test_overview_exposes_occluded_camera_alternatives_without_new_sensor_captur
 def test_stationary_motion_conflict_survives_compact_display():
     effect={'status':'selected_region_stationary_despite_hand_motion','hand_rotation_deg':6,
         'observed_region_rotation_deg':0,'physical_grasp_verified':False}
-    assert compact_response({'ok':True,'result':{'motion_effect':effect}})['result']['motion_effect']==effect
+    visible=compact_response({'ok':True,'result':{'motion_effect':effect}})['result']['motion_effect']
+    assert visible=={key:value for key,value in effect.items() if key!='physical_grasp_verified'}
+    assert visible['observed_region_rotation_deg']==0
 
 
 def test_unknown_direction_is_explicit_in_compact_grounding_reply():
@@ -58,9 +60,9 @@ def test_gripper_gap_collapse_is_sensor_evidence_not_a_contact_certificate():
     result=grasp_observation(metadata(.001),{'observed_handle_radius_m':.01},before=metadata(.025),manipulation=True)
     assert result['status']=='gripper_gap_collapsed_during_manipulation'
     assert result['pad_gap_mm']==pytest.approx(1) and result['previous_pad_gap_mm']==pytest.approx(25)
-    assert result['physical_contacts_observed'] is None
-    assert result['contact_sensing_available'] is False
-    assert grasp_observation(metadata(.022),before=metadata(.025),manipulation=True)['status']=='grasp_state_unknown'
+    assert 'physical_contacts_observed' not in result
+    assert 'contact_sensing_available' not in result
+    assert grasp_observation(metadata(.022),before=metadata(.025),manipulation=True)['status']=='gap_measured'
     assert grasp_observation({})['available'] is False
     assert grasp_observation(metadata(.001),{'observed_handle_radius_m':.01})['status']=='near_closed_without_bar_width_support'
 

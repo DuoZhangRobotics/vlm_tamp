@@ -128,7 +128,8 @@ def test_execute_grasp_closes_after_arrival_without_another_tool_call(tmp_path: 
     assert result['execution']['issued_commands'] == 44
     assert result['execution']['all_commands_issued'] is True
     assert result['grasp_execution']['closure_completed'] is True
-    assert result['grasp_execution']['object_retention'] == 'not_tested'
+    assert 'object_retention' not in result['grasp_execution']
+    assert result['grasp_execution']['next_action'].startswith('Proceed with the planned motion')
     assert result['task_success'] is False
     assert [stage['control_steps'] for stage in result['stages']] == [581, 601]
     assert result['observation']['control_steps'] == 601

@@ -4,13 +4,15 @@ movement of the target, and task success are separate findings.
 
 Use help to inspect unfamiliar arguments. Available scene_views and preview_hand operations
 provide derived views and unexecuted pose visualizations; the views contain only the two native
-cameras' observed points and known robot geometry. Holes remain unknown. A successful mark
-does not establish object identity, reachability, grasping, or a task direction.
+cameras' observed points and known robot geometry. Inspect the selected region and previewed hand
+against the current images; numerical planning supplies reachability and collision results.
 When visual previews are enabled, successful pose/grasp plans and push previews include the
 whole planned hand, at the planner's aperture, before execution. These are visual aids rather
 than additional acceptance checks. Inspect the selected part and hand pose in the actual images.
 
 Read-only tools do not move the robot. New motion can make old scene selections and plans stale;
 use current geometry as required by each existing tool contract. The numerical tools and their
-documented limits are fixed. Your retained notes are hypotheses unless supported by an observed
-transition. No task-specific procedure or successful coordinates are supplied.
+documented limits are fixed. Update your notes from the observed results. No task-specific procedure or successful coordinates are supplied.
+
+After the fingers settle, proceed with the planned motion. For picking, lift or continue the
+transfer. Compare the object with the hand and fixed surroundings. Continue when it follows; choose another grasp when it stays behind or slips.
